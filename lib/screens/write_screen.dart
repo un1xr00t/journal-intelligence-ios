@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/glass_card.dart';
-import '../widgets/section_header.dart';
+
 
 class WriteScreen extends StatefulWidget {
   const WriteScreen({super.key});
@@ -19,21 +18,11 @@ class _WriteScreenState extends State<WriteScreen> {
   final _api  = ApiService();
   final _ctrl = TextEditingController();
 
-  String _selectedTone = 'therapist';
-  bool _saving     = false;
-  bool _reflecting = false;
-  String? _savedEntryId;
-  String? _reflection;
+  bool _saving = false;
+  bool _saved  = false;
   String? _error;
 
-  static final _tones = [
-    ('therapist',   'Therapist',   CupertinoIcons.heart),
-    ('detective',   'Detective',   CupertinoIcons.search),
-    ('coach',       'Coach',       CupertinoIcons.flame),
-    ('friend',      'Friend',      CupertinoIcons.person_2),
-    ('philosopher', 'Philosopher', CupertinoIcons.book),
-    ('chaos_agent', 'Chaos Agent', CupertinoIcons.burst),
-  ];
+
 
   @override
   void dispose() {
@@ -43,59 +32,48 @@ class _WriteScreenState extends State<WriteScreen> {
 
   Future<void> _save() async {
     if (_ctrl.text.trim().isEmpty) return;
-    setState(() { _saving = true; _error = null; });
+    setState(() { _saving = true; _error = null; _saved = false; });
     try {
-      final res = await _api.createEntry(text: _ctrl.text.trim());
-      setState(() {
-        _savedEntryId = res['entry_id']?.toString() ?? res['id']?.toString();
-        _saving = false;
-      });
-      _showSavedBanner();
+      await _api.createEntry(text: _ctrl.text.trim());
+      _ctrl.clear();
+      if (mounted) {
+        setState(() { _saving = false; _saved = true; });
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _saved = false);
+        });
+      }
     } catch (e) {
-      setState(() { _error = 'Save failed. Check your connection.'; _saving = false; });
+      final msg = _parseError(e);
+      if (mounted) setState(() { _error = msg; _saving = false; });
     }
   }
 
-  Future<void> _reflect() async {
-    if (_savedEntryId == null && _ctrl.text.trim().isEmpty) return;
-    // Auto-save first if not saved
-    if (_savedEntryId == null) await _save();
-    if (_savedEntryId == null) return;
-
-    setState(() { _reflecting = true; _reflection = null; });
+  String _parseError(dynamic e) {
     try {
-      final res = await _api.getReflection(
-        int.parse(_savedEntryId!),
-        tone: _selectedTone,
-      );
-      setState(() {
-        _reflection = res['reflection'] as String?;
-        _reflecting = false;
-      });
-    } catch (e) {
-      setState(() { _reflection = null; _reflecting = false;
-        _error = 'Reflection failed.'; });
+      // DioException with a response body
+      final str = e.toString();
+      final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
+      if (match != null) return match.group(1)!;
+      if (str.contains('SocketException') || str.contains('Failed host lookup')) {
+        return 'Cannot reach server. Check your network.';
+      }
+      if (str.contains('401')) return 'Session expired. Please log out and back in.';
+      if (str.contains('422')) return 'Invalid entry format (422).';
+      if (str.contains('500')) return 'Server error (500). Try again.';
+      return 'Save failed: $str';
+    } catch (_) {
+      return 'Save failed. Unknown error.';
     }
   }
+
+
 
   void _clear() {
     _ctrl.clear();
-    setState(() {
-      _savedEntryId = null;
-      _reflection   = null;
-      _error        = null;
-    });
+    setState(() { _error = null; });
   }
 
-  void _showSavedBanner() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Entry saved ✓'),
-        backgroundColor: Color(0xFF22C55E),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -160,50 +138,45 @@ class _WriteScreenState extends State<WriteScreen> {
                 const SizedBox(height: 20),
 
                 // ── Save button ───────────────────────────────────────
-                AdaptiveButton(
-                  style: AdaptiveButtonStyle.prominentGlass,
-                  onPressed: (_saving || _ctrl.text.trim().isEmpty) ? null : _save,
-                  label: _saving ? 'Saving…' : (_savedEntryId != null ? 'Saved ✓' : 'Save Entry'),
-                ),
-
-                const SizedBox(height: 28),
-
-                // ── AI Reflection ─────────────────────────────────────
-                const SectionHeader(title: 'AI Reflection'),
-                const SizedBox(height: 12),
-
-                // Tone picker
-                AdaptiveSegmentedControl(
-                  labels: _tones.map((t) => t.$2).toList(),
-                  selectedIndex: _tones.indexWhere((t) => t.$1 == _selectedTone),
-                  onValueChanged: (i) =>
-                      setState(() => _selectedTone = _tones[i].$1),
-                ),
-
-                const SizedBox(height: 16),
-
-                AdaptiveButton(
-                  style: AdaptiveButtonStyle.prominentGlass,
-                  onPressed: _reflecting ? null : _reflect,
-                  label: _reflecting ? 'Reflecting…' : 'Get Reflection',
+                GestureDetector(
+                  onTap: (_saving || _ctrl.text.trim().isEmpty) ? null : _save,
+                  child: Container(
+                    width: double.infinity,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: _saved
+                          ? const Color(0xFF22C55E)
+                          : (_saving || _ctrl.text.trim().isEmpty)
+                              ? JournalColors.bgCard
+                              : JournalColors.accent,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _saved
+                            ? const Color(0xFF22C55E)
+                            : (_saving || _ctrl.text.trim().isEmpty)
+                                ? JournalColors.border
+                                : JournalColors.accent,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _saved ? '✓ Entry Saved' : (_saving ? 'Saving…' : 'Save Entry'),
+                        style: TextStyle(
+                          color: (_saving || _ctrl.text.trim().isEmpty) && !_saved
+                              ? JournalColors.textMuted
+                              : Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
 
                 if (_error != null) ...[
                   const SizedBox(height: 14),
                   Text(_error!,
                       style: const TextStyle(color: Colors.red, fontSize: 13)),
-                ],
-
-                if (_reflection != null) ...[
-                  const SizedBox(height: 20),
-                  GlassCard(
-                    accentBorder: true,
-                    child: Text(
-                      _reflection!,
-                      style: const TextStyle(
-                          color: JournalColors.textPrimary, fontSize: 15, height: 1.65),
-                    ),
-                  ),
                 ],
 
                 const SizedBox(height: 40),

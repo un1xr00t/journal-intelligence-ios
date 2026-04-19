@@ -26,11 +26,24 @@ class _TimelineScreenState extends State<TimelineScreen> {
   int  _page     = 1;
   String? _error;
 
+  Map<String, dynamic>? _masterSummary;
+  bool _summaryLoading = true;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadSummary();
     _scroll.addListener(_onScroll);
+  }
+
+  Future<void> _loadSummary() async {
+    try {
+      final data = await _api.getLivingSummary();
+      if (mounted) setState(() { _masterSummary = data; _summaryLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _summaryLoading = false; });
+    }
   }
 
   @override
@@ -141,7 +154,19 @@ class _TimelineScreenState extends State<TimelineScreen> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    if (index == _entries.length) {
+                    // Index 0 is always the master summary card
+                    if (index == 0) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: _MasterSummaryCard(
+                          summary: _masterSummary,
+                          loading: _summaryLoading,
+                          onGenerated: _loadSummary,
+                        ),
+                      );
+                    }
+                    final entryIndex = index - 1;
+                    if (entryIndex == _entries.length) {
                       return _loadMore
                           ? const Padding(
                               padding: EdgeInsets.all(20),
@@ -152,7 +177,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                             )
                           : const SizedBox(height: 40);
                     }
-                    final entry = _entries[index];
+                    final entry = _entries[entryIndex];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _EntryTile(
@@ -168,12 +193,111 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       ),
                     );
                   },
-                  childCount: _entries.length + 1,
+                  childCount: _entries.length + 2, // +1 summary +1 spinner/spacer
                 ),
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+// ── Master Summary Card ───────────────────────────────────────────────────────
+
+class _MasterSummaryCard extends StatefulWidget {
+  const _MasterSummaryCard({required this.summary, required this.loading, required this.onGenerated});
+  final Map<String, dynamic>? summary;
+  final bool loading;
+  final VoidCallback onGenerated;
+
+  @override
+  State<_MasterSummaryCard> createState() => _MasterSummaryCardState();
+}
+
+class _MasterSummaryCardState extends State<_MasterSummaryCard> {
+  final _api = ApiService();
+  bool _generating = false;
+
+  Future<void> _generate() async {
+    setState(() => _generating = true);
+    try {
+      await _api.generateMasterSummary();
+      if (mounted) {
+        setState(() => _generating = false);
+        widget.onGenerated();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.loading) {
+      return GlassCard(
+        child: Row(children: const [
+          CupertinoActivityIndicator(color: JournalColors.accent, radius: 8),
+          SizedBox(width: 12),
+          Text('Loading summary…',
+              style: TextStyle(color: JournalColors.textMuted, fontSize: 14)),
+        ]),
+      );
+    }
+
+    // Response is already unwrapped to the row dict (or empty map if null)
+    // Try common column names for the summary text
+    final text = (widget.summary?['summary_text']
+        ?? widget.summary?['summary']
+        ?? widget.summary?['content']
+        ?? widget.summary?['text']) as String?;
+    final count = (widget.summary?['entry_count']
+        ?? widget.summary?['entries_count']) as int?;
+
+    if (text == null || text.isEmpty) {
+      return GlassCard(
+        child: Row(children: [
+          const Icon(CupertinoIcons.doc_text, color: JournalColors.textMuted, size: 18),
+          const SizedBox(width: 12),
+          const Expanded(child: Text('No master summary yet.',
+              style: TextStyle(color: JournalColors.textMuted, fontSize: 14))),
+          GestureDetector(
+            onTap: _generating ? null : _generate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: JournalColors.accent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JournalColors.borderBright),
+              ),
+              child: _generating
+                  ? const CupertinoActivityIndicator(color: JournalColors.accent, radius: 7)
+                  : const Text('Generate', style: TextStyle(
+                      color: JournalColors.accent, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    return GlassCard(
+      accentBorder: true,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(CupertinoIcons.sparkles, color: JournalColors.accent, size: 14),
+          const SizedBox(width: 8),
+          const Text('MASTER SUMMARY', style: TextStyle(
+              color: JournalColors.textMuted, fontSize: 11,
+              fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+          const Spacer(),
+          if (count != null)
+            Text('$count entries', style: const TextStyle(
+                color: JournalColors.textMuted, fontSize: 11)),
+        ]),
+        const SizedBox(height: 10),
+        Text(text, style: const TextStyle(
+            color: JournalColors.textSecondary, fontSize: 14, height: 1.6)),
+      ]),
     );
   }
 }
@@ -188,11 +312,17 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('--- summary_text: ${entry['summary_text']}');
     final rawDate = entry['entry_date'] ?? entry['ingested_at'] ?? '';
     final date = _parseDate(rawDate);
     final text  = (entry['text'] as String? ?? '').trim();
-    final preview = text.length > 160 ? '${text.substring(0, 160)}…' : text;
-    final wordCount = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    // summary_text is the AI narrative; fall back to normalized_text then raw text
+    final displayText = ((entry['summary_text']
+        ?? entry['normalized_text']
+        ?? entry['text']) as String? ?? '').trim();
+    final preview = displayText.length > 200 ? '${displayText.substring(0, 200)}…' : displayText;
+    final wordCount = (entry['word_count'] as num?)?.toInt() ??
+        text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
     return GestureDetector(
       onTap: onTap,

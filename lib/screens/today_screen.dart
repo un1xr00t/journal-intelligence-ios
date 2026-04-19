@@ -38,6 +38,220 @@ class _TodayScreenState extends State<TodayScreen> {
     }
   }
 
+  List<Widget> _buildContent() {
+    final noData   = _brief!['no_data'] as bool? ?? false;
+    final brief    = (_brief!['brief']  as Map<String, dynamic>?) ?? {};
+    final stats    = (_brief!['stats']  as Map<String, dynamic>?) ?? {};
+    final traj     = (brief['trajectory']     as Map<String, dynamic>?) ?? {};
+    final horizons = (brief['time_horizons']  as Map<String, dynamic>?) ?? {};
+
+    String? str(Map m, String k) {
+      final v = m[k];
+      return (v is String && v.isNotEmpty) ? v : null;
+    }
+
+    final items = <Widget>[_DateBadge(), const SizedBox(height: 20)];
+
+    if (noData) {
+      items.add(GlassCard(
+        child: Column(children: const [
+          Icon(CupertinoIcons.book, color: JournalColors.textMuted, size: 40),
+          SizedBox(height: 12),
+          Text('Not enough entries yet to generate a brief.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: JournalColors.textSecondary, fontSize: 15, height: 1.6)),
+        ]),
+      ));
+      items.add(const SizedBox(height: 40));
+      return items;
+    }
+
+    // Emotional state
+    final emotionalState = str(brief, 'emotional_state');
+    if (emotionalState != null) {
+      items.addAll([
+        GlassCard(
+          accentBorder: true,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('EMOTIONAL STATE', style: TextStyle(
+                color: JournalColors.textMuted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+            const SizedBox(height: 10),
+            Text(emotionalState, style: const TextStyle(
+                color: JournalColors.textPrimary, fontSize: 16, height: 1.6)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    // Stats row — latest_mood is a double (0.0–1.0 scale)
+    final latestMoodRaw = stats['latest_mood'];
+    final latestMood = latestMoodRaw is num ? latestMoodRaw.toDouble() : null;
+    final latestSev  = (stats['latest_sev'] as num?)?.toDouble();
+    final entries30d = stats['total_entries_30d'] as int?;
+    if (latestMood != null || latestSev != null || entries30d != null) {
+      items.addAll([
+        GlassCard(
+          child: Row(children: [
+            if (latestMood != null)
+              Expanded(child: _StatChip(
+                  label: 'Mood', value: '${(latestMood * 100).round()}%', color: _moodColor(latestMood))),
+            if (latestSev != null)
+              Expanded(child: _StatChip(
+                  label: 'Severity', value: latestSev.toStringAsFixed(1), color: _sevColor(latestSev))),
+            if (entries30d != null)
+              Expanded(child: _StatChip(
+                  label: 'Entries (30d)', value: '$entries30d', color: JournalColors.accent)),
+          ]),
+        ),
+        const SizedBox(height: 24),
+      ]);
+    }
+
+    // Do today
+    final doToday = str(brief, 'do_today');
+    if (doToday != null) {
+      items.addAll([
+        const SectionHeader(title: 'Do Today'), const SizedBox(height: 10),
+        GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(CupertinoIcons.arrow_right_circle_fill, color: JournalColors.accent, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(doToday, style: const TextStyle(
+              color: JournalColors.textPrimary, fontSize: 15, height: 1.6))),
+        ])),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    // Stop doing
+    final stopDoing = str(brief, 'stop_doing');
+    if (stopDoing != null) {
+      items.addAll([
+        const SectionHeader(title: 'Stop Doing'), const SizedBox(height: 10),
+        GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(CupertinoIcons.xmark_circle_fill, color: Color(0xFFEF4444), size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(stopDoing, style: const TextStyle(
+              color: JournalColors.textPrimary, fontSize: 15, height: 1.6))),
+        ])),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    // Biggest risk
+    final biggestRisk = str(brief, 'biggest_risk');
+    if (biggestRisk != null) {
+      items.addAll([
+        const SectionHeader(title: 'Biggest Risk'), const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF59E0B).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.25)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(CupertinoIcons.exclamationmark_triangle_fill,
+                color: Color(0xFFF59E0B), size: 18),
+            const SizedBox(width: 12),
+            Expanded(child: Text(biggestRisk, style: const TextStyle(
+                color: JournalColors.textPrimary, fontSize: 14, height: 1.5))),
+          ]),
+        ),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    // Getting better / worse
+    final better = str(brief, 'getting_better');
+    final worse  = str(brief, 'getting_worse');
+    if (better != null || worse != null) {
+      items.addAll([const SectionHeader(title: 'Trends'), const SizedBox(height: 10)]);
+      if (better != null) {
+        items.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(CupertinoIcons.arrow_up_circle_fill, color: Color(0xFF22C55E), size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('GETTING BETTER', style: TextStyle(color: Color(0xFF22C55E),
+                  fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
+              const SizedBox(height: 4),
+              Text(better, style: const TextStyle(color: JournalColors.textPrimary, fontSize: 14, height: 1.5)),
+            ])),
+          ])),
+        ));
+      }
+      if (worse != null) {
+        items.add(GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(CupertinoIcons.arrow_down_circle_fill, color: Color(0xFFEF4444), size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('GETTING WORSE', style: TextStyle(color: Color(0xFFEF4444),
+                fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
+            const SizedBox(height: 4),
+            Text(worse, style: const TextStyle(color: JournalColors.textPrimary, fontSize: 14, height: 1.5)),
+          ])),
+        ])));
+      }
+      items.add(const SizedBox(height: 16));
+    }
+
+    // Trajectory
+    final trajSummary = str(traj, 'summary');
+    if (trajSummary != null) {
+      items.addAll([
+        const SectionHeader(title: 'Overall Trajectory'), const SizedBox(height: 10),
+        GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(trajSummary, style: const TextStyle(
+              color: JournalColors.textPrimary, fontSize: 15, height: 1.6)),
+          const SizedBox(height: 12),
+          Row(children: [
+            _TrendChip(label: 'Mood',     value: traj['mood']     as String?),
+            const SizedBox(width: 8),
+            _TrendChip(label: 'Stress',   value: traj['stress']   as String?),
+            const SizedBox(width: 8),
+            _TrendChip(label: 'Conflict', value: traj['conflict'] as String?),
+          ]),
+        ])),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    // Time horizons
+    final hToday = str(horizons, 'today');
+    final hWeek  = str(horizons, 'this_week');
+    final hMonth = str(horizons, 'this_month');
+    final hLong  = str(horizons, 'long_term');
+    if (hToday != null || hWeek != null || hMonth != null || hLong != null) {
+      items.addAll([
+        const SectionHeader(title: 'Time Horizons'), const SizedBox(height: 10),
+        GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (hToday != null) _HorizonRow(label: 'Today',      text: hToday),
+          if (hWeek  != null) _HorizonRow(label: 'This Week',  text: hWeek),
+          if (hMonth != null) _HorizonRow(label: 'This Month', text: hMonth),
+          if (hLong  != null) _HorizonRow(label: 'Long Term',  text: hLong),
+        ])),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    items.add(const SizedBox(height: 40));
+    return items;
+  }
+
+  Color _moodColor(double score) {
+    if (score >= 0.7) return const Color(0xFF22C55E);
+    if (score >= 0.4) return const Color(0xFFF59E0B);
+    return const Color(0xFFEF4444);
+  }
+
+  Color _sevColor(double sev) {
+    if (sev <= 3.0) return const Color(0xFF22C55E);
+    if (sev <= 6.0) return const Color(0xFFF59E0B);
+    return const Color(0xFFEF4444);
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -69,59 +283,7 @@ class _TodayScreenState extends State<TodayScreen> {
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _DateBadge(),
-                  const SizedBox(height: 20),
-                  if (_brief?['greeting'] != null) ...[
-                    _GreetingCard(text: _brief!['greeting'] as String),
-                    const SizedBox(height: 20),
-                  ],
-                  if (_brief?['summary'] != null) ...[
-                    const SectionHeader(title: 'Daily Summary'),
-                    const SizedBox(height: 12),
-                    GlassCard(
-                      child: Text(
-                        _brief!['summary'] as String,
-                        style: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 15,
-                          height: 1.65,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                  if (_brief?['mood'] != null) ...[
-                    const SectionHeader(title: 'Mood'),
-                    const SizedBox(height: 12),
-                    _MoodCard(mood: _brief!['mood'] as Map<String, dynamic>),
-                    const SizedBox(height: 24),
-                  ],
-                  if (_brief?['alerts'] != null &&
-                      (_brief!['alerts'] as List).isNotEmpty) ...[
-                    const SectionHeader(title: 'Alerts'),
-                    const SizedBox(height: 12),
-                    ...((_brief!['alerts'] as List)
-                        .cast<Map<String, dynamic>>()
-                        .map((a) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _AlertCard(alert: a),
-                            ))),
-                    const SizedBox(height: 24),
-                  ],
-                  if (_brief?['pattern_insights'] != null &&
-                      (_brief!['pattern_insights'] as List).isNotEmpty) ...[
-                    const SectionHeader(title: 'Pattern Insights'),
-                    const SizedBox(height: 12),
-                    ...((_brief!['pattern_insights'] as List)
-                        .cast<String>()
-                        .map((s) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _InsightRow(text: s),
-                            ))),
-                  ],
-                  const SizedBox(height: 40),
-                ]),
+                delegate: SliverChildListDelegate(_buildContent()),
               ),
             ),
         ],
@@ -132,6 +294,102 @@ class _TodayScreenState extends State<TodayScreen> {
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
+class _StatChip extends StatelessWidget {
+  const _StatChip({required this.label, required this.value, required this.color});
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w700)),
+    const SizedBox(height: 4),
+    Text(label, style: const TextStyle(color: JournalColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+  ]);
+}
+
+class _TrendChip extends StatelessWidget {
+  const _TrendChip({required this.label, this.value});
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (value) {
+      'rising'  => CupertinoIcons.arrow_up,
+      'falling' => CupertinoIcons.arrow_down,
+      _         => CupertinoIcons.minus,
+    };
+    final color = switch (value) {
+      'rising'  => const Color(0xFF22C55E),
+      'falling' => const Color(0xFFEF4444),
+      _         => JournalColors.textMuted,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 12),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+class _HorizonRow extends StatelessWidget {
+  const _HorizonRow({required this.label, required this.text});
+  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label.toUpperCase(), style: const TextStyle(
+          color: JournalColors.accent, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
+      const SizedBox(height: 4),
+      Text(text, style: const TextStyle(color: JournalColors.textSecondary, fontSize: 14, height: 1.5)),
+    ]),
+  );
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.error, required this.onRetry});
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(CupertinoIcons.wifi_slash, color: JournalColors.textMuted, size: 48),
+          const SizedBox(height: 16),
+          const Text('Could not load today\'s brief',
+              style: TextStyle(color: JournalColors.textSecondary)),
+          const SizedBox(height: 20),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: JournalColors.accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 class _DateBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -163,183 +421,6 @@ class _DateBadge extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GreetingCard extends StatelessWidget {
-  const _GreetingCard({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            JournalColors.accent.withOpacity(0.15),
-            JournalColors.accent2.withOpacity(0.08),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JournalColors.borderBright),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: JournalColors.textPrimary,
-          fontSize: 17,
-          fontWeight: FontWeight.w500,
-          height: 1.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _MoodCard extends StatelessWidget {
-  const _MoodCard({required this.mood});
-  final Map<String, dynamic> mood;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = mood['label'] ?? mood['mood'] ?? 'Unknown';
-    final score = (mood['score'] as num?)?.toDouble() ?? 0.5;
-    final color = _moodColor(score);
-
-    return GlassCard(
-      child: Row(
-        children: [
-          Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(_moodIcon(score), color: color, size: 26),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label.toString(),
-                    style: const TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    )),
-                const SizedBox(height: 6),
-                LinearProgressIndicator(
-                  value: score,
-                  backgroundColor: JournalColors.bgSurface,
-                  color: color,
-                  minHeight: 6,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _moodColor(double score) {
-    if (score >= 0.7) return const Color(0xFF22C55E);
-    if (score >= 0.4) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
-  }
-
-  IconData _moodIcon(double score) {
-    if (score >= 0.7) return CupertinoIcons.smiley_fill;
-    if (score >= 0.4) return CupertinoIcons.smiley;
-    return CupertinoIcons.smiley_fill; // replace with sad if available
-  }
-}
-
-class _AlertCard extends StatelessWidget {
-  const _AlertCard({required this.alert});
-  final Map<String, dynamic> alert;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF59E0B).withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.25)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(CupertinoIcons.exclamationmark_triangle_fill,
-              color: Color(0xFFF59E0B), size: 18),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              alert['description']?.toString() ?? alert['message']?.toString() ?? '',
-              style: const TextStyle(color: JournalColors.textPrimary, fontSize: 14, height: 1.5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InsightRow extends StatelessWidget {
-  const _InsightRow({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(top: 5),
-          child: Icon(CupertinoIcons.circle_fill,
-              color: JournalColors.accent, size: 7),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(text,
-              style: const TextStyle(
-                  color: JournalColors.textSecondary, fontSize: 14, height: 1.6)),
-        ),
-      ],
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.error, required this.onRetry});
-  final String error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(CupertinoIcons.wifi_slash, color: JournalColors.textMuted, size: 48),
-          const SizedBox(height: 16),
-          const Text('Could not load today\'s brief',
-              style: TextStyle(color: JournalColors.textSecondary)),
-          const SizedBox(height: 20),
-          CupertinoButton(
-            color: JournalColors.accent,
-            onPressed: onRetry,
-            child: const Text('Retry'),
-          ),
-        ],
-      ),
     );
   }
 }

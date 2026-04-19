@@ -27,10 +27,20 @@ class ApiService {
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
-      headers: {'Content-Type': 'application/json'},
+      contentType: 'application/json',
+      headers: {'Accept': 'application/json'},
     ));
 
     _dio.interceptors.add(CookieManager(_cookieJar));
+    // Inject auth header on every request
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        if (_accessToken != null) {
+          options.headers['Authorization'] = 'Bearer $_accessToken';
+        }
+        return handler.next(options);
+      },
+    ));
     _dio.interceptors.add(_AuthInterceptor(this));
   }
 
@@ -69,8 +79,7 @@ class ApiService {
 
   Future<void> logout() async {
     try {
-      await _dio.post('/auth/logout',
-        options: Options(headers: {'Authorization': 'Bearer $_accessToken'}));
+      await _dio.post('/auth/logout');
     } catch (_) {}
     await clearTokens();
   }
@@ -93,7 +102,7 @@ class ApiService {
   // ── Today / Daily brief ───────────────────────────────────────
 
   Future<Map<String, dynamic>> getTodayBrief() async {
-    final res = await _authedGet('/api/today/brief');
+    final res = await _authedGet('/api/today');
     return res.data as Map<String, dynamic>;
   }
 
@@ -115,12 +124,10 @@ class ApiService {
   Future<Map<String, dynamic>> createEntry({
     required String text,
     String? entryDate,
-    String? source,
   }) async {
-    final res = await _authedPost('/api/entries', data: {
+    final res = await _authedPost('/api/journal/write', data: {
       'text': text,
       if (entryDate != null) 'entry_date': entryDate,
-      'source': source ?? 'ios_app',
     });
     return res.data as Map<String, dynamic>;
   }
@@ -144,14 +151,22 @@ class ApiService {
   // ── Ask My Journal (RAG) ──────────────────────────────────────
 
   Future<Map<String, dynamic>> askJournal(String question) async {
-    final res = await _authedPost('/api/rag/ask', data: {'question': question});
+    final res = await _authedPost('/api/journal/ask', data: {'query': question});
     return res.data as Map<String, dynamic>;
   }
 
   // ── Living Summary ────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getLivingSummary() async {
-    final res = await _authedGet('/api/summary/living');
+    final res = await _authedGet('/api/summary/master');
+    final body = res.data as Map<String, dynamic>;
+    // Response is { "data": { ...row } } or { "message": "...", "data": null }
+    final data = body['data'] as Map<String, dynamic>?;
+    return data ?? {};
+  }
+
+  Future<Map<String, dynamic>> generateMasterSummary() async {
+    final res = await _authedPost('/api/summary/master/generate');
     return res.data as Map<String, dynamic>;
   }
 
@@ -176,21 +191,17 @@ class ApiService {
 
   // ── Private helpers ───────────────────────────────────────────
 
-  Options get _authOptions => Options(
-    headers: {'Authorization': 'Bearer $_accessToken'},
-  );
-
   Future<Response> _authedGet(String path, {Map<String, dynamic>? queryParameters}) =>
-      _dio.get(path, options: _authOptions, queryParameters: queryParameters);
+      _dio.get(path, queryParameters: queryParameters);
 
   Future<Response> _authedPost(String path, {dynamic data}) =>
-      _dio.post(path, options: _authOptions, data: data);
+      _dio.post(path, data: data);
 
   Future<Response> _authedPut(String path, {dynamic data}) =>
-      _dio.put(path, options: _authOptions, data: data);
+      _dio.put(path, data: data);
 
   Future<Response> _authedDelete(String path) =>
-      _dio.delete(path, options: _authOptions);
+      _dio.delete(path);
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────
