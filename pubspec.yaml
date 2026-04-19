@@ -1,0 +1,47 @@
+name: journal_intelligence
+description: Journal Intelligence — iOS native app with iOS 26 Liquid Glass UI.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # iOS 26 Liquid Glass native UI
+  adaptive_platform_ui: ^0.1.6
+
+  # State management
+  provider: ^6.1.2
+
+  # HTTP + cookie handling (mirrors web refresh-token-in-cookie pattern)
+  dio: ^5.7.0
+  cookie_jar: ^4.0.8
+  dio_cookie_manager: ^3.1.1
+
+  # Secure token storage
+  flutter_secure_storage: ^9.2.2
+
+  # Shared prefs for non-sensitive settings
+  shared_preferences: ^2.3.3
+
+  # Date formatting
+  intl: ^0.19.0
+
+  # Markdown rendering (for AI responses)
+  flutter_markdown: ^0.7.4
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
