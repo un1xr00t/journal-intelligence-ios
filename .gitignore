@@ -38,6 +38,7 @@ ios/.symlinks/
 ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
 ios/Podfile.lock
+ios/Runner*
 
 # Symbolication related
 app.*.symbols
