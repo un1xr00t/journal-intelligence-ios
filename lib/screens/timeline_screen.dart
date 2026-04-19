@@ -8,6 +8,8 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'entry_detail_screen.dart';
 
+// ── Timeline Screen ───────────────────────────────────────────────────────────
+
 class TimelineScreen extends StatefulWidget {
   const TimelineScreen({super.key});
 
@@ -26,6 +28,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
   int  _page     = 1;
   String? _error;
 
+  // summary is the unwrapped data object:
+  // { current_state, overall_arc, key_themes, key_people, active_threads, notable_patterns }
   Map<String, dynamic>? _masterSummary;
   bool _summaryLoading = true;
 
@@ -37,19 +41,43 @@ class _TimelineScreenState extends State<TimelineScreen> {
     _scroll.addListener(_onScroll);
   }
 
-  Future<void> _loadSummary() async {
-    try {
-      final data = await _api.getLivingSummary();
-      if (mounted) setState(() { _masterSummary = data; _summaryLoading = false; });
-    } catch (_) {
-      if (mounted) setState(() { _summaryLoading = false; });
-    }
-  }
-
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSummary() async {
+    // Only fetch if not cached this session
+    if (_masterSummary != null) return;
+    if (mounted) setState(() => _summaryLoading = true);
+    try {
+      // GET /api/therapist/insight/status?tone=therapist
+      // Returns { insight, generated_at, entry_count, entry_date, cached, ... }
+      final data = await _api.getTherapistInsightStatus(tone: 'therapist');
+      final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
+      if (mounted) setState(() {
+        _masterSummary = hasContent ? data : null;
+        _summaryLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _masterSummary = null; _summaryLoading = false; });
+    }
+  }
+
+  Future<void> _regenerateSummary() async {
+    if (mounted) setState(() { _masterSummary = null; _summaryLoading = true; });
+    try {
+      // POST /api/therapist/insight generates and caches — no polling needed
+      final data = await _api.generateTherapistInsight(tone: 'therapist', force: true);
+      final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
+      if (mounted) setState(() {
+        _masterSummary = hasContent ? data : null;
+        _summaryLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _masterSummary = null; _summaryLoading = false; });
+    }
   }
 
   void _onScroll() {
@@ -63,28 +91,28 @@ class _TimelineScreenState extends State<TimelineScreen> {
     setState(() { _loading = true; _page = 1; _hasMore = true; _error = null; });
     try {
       final data = await _api.getTimeline(page: 1);
-      setState(() {
+      if (mounted) setState(() {
         _entries = data.cast<Map<String, dynamic>>();
         _loading = false;
         _hasMore = data.length == 20;
       });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
   Future<void> _loadNext() async {
-    setState(() { _loadMore = true; });
+    setState(() => _loadMore = true);
     try {
       final data = await _api.getTimeline(page: _page + 1);
-      setState(() {
+      if (mounted) setState(() {
         _entries.addAll(data.cast<Map<String, dynamic>>());
         _page++;
         _loadMore = false;
         _hasMore  = data.length == 20;
       });
     } catch (_) {
-      setState(() { _loadMore = false; });
+      if (mounted) setState(() => _loadMore = false);
     }
   }
 
@@ -106,10 +134,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
               child: const Icon(CupertinoIcons.refresh, color: JournalColors.accent),
             ),
           ),
+
           if (_loading)
             const SliverFillRemaining(
-              child: Center(child: CupertinoActivityIndicator(color: JournalColors.accent)),
+              child: Center(
+                child: CupertinoActivityIndicator(color: JournalColors.accent),
+              ),
             )
+
           else if (_error != null)
             SliverFillRemaining(
               child: Center(
@@ -131,37 +163,42 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 ),
               ),
             )
+
           else if (_entries.isEmpty)
             const SliverFillRemaining(
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(CupertinoIcons.book, color: JournalColors.textMuted, size: 56),
+                    Icon(CupertinoIcons.book,
+                        color: JournalColors.textMuted, size: 56),
                     SizedBox(height: 16),
                     Text('No entries yet.',
-                        style: TextStyle(color: JournalColors.textSecondary, fontSize: 16)),
+                        style: TextStyle(
+                            color: JournalColors.textSecondary, fontSize: 16)),
                     SizedBox(height: 8),
                     Text('Start writing in the Write tab.',
-                        style: TextStyle(color: JournalColors.textMuted, fontSize: 14)),
+                        style: TextStyle(
+                            color: JournalColors.textMuted, fontSize: 14)),
                   ],
                 ),
               ),
             )
+
           else
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    // Index 0 is always the master summary card
+                    // index 0 = living summary card
                     if (index == 0) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 20),
                         child: _MasterSummaryCard(
                           summary: _masterSummary,
                           loading: _summaryLoading,
-                          onGenerated: _loadSummary,
+                          onRefresh: _regenerateSummary,
                         ),
                       );
                     }
@@ -186,14 +223,13 @@ class _TimelineScreenState extends State<TimelineScreen> {
                           context,
                           CupertinoPageRoute(
                             builder: (_) => EntryDetailScreen(
-                              entryId: entry['id'] as int,
-                            ),
+                                entryId: entry['id'] as int),
                           ),
                         ),
                       ),
                     );
                   },
-                  childCount: _entries.length + 2, // +1 summary +1 spinner/spacer
+                  childCount: _entries.length + 2,
                 ),
               ),
             ),
@@ -204,100 +240,200 @@ class _TimelineScreenState extends State<TimelineScreen> {
 }
 
 // ── Master Summary Card ───────────────────────────────────────────────────────
+// API: GET /api/summary/master
+//   Returns: { message, data: { current_state, overall_arc, key_themes,
+//              key_people, active_threads, notable_patterns } | null }
+//   getLivingSummary() unwraps body['data'] → {} when null.
+//   Swipe right to regenerate. No auto-generation on load.
 
 class _MasterSummaryCard extends StatefulWidget {
-  const _MasterSummaryCard({required this.summary, required this.loading, required this.onGenerated});
+  const _MasterSummaryCard({
+    required this.summary,
+    required this.loading,
+    required this.onRefresh,
+  });
+
   final Map<String, dynamic>? summary;
   final bool loading;
-  final VoidCallback onGenerated;
+  final Future<void> Function() onRefresh;
 
   @override
   State<_MasterSummaryCard> createState() => _MasterSummaryCardState();
 }
 
 class _MasterSummaryCardState extends State<_MasterSummaryCard> {
-  final _api = ApiService();
-  bool _generating = false;
-
-  Future<void> _generate() async {
-    setState(() => _generating = true);
-    try {
-      await _api.generateMasterSummary();
-      if (mounted) {
-        setState(() => _generating = false);
-        widget.onGenerated();
-      }
-    } catch (_) {
-      if (mounted) setState(() => _generating = false);
-    }
-  }
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
+    // Loading
     if (widget.loading) {
       return GlassCard(
-        child: Row(children: const [
-          CupertinoActivityIndicator(color: JournalColors.accent, radius: 8),
-          SizedBox(width: 12),
-          Text('Loading summary…',
-              style: TextStyle(color: JournalColors.textMuted, fontSize: 14)),
-        ]),
+        child: Row(
+          children: const [
+            CupertinoActivityIndicator(color: JournalColors.accent, radius: 8),
+            SizedBox(width: 12),
+            Text('Loading summary...',
+                style: TextStyle(color: JournalColors.textMuted, fontSize: 14)),
+          ],
+        ),
       );
     }
 
-    // Response is already unwrapped to the row dict (or empty map if null)
-    // Try common column names for the summary text
-    final text = (widget.summary?['summary_text']
-        ?? widget.summary?['summary']
-        ?? widget.summary?['content']
-        ?? widget.summary?['text']) as String?;
-    final count = (widget.summary?['entry_count']
-        ?? widget.summary?['entries_count']) as int?;
+    final insight = widget.summary?['insight'] as String?;
 
-    if (text == null || text.isEmpty) {
-      return GlassCard(
-        child: Row(children: [
-          const Icon(CupertinoIcons.doc_text, color: JournalColors.textMuted, size: 18),
-          const SizedBox(width: 12),
-          const Expanded(child: Text('No master summary yet.',
-              style: TextStyle(color: JournalColors.textMuted, fontSize: 14))),
-          GestureDetector(
-            onTap: _generating ? null : _generate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: JournalColors.accent.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: JournalColors.borderBright),
-              ),
-              child: _generating
-                  ? const CupertinoActivityIndicator(color: JournalColors.accent, radius: 7)
-                  : const Text('Generate', style: TextStyle(
-                      color: JournalColors.accent, fontSize: 12, fontWeight: FontWeight.w600)),
-            ),
+    // No insight yet — swipe right to generate
+    if (insight == null || insight.isEmpty) {
+      return Dismissible(
+        key: const ValueKey('summary-empty'),
+        direction: DismissDirection.startToEnd,
+        confirmDismiss: (_) async {
+          await widget.onRefresh();
+          return false;
+        },
+        background: Container(
+          decoration: BoxDecoration(
+            color: JournalColors.accent.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(20),
           ),
-        ]),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          child: const Row(
+            children: [
+              Icon(CupertinoIcons.refresh, color: JournalColors.accent, size: 18),
+              SizedBox(width: 8),
+              Text('Generate',
+                  style: TextStyle(
+                      color: JournalColors.accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        child: GlassCard(
+          child: Row(
+            children: const [
+              Icon(CupertinoIcons.doc_text,
+                  color: JournalColors.textMuted, size: 18),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'No living summary yet. Swipe right to generate.',
+                  style: TextStyle(color: JournalColors.textMuted, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
-    return GlassCard(
-      accentBorder: true,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(CupertinoIcons.sparkles, color: JournalColors.accent, size: 14),
-          const SizedBox(width: 8),
-          const Text('MASTER SUMMARY', style: TextStyle(
-              color: JournalColors.textMuted, fontSize: 11,
-              fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-          const Spacer(),
-          if (count != null)
-            Text('$count entries', style: const TextStyle(
-                color: JournalColors.textMuted, fontSize: 11)),
-        ]),
-        const SizedBox(height: 10),
-        Text(text, style: const TextStyle(
-            color: JournalColors.textSecondary, fontSize: 14, height: 1.6)),
-      ]),
+    // Populated — real fields from GET /api/therapist/insight/status
+    final entryDate  = widget.summary?['entry_date'] as String?;
+    final entryCount = (widget.summary?['entry_count'] as num?)?.toInt();
+    final cached     = widget.summary?['cached'] as bool? ?? false;
+
+    return Dismissible(
+      key: const ValueKey('summary-populated'),
+      direction: DismissDirection.startToEnd,
+      confirmDismiss: (_) async {
+        await widget.onRefresh();
+        return false;
+      },
+      background: Container(
+        decoration: BoxDecoration(
+          color: JournalColors.accent.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        child: const Row(
+          children: [
+            Icon(CupertinoIcons.refresh, color: JournalColors.accent, size: 18),
+            SizedBox(width: 8),
+            Text('Refresh',
+                style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+      child: GlassCard(
+        accentBorder: true,
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(CupertinoIcons.sparkles,
+                    color: JournalColors.accent, size: 14),
+                const SizedBox(width: 8),
+                const Text(
+                  'THERAPIST INSIGHT',
+                  style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                if (cached)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: JournalColors.accent.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text('cached',
+                        style: TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 9,
+                            letterSpacing: 0.5)),
+                  ),
+                const Spacer(),
+                Icon(
+                  _expanded
+                      ? CupertinoIcons.chevron_up
+                      : CupertinoIcons.chevron_down,
+                  color: JournalColors.textMuted,
+                  size: 12,
+                ),
+              ],
+            ),
+
+            // Date range + entry count
+            if (entryDate != null || entryCount != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                [
+                  if (entryDate != null) entryDate,
+                  if (entryCount != null) '$entryCount entries',
+                ].join(' · '),
+                style: const TextStyle(
+                    color: JournalColors.textMuted, fontSize: 11),
+              ),
+            ],
+
+            const SizedBox(height: 10),
+
+            // Insight text — collapsed to 4 lines, expands on tap
+            Text(
+              insight,
+              style: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 14,
+                height: 1.65,
+              ),
+              maxLines: _expanded ? null : 4,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -312,16 +448,16 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('--- summary_text: ${entry['summary_text']}');
-    final rawDate = entry['entry_date'] ?? entry['ingested_at'] ?? '';
-    final date = _parseDate(rawDate);
-    final text  = (entry['text'] as String? ?? '').trim();
-    // summary_text is the AI narrative; fall back to normalized_text then raw text
-    final displayText = ((entry['summary_text']
-        ?? entry['normalized_text']
-        ?? entry['text']) as String? ?? '').trim();
-    final preview = displayText.length > 200 ? '${displayText.substring(0, 200)}…' : displayText;
-    final wordCount = (entry['word_count'] as num?)?.toInt() ??
+    final rawDate     = (entry['entry_date'] ?? entry['ingested_at'] ?? '') as String;
+    final date        = _parseDate(rawDate);
+    final text        = (entry['text'] as String? ?? '').trim();
+    final displayText = ((entry['summary_text'] ??
+            entry['normalized_text'] ??
+            entry['text']) as String? ?? '').trim();
+    final preview     = displayText.length > 200
+        ? '${displayText.substring(0, 200)}...'
+        : displayText;
+    final wordCount   = (entry['word_count'] as num?)?.toInt() ??
         text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
     return GestureDetector(
@@ -333,20 +469,15 @@ class _EntryTile extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    date,
+                  child: Text(date,
+                      style: const TextStyle(
+                          color: JournalColors.accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ),
+                Text('$wordCount words',
                     style: const TextStyle(
-                      color: JournalColors.accent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$wordCount words',
-                  style: const TextStyle(
-                      color: JournalColors.textMuted, fontSize: 12),
-                ),
+                        color: JournalColors.textMuted, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 10),
@@ -368,8 +499,7 @@ class _EntryTile extends StatelessWidget {
 
   String _parseDate(String raw) {
     try {
-      final dt = DateTime.parse(raw);
-      return DateFormat('EEE, MMM d, y').format(dt);
+      return DateFormat('EEE, MMM d, y').format(DateTime.parse(raw));
     } catch (_) {
       return raw;
     }

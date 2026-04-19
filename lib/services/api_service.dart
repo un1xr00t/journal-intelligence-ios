@@ -4,6 +4,7 @@
 // Uses Dio + CookieManager so the HttpOnly refresh_token cookie is handled
 // exactly like the web app — no backend changes required.
 
+import 'package:flutter/foundation.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -155,18 +156,21 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  // ── Living Summary ────────────────────────────────────────────
+  // ── Therapist Insight (used as "Living Summary" on Timeline) ────
+  // GET /api/therapist/insight/status?tone=therapist
+  // Returns: { insight, generated_at, entry_count, entry_date,
+  //            tone, tone_name, cached, input_tokens, output_tokens }
+  // Returns {} if no insight has been generated yet for that tone.
 
-  Future<Map<String, dynamic>> getLivingSummary() async {
-    final res = await _authedGet('/api/summary/master');
-    final body = res.data as Map<String, dynamic>;
-    // Response is { "data": { ...row } } or { "message": "...", "data": null }
-    final data = body['data'] as Map<String, dynamic>?;
-    return data ?? {};
+  Future<Map<String, dynamic>> getTherapistInsightStatus({String tone = 'therapist'}) async {
+    final res = await _authedGet('/api/therapist/insight/status', queryParameters: {'tone': tone});
+    return res.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> generateMasterSummary() async {
-    final res = await _authedPost('/api/summary/master/generate');
+  // POST /api/therapist/insight — generates (or returns cached) insight
+  // Body: { tone, force? }
+  Future<Map<String, dynamic>> generateTherapistInsight({String tone = 'therapist', bool force = false}) async {
+    final res = await _authedPost('/api/therapist/insight', data: {'tone': tone, 'force': force});
     return res.data as Map<String, dynamic>;
   }
 
