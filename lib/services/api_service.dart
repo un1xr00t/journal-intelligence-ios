@@ -527,6 +527,87 @@ class ApiService {
     final r = await _authedPost('/api/detective/cases/$caseId/wire');
     return Map<String, dynamic>.from(r.data);
   }
+
+  // ── Case-level uploads (Photos tab) ─────────────────────────────────────
+
+  Future<List<dynamic>> detectiveGetUploads(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/uploads');
+    return List<dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveUploadCasePhoto(
+      String caseId, List<int> bytes, String filename) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.post(
+      '/api/detective/cases/$caseId/upload',
+      data: formData,
+      options: Options(headers: {'Authorization': 'Bearer $_accessToken'}),
+    );
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> detectiveDeleteUpload(String caseId, String uploadId) async {
+    await _authedDelete('/api/detective/cases/$caseId/uploads/$uploadId');
+  }
+
+  // ── Intelligence ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> detectiveGetIntelligence(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/intelligence');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveRefreshIntelligence(String caseId) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/intelligence/refresh');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  // ── Wire history ──────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> detectiveGetWireHistory(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/wire-history');
+    return List<dynamic>.from(r.data);
+  }
+
+  // ── Export (returns raw PDF bytes) ────────────────────────────────────────
+
+  Future<List<int>> detectiveExport(String caseId, String tone) async {
+    final r = await _dio.post(
+      '/api/detective/cases/$caseId/export?tone=$tone',
+      data: <String, dynamic>{},
+      options: Options(
+        headers: {'Authorization': 'Bearer $_accessToken'},
+        responseType: ResponseType.bytes,
+      ),
+    );
+    return List<int>.from(r.data as List);
+  }
+
+  // ── Research ──────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> detectiveRunResearch(
+      String caseId, Map<String, dynamic> data) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/research', data: data);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<List<dynamic>> detectiveGetResearch(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/research');
+    return List<dynamic>.from(r.data);
+  }
+
+  // ── Detective settings ────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> detectiveGetSettings() async {
+    final r = await _authedGet('/api/detective/settings');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> detectiveSaveSettings(Map<String, dynamic> data) async {
+    await _authedPost('/api/detective/settings', data: data);
+  }
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────

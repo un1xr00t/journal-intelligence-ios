@@ -40,7 +40,11 @@ dependencies:
   local_auth: ^2.3.0
 
   # File picker — Day One import + attachments
-  file_picker: ^8.1.1
+  file_picker: ^8.1.2
+
+ # PDF export sharing
+  share_plus: ^10.0.0
+  path_provider: ^2.1.0
 
   # Markdown rendering (for AI responses)
   flutter_markdown: ^0.7.4
