@@ -1,4 +1,6 @@
 // lib/screens/settings_screen.dart
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -87,11 +89,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoReflect        = true;
   bool _reflectLoaded      = false;
 
+  bool _hasRecoveryQuestions = false;
+  bool _twoFAEnabled         = false;
+  bool _securityLoaded       = false;
+
   @override
   void initState() {
     super.initState();
     _checkBiometricStatus();
     _loadReflectMode();
+    _loadSecurityStatus();
   }
 
   Future<void> _checkBiometricStatus() async {
@@ -104,6 +111,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _biometricEnabled   = storedUser != null;
       });
     } catch (_) {}
+  }
+
+  Future<void> _loadSecurityStatus() async {
+    try {
+      final results = await Future.wait([
+        _api.hasSecurityQuestions(),
+        _api.get2FAStatus(),
+      ]);
+      if (mounted) setState(() {
+        _hasRecoveryQuestions = results[0] as bool;
+        _twoFAEnabled = ((results[1] as Map<String, dynamic>)['enabled'] as bool?) ?? false;
+        _securityLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _securityLoaded = true);
+    }
   }
 
   Future<void> _loadReflectMode() async {
@@ -223,8 +246,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _push(Widget screen) {
-    Navigator.of(context, rootNavigator: true).push(
+  Future<void> _push(Widget screen) {
+    return Navigator.of(context, rootNavigator: true).push(
       CupertinoPageRoute(
         builder: (_) => DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
@@ -468,6 +491,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     subtitle: 'Devices with an active login',
                   ),
                 ),
+                if (_securityLoaded) ...[
+                  const SizedBox(height: 8),
+                  // ── Recovery Questions ──────────────────────────────
+                  GlassCard(
+                    onTap: () async {
+                      await _push(_RecoveryQuestionsScreen(
+                          hasExisting: _hasRecoveryQuestions));
+                      _loadSecurityStatus();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 4),
+                      child: Row(children: [
+                        const Icon(CupertinoIcons.question_circle_fill,
+                            color: JournalColors.accent, size: 18),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Recovery Questions',
+                                    style: TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 15)),
+                                SizedBox(height: 2),
+                                Text(
+                                    'Reset your password without email access',
+                                    style: TextStyle(
+                                        color: JournalColors.textMuted,
+                                        fontSize: 12)),
+                              ]),
+                        ),
+                        _hasRecoveryQuestions
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10b981)
+                                      .withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: const Color(0xFF10b981)
+                                          .withOpacity(0.30)),
+                                ),
+                                child: const Text('✓ SET UP',
+                                    style: TextStyle(
+                                        color: Color(0xFF10b981),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.8)),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFf59e0b)
+                                      .withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: const Color(0xFFf59e0b)
+                                          .withOpacity(0.30)),
+                                ),
+                                child: const Text('⚠ NOT SET UP',
+                                    style: TextStyle(
+                                        color: Color(0xFFf59e0b),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.8)),
+                              ),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // ── Two-Factor Authentication ───────────────────────
+                  GlassCard(
+                    onTap: () async {
+                      await _push(_TwoFAScreen(enabled: _twoFAEnabled));
+                      _loadSecurityStatus();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 4),
+                      child: Row(children: [
+                        const Icon(CupertinoIcons.shield_lefthalf_fill,
+                            color: JournalColors.accent, size: 18),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Two-Factor Authentication',
+                                    style: TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 15)),
+                                SizedBox(height: 2),
+                                Text(
+                                    'Google Authenticator, Authy, or any TOTP app',
+                                    style: TextStyle(
+                                        color: JournalColors.textMuted,
+                                        fontSize: 12)),
+                              ]),
+                        ),
+                        _twoFAEnabled
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10b981)
+                                      .withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: const Color(0xFF10b981)
+                                          .withOpacity(0.30)),
+                                ),
+                                child: const Text('● ENABLED',
+                                    style: TextStyle(
+                                        color: Color(0xFF10b981),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.8)),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: JournalColors.bgSurface,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border:
+                                      Border.all(color: JournalColors.border),
+                                ),
+                                child: const Text('◎ DISABLED',
+                                    style: TextStyle(
+                                        color: JournalColors.textMuted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.8)),
+                              ),
+                      ]),
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 24),
 
@@ -2364,6 +2528,844 @@ class _SmsScreenState extends State<_SmsScreen> {
                   const SizedBox(height: 40),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+// ── Recovery Questions Screen ─────────────────────────────────────────────────
+
+const _kSecurityQuestionsBank = <String>[
+  'What was the name of your first pet?',
+  'What city were you born in?',
+  "What is your mother's maiden name?",
+  'What was the name of your first school?',
+  'What was the make and model of your first car?',
+  'What is the middle name of your oldest sibling?',
+  'What street did you grow up on?',
+  'What was the name of your childhood best friend?',
+  'What is the name of the town where your nearest relative lives?',
+  'What was your childhood nickname?',
+  'What is the name of the hospital where you were born?',
+  'What was the first concert you attended?',
+];
+
+class _RecoveryQuestionsScreen extends StatefulWidget {
+  const _RecoveryQuestionsScreen({required this.hasExisting});
+  final bool hasExisting;
+
+  @override
+  State<_RecoveryQuestionsScreen> createState() =>
+      _RecoveryQuestionsScreenState();
+}
+
+class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
+  final _api = ApiService();
+
+  // 'idle' | 'gate' | 'form' | 'saved'
+  String _phase = 'idle';
+
+  String _q1 = _kSecurityQuestionsBank[0];
+  String _q2 = _kSecurityQuestionsBank[1];
+  String _q3 = _kSecurityQuestionsBank[2];
+  final _a1 = TextEditingController();
+  final _a2 = TextEditingController();
+  final _a3 = TextEditingController();
+  final _pwCtrl = TextEditingController();
+
+  bool _verifying = false;
+  bool _saving    = false;
+  String? _err;
+
+  @override
+  void dispose() {
+    _a1.dispose();
+    _a2.dispose();
+    _a3.dispose();
+    _pwCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verifyPassword() async {
+    if (_pwCtrl.text.trim().isEmpty) return;
+    setState(() { _verifying = true; _err = null; });
+    try {
+      await _api.verifyPassword(_pwCtrl.text.trim());
+      if (mounted) setState(() {
+        _phase = 'form';
+        _verifying = false;
+        _pwCtrl.clear();
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _verifying = false;
+        _err = 'Incorrect password.';
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    if (_a1.text.trim().isEmpty || _a2.text.trim().isEmpty || _a3.text.trim().isEmpty) {
+      setState(() => _err = 'Please answer all three questions.');
+      return;
+    }
+    if ({_q1, _q2, _q3}.length < 3) {
+      setState(() => _err = 'Please choose three different questions.');
+      return;
+    }
+    setState(() { _saving = true; _err = null; });
+    try {
+      await _api.setupSecurityQuestions(
+        q1: _q1, a1: _a1.text.trim(),
+        q2: _q2, a2: _a2.text.trim(),
+        q3: _q3, a3: _a3.text.trim(),
+      );
+      if (mounted) {
+        setState(() { _saving = false; _phase = 'saved'; });
+        await Future.delayed(const Duration(seconds: 3));
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _err = 'Failed to save. Please try again.'; });
+    }
+  }
+
+  List<String> _opts(String self) => _kSecurityQuestionsBank
+      .where((q) => q == self || (q != _q1 && q != _q2 && q != _q3))
+      .toList();
+
+  void _pickQuestion(int idx, String current) {
+    final opts = _opts(current);
+    if (opts.isEmpty) return;
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (_) => Container(
+        height: 300,
+        color: JournalColors.bgCard,
+        child: Column(children: [
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            CupertinoButton(
+              child: const Text('Done'),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ]),
+          Expanded(
+            child: CupertinoPicker(
+              scrollController: FixedExtentScrollController(
+                  initialItem: opts.isEmpty ? 0 : opts.indexOf(current).clamp(0, opts.length - 1)),
+              itemExtent: 40,
+              onSelectedItemChanged: (i) {
+                if (mounted) setState(() {
+                  if (idx == 1) _q1 = opts[i];
+                  if (idx == 2) _q2 = opts[i];
+                  if (idx == 3) _q3 = opts[i];
+                });
+              },
+              children: opts.map((q) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(q,
+                    style: const TextStyle(
+                        color: JournalColors.textPrimary, fontSize: 13)),
+              )).toList(),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _questionBlock(int idx, String q, TextEditingController ctrl) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _FieldLabel('QUESTION $idx'),
+      GestureDetector(
+        onTap: () => _pickQuestion(idx, q),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: JournalColors.bgSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: JournalColors.border),
+          ),
+          child: Row(children: [
+            Expanded(child: Text(q,
+                style: const TextStyle(
+                    color: JournalColors.textSecondary, fontSize: 13, height: 1.4))),
+            const Icon(CupertinoIcons.chevron_down,
+                color: JournalColors.textMuted, size: 14),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 8),
+      CupertinoTextField(
+        controller: ctrl,
+        placeholder: 'Your answer (not case-sensitive)',
+        placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+        style: const TextStyle(color: JournalColors.textPrimary),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: _fieldDeco(),
+        autocorrect: false,
+        textInputAction: idx < 3 ? TextInputAction.next : TextInputAction.done,
+      ),
+      const SizedBox(height: 20),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      backgroundColor: JournalColors.bgBase,
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Recovery Questions'),
+        backgroundColor: JournalColors.bgBase.withOpacity(0.9),
+        border: const Border(
+            bottom: BorderSide(color: JournalColors.border, width: 0.5)),
+        leading: _phase == 'form'
+            ? CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() { _phase = 'idle'; _err = null; }),
+                child: const Text('Cancel',
+                    style: TextStyle(color: JournalColors.accent)),
+              )
+            : null,
+      ),
+      child: SafeArea(
+        child: _phase == 'saved'
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(CupertinoIcons.checkmark_circle_fill,
+                        color: Color(0xFF4ade80), size: 52),
+                    const SizedBox(height: 16),
+                    const Text('Recovery questions saved',
+                        style: TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    const Text('Your account can now be recovered without email access.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: JournalColors.textSecondary, fontSize: 14)),
+                  ]),
+                ),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+
+                  // ── Info banner ──
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: JournalColors.bgSurface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: JournalColors.border),
+                    ),
+                    child: Text(
+                      widget.hasExisting
+                          ? 'Offline recovery is active. You can update your questions below.'
+                          : 'Set up security questions so you can recover your account without email access.',
+                      style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 13,
+                          height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Gate phase: password confirm ──
+                  if (_phase == 'idle') ...[
+                    AdaptiveButton(
+                      style: AdaptiveButtonStyle.prominentGlass,
+                      onPressed: () => setState(() { _phase = 'gate'; _err = null; _pwCtrl.clear(); }),
+                      label: widget.hasExisting ? '↻ Update Questions' : 'Set Up Recovery Questions',
+                    ),
+                  ],
+
+                  if (_phase == 'gate') ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFf59e0b).withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFFf59e0b).withOpacity(0.20)),
+                      ),
+                      child: const Text(
+                        'Enter your current password to continue.',
+                        style: TextStyle(
+                            color: Color(0xFFf59e0b), fontSize: 13, height: 1.5),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _FieldLabel('CURRENT PASSWORD'),
+                    CupertinoTextField(
+                      controller: _pwCtrl,
+                      placeholder: 'Your current password',
+                      placeholderStyle:
+                          const TextStyle(color: JournalColors.textMuted),
+                      style:
+                          const TextStyle(color: JournalColors.textPrimary),
+                      obscureText: true,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: _fieldDeco(),
+                      onSubmitted: (_) => _verifyPassword(),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_err != null) ...[
+                      _StatusBanner(type: 'error', message: _err!),
+                      const SizedBox(height: 12),
+                    ],
+                    Row(children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _phase = 'idle';
+                            _err = null;
+                            _pwCtrl.clear();
+                          }),
+                          child: Container(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: JournalColors.bgSurface,
+                              borderRadius: BorderRadius.circular(12),
+                              border:
+                                  Border.all(color: JournalColors.border),
+                            ),
+                            child: const Text('Cancel',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 15)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: AdaptiveButton(
+                          style: AdaptiveButtonStyle.prominentGlass,
+                          onPressed: _verifying ? null : _verifyPassword,
+                          label: _verifying ? 'Verifying…' : 'Confirm →',
+                        ),
+                      ),
+                    ]),
+                  ],
+
+                  // ── Form phase: question setup ──
+                  if (_phase == 'form') ...[
+                    _questionBlock(1, _q1, _a1),
+                    _questionBlock(2, _q2, _a2),
+                    _questionBlock(3, _q3, _a3),
+                    if (_err != null) ...[
+                      _StatusBanner(type: 'error', message: _err!),
+                      const SizedBox(height: 12),
+                    ],
+                    AdaptiveButton(
+                      style: AdaptiveButtonStyle.prominentGlass,
+                      onPressed: _saving ? null : _save,
+                      label: _saving ? 'Saving…' : 'Save Questions',
+                    ),
+                  ],
+
+                  const SizedBox(height: 32),
+                ]),
+              ),
+      ),
+    );
+  }
+}
+
+// ── Two-Factor Authentication Screen ─────────────────────────────────────────
+
+class _TwoFAScreen extends StatefulWidget {
+  const _TwoFAScreen({required this.enabled});
+  final bool enabled;
+
+  @override
+  State<_TwoFAScreen> createState() => _TwoFAScreenState();
+}
+
+class _TwoFAScreenState extends State<_TwoFAScreen> {
+  final _api = ApiService();
+
+  // 'idle' | 'setup' | 'verify' | 'backup_codes' | 'disable'
+  String _phase = 'idle';
+
+  Map<String, dynamic>? _setupData;
+  List<String> _backupCodes = [];
+
+  final _codeCtrl = TextEditingController();
+  final _pwCtrl   = TextEditingController();
+
+  bool _busy  = false;
+  bool _done  = false;
+  String? _err;
+
+  late bool _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _enabled = widget.enabled;
+    _phase = widget.enabled ? 'idle' : 'idle';
+  }
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose();
+    _pwCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startSetup() async {
+    setState(() { _busy = true; _err = null; });
+    try {
+      final data = await _api.setup2FA();
+      if (mounted) setState(() {
+        _setupData = data;
+        _phase = 'setup';
+        _busy = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _err = 'Failed to start setup. Try again.'; });
+    }
+  }
+
+  Future<void> _verifyAndEnable() async {
+    final code = _codeCtrl.text.trim().replaceAll(' ', '');
+    if (code.length != 6) {
+      setState(() => _err = 'Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setState(() { _busy = true; _err = null; });
+    try {
+      await _api.enable2FA(code);
+      final codes = (_setupData?['backup_codes'] as List?)?.cast<String>() ?? [];
+      if (mounted) setState(() {
+        _enabled = true;
+        _backupCodes = codes;
+        _phase = 'backup_codes';
+        _busy = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _err = 'Invalid code. Try again.'; });
+    }
+  }
+
+  Future<void> _disable() async {
+    final code = _pwCtrl.text.trim().replaceAll(' ', '');
+    if (code.length != 6) {
+      setState(() => _err = 'Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setState(() { _busy = true; _err = null; });
+    try {
+      await _api.disable2FA(code);
+      if (mounted) setState(() {
+        _enabled = false;
+        _phase = 'idle';
+        _busy = false;
+        _done = true;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _err = 'Invalid code. Try again.'; });
+    }
+  }
+
+  Widget _idleView() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Text(
+          _enabled
+              ? '2FA is currently enabled. Your account requires a 6-digit code from your authenticator app each time you sign in.'
+              : 'Add a second layer of protection. Each login will require a 6-digit code from an authenticator app like Google Authenticator or Authy.',
+          style: const TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+        ),
+      ),
+      const SizedBox(height: 24),
+      if (_enabled) ...[
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10b981).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF10b981).withOpacity(0.25)),
+          ),
+          child: const Row(children: [
+            Icon(CupertinoIcons.shield_lefthalf_fill,
+                color: Color(0xFF10b981), size: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text('Two-factor authentication is active',
+                  style: TextStyle(
+                      color: Color(0xFF10b981),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () => setState(() { _phase = 'disable'; _err = null; _pwCtrl.clear(); }),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withOpacity(0.25)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.xmark_shield_fill,
+                    color: Colors.red, size: 18),
+                SizedBox(width: 8),
+                Text('Disable 2FA',
+                    style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ] else ...[
+        if (_err != null) ...[
+          _StatusBanner(type: 'error', message: _err!),
+          const SizedBox(height: 12),
+        ],
+        AdaptiveButton(
+          style: AdaptiveButtonStyle.prominentGlass,
+          onPressed: _busy ? null : _startSetup,
+          label: _busy ? 'Setting up…' : 'Enable 2FA',
+        ),
+      ],
+    ]);
+  }
+
+  Widget _setupView() {
+    final secret = _setupData?['secret'] as String? ?? '';
+    final qrRaw  = _setupData?['qr_base64'] as String? ?? '';
+
+    Uint8List? qrBytes;
+    if (qrRaw.isNotEmpty) {
+      try {
+        final b64 = qrRaw.startsWith('data:image')
+            ? qrRaw.split(',').last
+            : qrRaw;
+        qrBytes = base64Decode(b64);
+      } catch (_) {}
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('1. Scan this QR code',
+          style: TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+      const Text(
+          'Open Google Authenticator, Authy, or any TOTP app and scan the code below.',
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+      const SizedBox(height: 16),
+      if (qrBytes != null)
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Image.memory(qrBytes, width: 180, height: 180),
+          ),
+        )
+      else
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JournalColors.bgSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: JournalColors.border),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Manual entry key:',
+                style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    letterSpacing: 0.8)),
+            const SizedBox(height: 6),
+            Text(secret,
+                style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                    letterSpacing: 1.5)),
+          ]),
+        ),
+      const SizedBox(height: 24),
+      const Text('2. Enter the 6-digit code',
+          style: TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      CupertinoTextField(
+        controller: _codeCtrl,
+        placeholder: '000 000',
+        placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+        style: const TextStyle(
+            color: JournalColors.textPrimary,
+            fontSize: 22,
+            letterSpacing: 6,
+            fontWeight: FontWeight.w600),
+        keyboardType: TextInputType.number,
+        maxLength: 7,
+        textAlign: TextAlign.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: _fieldDeco(),
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onSubmitted: (_) => _verifyAndEnable(),
+      ),
+      const SizedBox(height: 12),
+      if (_err != null) ...[
+        _StatusBanner(type: 'error', message: _err!),
+        const SizedBox(height: 12),
+      ],
+      AdaptiveButton(
+        style: AdaptiveButtonStyle.prominentGlass,
+        onPressed: _busy ? null : _verifyAndEnable,
+        label: _busy ? 'Verifying…' : 'Verify & Enable',
+      ),
+    ]);
+  }
+
+  Widget _backupCodesView() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFf59e0b).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFf59e0b).withOpacity(0.30)),
+        ),
+        child: const Row(children: [
+          Icon(CupertinoIcons.exclamationmark_triangle_fill,
+              color: Color(0xFFf59e0b), size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Save these backup codes somewhere safe. Each can only be used once if you lose access to your authenticator.',
+              style: TextStyle(
+                  color: Color(0xFFf59e0b), fontSize: 12, height: 1.5),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: _backupCodes.isEmpty
+            ? const Text('No backup codes provided.',
+                style: TextStyle(
+                    color: JournalColors.textMuted, fontSize: 13))
+            : Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: _backupCodes
+                    .map((c) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: JournalColors.bgCard,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: JournalColors.border),
+                          ),
+                          child: Text(c,
+                              style: const TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                  letterSpacing: 1.2)),
+                        ))
+                    .toList(),
+              ),
+      ),
+      const SizedBox(height: 24),
+      const Icon(CupertinoIcons.checkmark_circle_fill,
+          color: Color(0xFF10b981), size: 40),
+      const SizedBox(height: 12),
+      const Text('2FA is now enabled',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 24),
+      AdaptiveButton(
+        style: AdaptiveButtonStyle.prominentGlass,
+        onPressed: () => Navigator.pop(context),
+        label: 'Done',
+      ),
+    ]);
+  }
+
+  Widget _disableView() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.red.withOpacity(0.20)),
+        ),
+        child: const Text(
+          'Enter your current 6-digit authenticator code to confirm disabling 2FA.',
+          style: TextStyle(color: Colors.red, fontSize: 13, height: 1.5),
+        ),
+      ),
+      const SizedBox(height: 20),
+      _FieldLabel('AUTHENTICATOR CODE'),
+      CupertinoTextField(
+        controller: _pwCtrl,
+        placeholder: '000000',
+        placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+        style: const TextStyle(
+            color: JournalColors.textPrimary,
+            fontSize: 22,
+            letterSpacing: 6,
+            fontWeight: FontWeight.w600),
+        keyboardType: TextInputType.number,
+        maxLength: 6,
+        textAlign: TextAlign.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: _fieldDeco(),
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onSubmitted: (_) => _disable(),
+      ),
+      const SizedBox(height: 12),
+      if (_err != null) ...[
+        _StatusBanner(type: 'error', message: _err!),
+        const SizedBox(height: 12),
+      ],
+      Row(children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() { _phase = 'idle'; _err = null; }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: JournalColors.bgSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: JournalColors.border),
+              ),
+              child: const Text('Cancel',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: JournalColors.textSecondary, fontSize: 15)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: _busy ? null : _disable,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.30)),
+              ),
+              child: _busy
+                  ? const Center(
+                      child: CupertinoActivityIndicator(
+                          color: Colors.red, radius: 9))
+                  : const Text('Disable 2FA',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String title = 'Two-Factor Auth';
+    if (_phase == 'setup') title = 'Scan QR Code';
+    if (_phase == 'backup_codes') title = 'Backup Codes';
+    if (_phase == 'disable') title = 'Disable 2FA';
+
+    return CupertinoPageScaffold(
+      backgroundColor: JournalColors.bgBase,
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(title),
+        backgroundColor: JournalColors.bgBase.withOpacity(0.9),
+        border: const Border(
+            bottom: BorderSide(color: JournalColors.border, width: 0.5)),
+        leading: _phase != 'backup_codes'
+            ? CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  if (_phase == 'setup' || _phase == 'disable') {
+                    setState(() { _phase = 'idle'; _err = null; });
+                  } else {
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text('Back',
+                    style: TextStyle(color: JournalColors.accent)),
+              )
+            : null,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: _done && _phase == 'idle'
+              ? Column(children: [
+                  const Icon(CupertinoIcons.shield_slash_fill,
+                      color: JournalColors.textMuted, size: 40),
+                  const SizedBox(height: 12),
+                  const Text('2FA has been disabled',
+                      style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 24),
+                  AdaptiveButton(
+                    style: AdaptiveButtonStyle.prominentGlass,
+                    onPressed: () => Navigator.pop(context),
+                    label: 'Done',
+                  ),
+                ])
+              : _phase == 'setup'
+                  ? _setupView()
+                  : _phase == 'backup_codes'
+                      ? _backupCodesView()
+                      : _phase == 'disable'
+                          ? _disableView()
+                          : _idleView(),
+        ),
       ),
     );
   }

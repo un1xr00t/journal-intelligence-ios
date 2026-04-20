@@ -102,6 +102,49 @@ class ApiService {
     });
   }
 
+  Future<void> verifyPassword(String password) async {
+    await _authedPost('/auth/verify-password', data: {'password': password});
+  }
+
+  // ── 2FA (TOTP) ────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> get2FAStatus() async {
+    final res = await _authedGet('/auth/2fa/status');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Returns { secret, qr_code, backup_codes }
+  Future<Map<String, dynamic>> setup2FA() async {
+    final res = await _authedPost('/auth/2fa/setup');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> enable2FA(String totpCode) async {
+    await _authedPost('/auth/2fa/enable', data: {'totp_code': totpCode});
+  }
+
+  Future<void> disable2FA(String totpCode) async {
+    await _authedPost('/auth/2fa/disable', data: {'totp_code': totpCode});
+  }
+
+  // ── Security Questions ────────────────────────────────────────
+
+  Future<bool> hasSecurityQuestions() async {
+    final res = await _authedGet('/auth/security-questions/has-questions');
+    return (res.data as Map<String, dynamic>)['has_questions'] as bool? ?? false;
+  }
+
+  Future<List<String>> getSecurityQuestionsBank() async {
+    final res = await _authedGet('/auth/security-questions/bank');
+    return (res.data as List).cast<String>();
+  }
+
+  /// Returns { question_1, question_2, question_3 } — no answers
+  Future<Map<String, dynamic>> fetchSecurityQuestions() async {
+    final res = await _authedGet('/auth/security-questions/fetch');
+    return res.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> onboardingMemoryPreview(Map<String, dynamic> data) async {
     final res = await _authedPost('/api/onboarding/memory-preview', data: data);
     return res.data as Map<String, dynamic>;
