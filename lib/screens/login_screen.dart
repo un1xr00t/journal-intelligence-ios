@@ -261,20 +261,11 @@ class _Logo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          width: 72, height: 72,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              colors: [JournalColors.accent, JournalColors.accent2],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: const [
-              BoxShadow(color: JournalColors.accentGlow, blurRadius: 28, spreadRadius: 2),
-            ],
-          ),
-          child: const Icon(CupertinoIcons.book_fill, color: Colors.white, size: 32),
+        Image.asset(
+          'assets/images/logo.png',
+          width: 100,
+          height: 100,
+          fit: BoxFit.contain,
         ),
         const SizedBox(height: 20),
         const Text(

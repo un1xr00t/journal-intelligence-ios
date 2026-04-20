@@ -48,3 +48,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+flutter_launcher_icons:
+  ios: true
+  android: false
+  image_path: "assets/images/logo.png"
+  remove_alpha_ios: true
