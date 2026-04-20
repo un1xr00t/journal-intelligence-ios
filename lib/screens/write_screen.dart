@@ -18,9 +18,10 @@ class WriteScreen extends StatefulWidget {
 }
 
 class _WriteScreenState extends State<WriteScreen> {
-  final _api     = ApiService();
-  final _ctrl    = TextEditingController();
-  final _picker  = ImagePicker();
+  final _api       = ApiService();
+  final _ctrl      = TextEditingController();
+  final _focusNode = FocusNode();
+  final _picker    = ImagePicker();
 
   bool   _saving = false;
   bool   _saved  = false;
@@ -31,8 +32,15 @@ class _WriteScreenState extends State<WriteScreen> {
 
 
   @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _ctrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -145,6 +153,7 @@ class _WriteScreenState extends State<WriteScreen> {
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
       child: CustomScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: const Text('Write'),
@@ -152,13 +161,23 @@ class _WriteScreenState extends State<WriteScreen> {
             border: const Border(
               bottom: BorderSide(color: JournalColors.border, width: 0.5),
             ),
-            trailing: _ctrl.text.isNotEmpty
-                ? GestureDetector(
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_focusNode.hasFocus)
+                  GestureDetector(
+                    onTap: () => _focusNode.unfocus(),
+                    child: const Text('Done',
+                        style: TextStyle(color: JournalColors.accent)),
+                  )
+                else if (_ctrl.text.isNotEmpty)
+                  GestureDetector(
                     onTap: _clear,
                     child: const Text('Clear',
                         style: TextStyle(color: JournalColors.accent)),
-                  )
-                : null,
+                  ),
+              ],
+            ),
           ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -175,6 +194,7 @@ class _WriteScreenState extends State<WriteScreen> {
                   ),
                   child: CupertinoTextField(
                     controller: _ctrl,
+                    focusNode: _focusNode,
                     placeholder: 'What\'s on your mind today?',
                     placeholderStyle: const TextStyle(
                         color: JournalColors.textMuted, fontSize: 16),
