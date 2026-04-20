@@ -142,6 +142,26 @@ class ApiService {
     await _authedDelete('/api/entries/$entryId');
   }
 
+  // ── Entry attachments ─────────────────────────────────────────
+
+  Future<Map<String, dynamic>> uploadEntryAttachment({
+    required int entryId,
+    required String filePath,
+    required String filename,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        filePath,
+        filename: filename,
+      ),
+    });
+    final res = await _dio.post(
+      '/api/entries/$entryId/attachments',
+      data: formData,
+    );
+    return res.data as Map<String, dynamic>;
+  }
+
   // ── AI Reflections ────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getReflection(int entryId, {String tone = 'therapist'}) async {
