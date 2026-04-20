@@ -242,6 +242,99 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Memory Profile ────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getMemory() async {
+    final res = await _authedGet('/api/memory');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateMemory(Map<String, dynamic> data) async {
+    final res = await _authedPatch('/api/memory', data: data);
+    return res.data as Map<String, dynamic>;
+  }
+
+  // ── Account ───────────────────────────────────────────────────────────────────
+
+  Future<void> changePassword(String currentPw, String newPw) async {
+    await _authedPost('/auth/change-password', data: {
+      'current_password': currentPw,
+      'new_password':     newPw,
+    });
+  }
+
+  // ── Sessions ──────────────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> getSessions() async {
+    final res = await _authedGet('/auth/sessions');
+    return (res.data as Map<String, dynamic>)['sessions'] as List<dynamic>? ?? [];
+  }
+
+  Future<void> revokeSession(dynamic sessionId) async {
+    await _authedDelete('/auth/sessions/$sessionId');
+  }
+
+  Future<void> revokeAllSessions() async {
+    await _authedDelete('/auth/sessions');
+  }
+
+  // ── API Key ───────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getApiKey() async {
+    final res = await _authedGet('/api/auth/api-key');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> regenerateApiKey() async {
+    final res = await _authedPost('/api/auth/api-key/regenerate');
+    return res.data as Map<String, dynamic>;
+  }
+
+  // ── SMS / Text Journal ────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getSmsStatus() async {
+    final res = await _authedGet('/api/sms/status');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> requestSmsVerification(String phone) async {
+    await _authedPost('/api/sms/request-verification', data: {'phone_number': phone});
+  }
+
+  Future<void> verifySmsCode(String phone, String code) async {
+    await _authedPost('/api/sms/verify', data: {'phone_number': phone, 'code': code});
+  }
+
+  Future<void> removeSmsPhone() async {
+    await _authedDelete('/api/sms/phone');
+  }
+
+  // ── Reflect Mode ──────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getReflectMode() async {
+    final res = await _authedGet('/api/settings/reflect-mode');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> setReflectMode(bool autoReflect) async {
+    await _authedPut('/api/settings/reflect-mode', data: {'auto_reflect': autoReflect});
+  }
+
+  // ── AI Provider ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getAiProvider() async {
+    final res = await _authedGet('/api/settings/ai-provider');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateAiProvider(Map<String, dynamic> data) async {
+    await _authedPut('/api/settings/ai-provider', data: data);
+  }
+
+  Future<void> clearAiProvider() async {
+    await _authedDelete('/api/settings/ai-provider');
+  }
+
   // ── Private helpers ───────────────────────────────────────────
 
   Future<Response> _authedGet(String path, {Map<String, dynamic>? queryParameters}) =>
@@ -252,6 +345,9 @@ class ApiService {
 
   Future<Response> _authedPut(String path, {dynamic data}) =>
       _dio.put(path, data: data);
+
+  Future<Response> _authedPatch(String path, {dynamic data}) =>
+      _dio.patch(path, data: data);
 
   Future<Response> _authedDelete(String path) =>
       _dio.delete(path);
