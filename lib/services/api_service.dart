@@ -232,8 +232,10 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateEntry(int entryId, String text) async {
-    final res = await _authedPut('/api/entries/$entryId', data: {'text': text});
-    return res.data as Map<String, dynamic>;
+    final res = await _authedPut('/api/entries/$entryId', data: {'normalized_text': text});
+    final body = res.data as Map<String, dynamic>;
+    // Server returns { entry: { ...full entry... } } on success
+    return body['entry'] as Map<String, dynamic>? ?? body;
   }
 
   Future<void> deleteEntry(int entryId) async {

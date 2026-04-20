@@ -155,7 +155,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final updated = await Navigator.push<Map<String, dynamic>>(
       context,
       CupertinoPageRoute(
-        builder: (_) => _EditEntryScreen(entry: entry, api: _api),
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _EditEntryScreen(entry: entry, api: _api),
+        ),
       ),
     );
     if (updated != null && mounted) {
@@ -655,9 +658,7 @@ class _EditEntryScreenState extends State<_EditEntryScreen> {
     if (newText.isEmpty) return;
     setState(() { _saving = true; _error = null; });
     try {
-      await widget.api.updateEntry(widget.entry['id'] as int, newText);
-      // Re-fetch so we get the server-regenerated summary_text
-      final updated = await widget.api.getEntry(widget.entry['id'] as int);
+      final updated = await widget.api.updateEntry(widget.entry['id'] as int, newText);
       if (mounted) Navigator.pop(context, updated);
     } catch (e) {
       if (mounted) setState(() { _saving = false; _error = 'Failed to save.'; });
