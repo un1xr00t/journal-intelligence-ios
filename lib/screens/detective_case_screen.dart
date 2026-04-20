@@ -5,6 +5,7 @@
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Colors, Divider;
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -30,6 +31,7 @@ class _TabMeta {
 
 final _kTabs = [
   const _TabMeta('Log',          CupertinoIcons.doc_text),
+  const _TabMeta('Partner',      CupertinoIcons.chat_bubble),
   const _TabMeta('Photos',       CupertinoIcons.photo),
   const _TabMeta('Gallery',      CupertinoIcons.photo_on_rectangle),
   const _TabMeta('Intelligence', CupertinoIcons.sparkles),
@@ -190,64 +192,75 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
-      navigationBar: CupertinoNavigationBar(
-        middle: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 7, height: 7,
-              decoration: BoxDecoration(color: _statusColor, shape: BoxShape.circle)),
-            const SizedBox(width: 7),
-            Flexible(
-              child: Text(widget.caseData['title'] ?? 'Case',
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: JournalColors.textPrimary, fontWeight: FontWeight.w600)),
+      child: CustomScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        slivers: [
+          CupertinoSliverNavigationBar(
+            largeTitle: Row(
+              children: [
+                Container(width: 7, height: 7,
+                  decoration: BoxDecoration(color: _statusColor, shape: BoxShape.circle)),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(widget.caseData['title'] ?? 'Case',
+                    overflow: TextOverflow.ellipsis)),
+              ],
             ),
-          ],
-        ),
-        backgroundColor: JournalColors.bgBase.withOpacity(0.92),
-        border: const Border(bottom: BorderSide(color: JournalColors.border, width: 0.5)),
-      ),
-      child: Column(
-        children: [
-          // Tab bar
-          Container(
-            height: 44,
-            decoration: const BoxDecoration(
-              color: JournalColors.bgSurface,
-              border: Border(bottom: BorderSide(color: JournalColors.border, width: 0.5)),
-            ),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemCount: _kTabs.length,
-              itemBuilder: (_, i) {
-                final selected = _tabIndex == i;
-                return GestureDetector(
-                  onTap: () => setState(() => _tabIndex = i),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(
-                        color: selected ? JournalColors.accent : const Color(0x00000000),
-                        width: 2,
-                      )),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(_kTabs[i].label,
-                      style: TextStyle(
-                        color: selected ? JournalColors.textPrimary : JournalColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                      )),
-                  ),
-                );
-              },
-            ),
+            backgroundColor: JournalColors.bgBase.withOpacity(0.92),
+            border: const Border(
+              bottom: BorderSide(color: JournalColors.border, width: 0.5)),
           ),
-          Expanded(child: _buildTab()),
+          SliverToBoxAdapter(child: _buildTabBar()),
+          SliverFillRemaining(
+            hasScrollBody: true,
+            child: _buildTab(),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTabBar() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 44,
+          child: ColoredBox(
+            color: JournalColors.bgSurface,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: List.generate(_kTabs.length, (i) {
+                  final selected = _tabIndex == i;
+                  return GestureDetector(
+                    onTap: () => setState(() => _tabIndex = i),
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(
+                          color: selected ? JournalColors.accent : const Color(0x00000000),
+                          width: 2,
+                        )),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(_kTabs[i].label,
+                        style: TextStyle(
+                          color: selected ? JournalColors.textPrimary : JournalColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        )),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 0.5, thickness: 0.5, color: JournalColors.border),
+      ],
     );
   }
 
@@ -264,6 +277,11 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
           onPhotoAdded: _onPhotoAdded,
           onPhotoDeleted: _onPhotoDeleted,
           onAnalysisUpdated: _onAnalysisUpdated,
+        );
+      case 1:
+        return _CasePartnerTab(
+          caseId: _caseId,
+          caseName: widget.caseData['title'] as String? ?? 'Case',
         );
       default:
         return _TabPlaceholder(tabName: _kTabs[_tabIndex].label);
@@ -858,11 +876,38 @@ class _EntryCard extends StatelessWidget {
                       ] else
                         GestureDetector(
                           onTap: onTap,
-                          child: Text(entry['content'] ?? '',
-                            maxLines: expanded ? null : 3,
-                            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: JournalColors.textPrimary, fontSize: 13, height: 1.55)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(entry['content'] ?? '',
+                                maxLines: expanded ? null : 3,
+                                overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: JournalColors.textPrimary, fontSize: 13, height: 1.55)),
+                              if (photos.isNotEmpty || (analysis != null && analysis.isNotEmpty)) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (!expanded && photos.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 5),
+                                        child: Text('${photos.length} photo${photos.length == 1 ? '' : 's'}',
+                                          style: const TextStyle(
+                                            color: JournalColors.textMuted,
+                                            fontSize: 10)),
+                                      ),
+                                    Icon(
+                                      expanded
+                                        ? CupertinoIcons.chevron_up
+                                        : CupertinoIcons.chevron_down,
+                                      size: 11,
+                                      color: JournalColors.textMuted),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
 
                       // ── Photo strip (when expanded) ──────────────────
@@ -1004,6 +1049,472 @@ class _EntryCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Case Partner Tab ───────────────────────────────────────────────────────
+
+class _CasePartnerTab extends StatefulWidget {
+  final String caseId;
+  final String caseName;
+  const _CasePartnerTab({required this.caseId, required this.caseName});
+
+  @override
+  State<_CasePartnerTab> createState() => _CasePartnerTabState();
+}
+
+class _CasePartnerTabState extends State<_CasePartnerTab> {
+  final _api = ApiService();
+  final _ctrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+
+  List<Map<String, dynamic>> _messages = [];
+  bool _loading = false;
+  bool _loadingChat = true;
+  String? _sessionId;
+  String? _compressedSummary;
+  bool _showCompressed = false;
+  bool _wiring = false;
+  Map<String, dynamic>? _wireResult;
+  bool _showWire = false;
+
+  static const _compressAt = 20;
+
+  String get _greeting =>
+    'Hey, I\'m up to speed on the case — "${widget.caseName}". What are you thinking? What do you need from me right now?';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSession();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _loadSession() async {
+    setState(() => _loadingChat = true);
+    try {
+      final res = await _api.detectiveChatLatestSession(widget.caseId);
+      final saved = List<dynamic>.from(res['messages'] ?? []);
+      if (mounted) {
+        setState(() {
+          _sessionId = res['session_id'] as String?;
+          if (saved.isNotEmpty) {
+            final summary = saved.cast<Map>().firstWhere(
+              (m) => m['role'] == 'system-summary', orElse: () => <String, dynamic>{});
+            if (summary.isNotEmpty) _compressedSummary = summary['content'] as String?;
+            _messages = saved.map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m)).toList();
+          } else {
+            _messages = [{'role': 'assistant', 'content': _greeting}];
+          }
+          _loadingChat = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (_) {
+      if (mounted) setState(() {
+        _messages = [{'role': 'assistant', 'content': _greeting}];
+        _loadingChat = false;
+      });
+    }
+  }
+
+  Future<void> _send() async {
+    final msg = _ctrl.text.trim();
+    if (msg.isEmpty || _loading) return;
+    _ctrl.clear();
+    final history = List<Map<String, dynamic>>.from(_messages);
+    setState(() {
+      _messages = [..._messages, {'role': 'user', 'content': msg}];
+      _loading = true;
+    });
+    _scrollToBottom();
+    try {
+      final rawHistory = history.length > 8 ? history.sublist(history.length - 8) : history;
+      final res = await _api.detectiveChatSend(
+        widget.caseId,
+        message: msg,
+        history: rawHistory,
+        compressedContext: _compressedSummary,
+      );
+      final reply = res['response'] as String? ?? '';
+      if (mounted) {
+        setState(() => _messages = [..._messages, {'role': 'assistant', 'content': reply}]);
+        _scrollToBottom();
+      }
+      // Persist to DB
+      if (_sessionId != null) {
+        _api.detectiveChatSaveMessages(widget.caseId, _sessionId!, [
+          {'role': 'user', 'content': msg},
+          {'role': 'assistant', 'content': reply},
+        ]).catchError((_) {});
+      }
+      // Auto-compress at threshold
+      if (_messages.length >= _compressAt && _compressedSummary == null) {
+        final toCompress = _messages.length > 6 ? _messages.sublist(1, _messages.length - 5) : <Map<String, dynamic>>[];
+        if (toCompress.length >= 4) {
+          _api.detectiveChatCompress(widget.caseId, toCompress).then((res) {
+            final summary = res['summary'] as String? ?? '';
+            final sentinel = {'role': 'system-summary', 'content': summary};
+            if (mounted) setState(() {
+              _compressedSummary = summary;
+              final tail = _messages.length > 6 ? _messages.sublist(_messages.length - 6) : _messages;
+              _messages = [_messages.first, sentinel, ...tail];
+            });
+            if (_sessionId != null) {
+              _api.detectiveChatSaveMessages(widget.caseId, _sessionId!, [sentinel]).catchError((_) {});
+            }
+          }).catchError((_) {});
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _messages = [
+        ..._messages,
+        {'role': 'assistant', 'content': 'Sorry, hit an error. Check your API key in Settings.'},
+      ]);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _newSession() async {
+    try {
+      final res = await _api.detectiveChatNewSession(widget.caseId);
+      final newId = res['session_id'] as String?;
+      if (newId != null) {
+        await _api.detectiveChatSaveMessages(widget.caseId, newId, [
+          {'role': 'assistant', 'content': _greeting}
+        ]).catchError((_) {});
+      }
+      if (mounted) setState(() {
+        _sessionId = newId;
+        _compressedSummary = null;
+        _showCompressed = false;
+        _messages = [{'role': 'assistant', 'content': _greeting}];
+        _showWire = false;
+        _wireResult = null;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _dropWire() async {
+    setState(() { _wiring = true; _showWire = true; _wireResult = null; });
+    _scrollToBottom();
+    try {
+      final res = await _api.detectiveDropWire(widget.caseId);
+      if (mounted) setState(() => _wireResult = res);
+    } catch (_) {
+      if (mounted) setState(() => _wireResult = {'error': true});
+    } finally {
+      if (mounted) setState(() => _wiring = false);
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final extraCount = (_loading ? 1 : 0) + (_showWire ? 1 : 0);
+    return Column(
+      children: [
+        // ── Header ──────────────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: JournalColors.border, width: 0.5)),
+          ),
+          child: Row(children: [
+            Container(width: 8, height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF22C55E), shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            const Text('Case Partner',
+              style: TextStyle(
+                color: JournalColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Text('AI · reads your case file · best friend mode',
+                style: TextStyle(color: JournalColors.textMuted, fontSize: 10),
+                overflow: TextOverflow.ellipsis)),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minSize: 0,
+              onPressed: _newSession,
+              child: const Text('+ new chat',
+                style: TextStyle(
+                  color: JournalColors.accent, fontSize: 11, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        ),
+
+        // ── Messages ─────────────────────────────────────────────────────────
+        Expanded(
+          child: _loadingChat
+            ? const Center(child: CupertinoActivityIndicator())
+            : ListView.builder(
+                controller: _scrollCtrl,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + extraCount,
+                itemBuilder: (ctx, i) {
+                  if (i < _messages.length) return _buildMessage(_messages[i]);
+                  final extraIdx = i - _messages.length;
+                  if (_loading && extraIdx == 0) return _buildTypingIndicator();
+                  return _buildWireResult();
+                },
+              ),
+        ),
+
+        // ── Input area ───────────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: JournalColors.border, width: 0.5)),
+          ),
+          child: Column(children: [
+            // Drop Wire button
+            GestureDetector(
+              onTap: _wiring ? null : _dropWire,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0x336366F1), Color(0x33A855F7)]),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0x666366F1)),
+                ),
+                child: Text(
+                  _wiring ? '📡 Dropping Wire…' : '📡 Drop a Wire',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _wiring ? JournalColors.textMuted : JournalColors.accent,
+                    fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+                ),
+              ),
+            ),
+            // Text field + send
+            Row(children: [
+              Expanded(
+                child: CupertinoTextField(
+                  controller: _ctrl,
+                  placeholder: 'Talk to your Case Partner…',
+                  placeholderStyle: const TextStyle(color: JournalColors.textMuted, fontSize: 13),
+                  style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13),
+                  maxLines: null, minLines: 1,
+                  decoration: BoxDecoration(
+                    color: const Color(0x0AFFFFFF),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: JournalColors.border),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _loading ? null : _send,
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: _loading
+                      ? const Color(0x336366F1)
+                      : JournalColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(CupertinoIcons.arrow_up,
+                    color: CupertinoColors.white, size: 16),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessage(Map<String, dynamic> msg) {
+    final role = msg['role'] as String;
+    final content = msg['content'] as String? ?? '';
+
+    // Compressed summary sentinel
+    if (role == 'system-summary') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              onTap: () => setState(() => _showCompressed = !_showCompressed),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: JournalColors.accent.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JournalColors.accent.withOpacity(0.2)),
+                ),
+                child: Row(children: [
+                  const Text('📋', style: TextStyle(fontSize: 11)),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Earlier conversation compressed',
+                      style: TextStyle(
+                        color: JournalColors.accent, fontSize: 10, fontWeight: FontWeight.w500))),
+                  Text(_showCompressed ? '▲ hide' : '▼ show',
+                    style: const TextStyle(color: JournalColors.textMuted, fontSize: 10)),
+                ]),
+              ),
+            ),
+            if (_showCompressed)
+              Container(
+                margin: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: JournalColors.accent.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JournalColors.accent.withOpacity(0.15)),
+                ),
+                child: Text(content,
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary, fontSize: 12,
+                    height: 1.6, fontStyle: FontStyle.italic)),
+              ),
+          ],
+        ),
+      );
+    }
+
+    final isUser = role == 'user';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isUser) ...[
+              Container(
+                width: 28, height: 28,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(child: Text('🕵️', style: TextStyle(fontSize: 13))),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isUser
+                    ? JournalColors.accent.withOpacity(0.18)
+                    : const Color(0x0DFFFFFF),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(14),
+                    topRight: const Radius.circular(14),
+                    bottomLeft: Radius.circular(isUser ? 14 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 14),
+                  ),
+                  border: Border.all(
+                    color: isUser
+                      ? JournalColors.accent.withOpacity(0.3)
+                      : JournalColors.border),
+                ),
+                child: Text(content,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary, fontSize: 13, height: 1.6)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28, height: 28,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(child: Text('🕵️', style: TextStyle(fontSize: 13))),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0x0DFFFFFF),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                bottomRight: Radius.circular(14), bottomLeft: Radius.circular(4),
+              ),
+              border: Border.all(color: JournalColors.border),
+            ),
+            child: const CupertinoActivityIndicator(radius: 7),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWireResult() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JournalColors.accent.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JournalColors.accent.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Text('📡', style: TextStyle(fontSize: 16)),
+            SizedBox(width: 8),
+            Text('WIRE DROPPED — Case Briefing',
+              style: TextStyle(
+                color: JournalColors.accent, fontSize: 12,
+                fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+          ]),
+          const SizedBox(height: 10),
+          if (_wireResult == null)
+            const Text('Compiling full case intelligence…',
+              style: TextStyle(color: JournalColors.textMuted, fontSize: 11))
+          else if (_wireResult!['error'] == true)
+            const Text('Wire failed. Check your API key in Settings.',
+              style: TextStyle(color: Color(0xFFEF4444), fontSize: 12))
+          else
+            Text(_wireResult!['briefing'] as String? ?? '',
+              style: const TextStyle(
+                color: JournalColors.textPrimary, fontSize: 13, height: 1.7)),
+        ],
       ),
     );
   }

@@ -483,6 +483,50 @@ class ApiService {
       '/api/detective/cases/$caseId/entries/$entryId/photos/synthesize');
     return Map<String, dynamic>.from(r.data);
   }
+
+  // ── Case Partner chat ──────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> detectiveChatLatestSession(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/chat/latest-session');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveChatSend(
+    String caseId, {
+    required String message,
+    required List<Map<String, dynamic>> history,
+    String? compressedContext,
+  }) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/chat', data: {
+      'message': message,
+      'history': history,
+      if (compressedContext != null) 'compressed_context': compressedContext,
+    });
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> detectiveChatSaveMessages(
+    String caseId, String sessionId, List<Map<String, dynamic>> messages) async {
+    await _authedPost('/api/detective/cases/$caseId/chat/messages',
+      data: {'session_id': sessionId, 'messages': messages});
+  }
+
+  Future<Map<String, dynamic>> detectiveChatNewSession(String caseId) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/chat/session');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveChatCompress(
+    String caseId, List<Map<String, dynamic>> messages) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/chat/compress',
+      data: {'messages': messages});
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveDropWire(String caseId) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/wire');
+    return Map<String, dynamic>.from(r.data);
+  }
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────
