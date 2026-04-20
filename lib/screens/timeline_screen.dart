@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
-import 'entry_detail_screen.dart';
+
 
 // ── Timeline Screen ───────────────────────────────────────────────────────────
 
@@ -124,6 +124,45 @@ class _TimelineScreenState extends State<TimelineScreen> {
     }
   }
 
+  Future<void> _deleteEntry(int index, int entryId) async {
+    final confirm = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Delete Entry'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      try {
+        await _api.deleteEntry(entryId);
+        if (mounted) setState(() => _entries.removeAt(index));
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _editEntry(int index, Map<String, dynamic> entry) async {
+    final updated = await Navigator.push<Map<String, dynamic>>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => _EditEntryScreen(entry: entry, api: _api),
+      ),
+    );
+    if (updated != null && mounted) {
+      setState(() => _entries[index] = updated);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -227,13 +266,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _EntryTile(
                         entry: entry,
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => EntryDetailScreen(
-                                entryId: entry['id'] as int),
-                          ),
-                        ),
+                        onDelete: () => _deleteEntry(entryIndex, entry['id'] as int),
+                        onEdit: () => _editEntry(entryIndex, entry),
                       ),
                     );
                   },
@@ -449,10 +483,15 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
 // ── Entry Tile ────────────────────────────────────────────────────────────────
 
 class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry, required this.onTap});
+  const _EntryTile({
+    required this.entry,
+    required this.onDelete,
+    required this.onEdit,
+  });
 
   final Map<String, dynamic> entry;
-  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -468,8 +507,61 @@ class _EntryTile extends StatelessWidget {
     final wordCount   = (entry['word_count'] as num?)?.toInt() ??
         text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
-    return GestureDetector(
-      onTap: onTap,
+    return Dismissible(
+      key: ValueKey('entry-${entry['id']}'),
+      direction: DismissDirection.horizontal,
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          // Swipe right → delete
+          onDelete();
+          return false; // We handle removal ourselves after confirm
+        } else {
+          // Swipe left → edit
+          onEdit();
+          return false;
+        }
+      },
+      // Swipe right = delete (red)
+      background: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444).withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        child: const Row(
+          children: [
+            Icon(CupertinoIcons.trash, color: Color(0xFFEF4444), size: 20),
+            SizedBox(width: 8),
+            Text('Delete',
+                style: TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+      // Swipe left = edit (accent)
+      secondaryBackground: Container(
+        decoration: BoxDecoration(
+          color: JournalColors.accent.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('Edit',
+                style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+            SizedBox(width: 8),
+            Icon(CupertinoIcons.pencil, color: JournalColors.accent, size: 20),
+          ],
+        ),
+      ),
       child: GlassCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,5 +603,133 @@ class _EntryTile extends StatelessWidget {
     } catch (_) {
       return raw;
     }
+  }
+}
+
+// ── Edit Entry Screen ─────────────────────────────────────────────────────────
+
+class _EditEntryScreen extends StatefulWidget {
+  const _EditEntryScreen({required this.entry, required this.api});
+  final Map<String, dynamic> entry;
+  final ApiService api;
+
+  @override
+  State<_EditEntryScreen> createState() => _EditEntryScreenState();
+}
+
+class _EditEntryScreenState extends State<_EditEntryScreen> {
+  TextEditingController? _ctrl;
+  bool _loading = true;
+  bool _saving  = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRaw();
+  }
+
+  Future<void> _loadRaw() async {
+    try {
+      final data = await widget.api.getEntry(widget.entry['id'] as int);
+      final raw = (data['normalized_text'] as String? ?? '').trim();
+      if (mounted) {
+        setState(() {
+          _ctrl = TextEditingController(text: raw);
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = 'Failed to load entry.'; });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final newText = _ctrl?.text.trim() ?? '';
+    if (newText.isEmpty) return;
+    setState(() { _saving = true; _error = null; });
+    try {
+      await widget.api.updateEntry(widget.entry['id'] as int, newText);
+      // Re-fetch so we get the server-regenerated summary_text
+      final updated = await widget.api.getEntry(widget.entry['id'] as int);
+      if (mounted) Navigator.pop(context, updated);
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _error = 'Failed to save.'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      backgroundColor: JournalColors.bgBase,
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: JournalColors.bgBase.withOpacity(0.9),
+        border: const Border(
+          bottom: BorderSide(color: JournalColors.border, width: 0.5),
+        ),
+        middle: const Text('Edit Entry',
+            style: TextStyle(color: JournalColors.textPrimary)),
+        leading: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Text('Cancel',
+              style: TextStyle(color: JournalColors.textMuted)),
+        ),
+        trailing: _saving
+            ? const CupertinoActivityIndicator(
+                color: JournalColors.accent, radius: 9)
+            : GestureDetector(
+                onTap: _save,
+                child: const Text('Save',
+                    style: TextStyle(
+                        color: JournalColors.accent,
+                        fontWeight: FontWeight.w600)),
+              ),
+      ),
+      child: _loading
+          ? const Center(
+              child: CupertinoActivityIndicator(
+                  color: JournalColors.accent, radius: 12),
+            )
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_error != null) ...[
+                      Text(_error!,
+                          style: const TextStyle(
+                              color: Color(0xFFEF4444), fontSize: 13)),
+                      const SizedBox(height: 12),
+                    ],
+                    Expanded(
+                      child: CupertinoTextField(
+                        controller: _ctrl,
+                        maxLines: null,
+                        minLines: 10,
+                        autofocus: true,
+                        style: const TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 16,
+                          height: 1.6,
+                        ),
+                        placeholder: 'Write your entry...',
+                        placeholderStyle: const TextStyle(
+                            color: JournalColors.textMuted, fontSize: 16),
+                        decoration: const BoxDecoration(color: Colors.transparent),
+                        keyboardAppearance: Brightness.dark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
   }
 }

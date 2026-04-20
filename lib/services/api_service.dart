@@ -173,7 +173,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> getEntry(int entryId) async {
     final res = await _authedGet('/api/entries/$entryId');
-    return res.data as Map<String, dynamic>;
+    final outer = res.data as Map<String, dynamic>;
+    return outer['data'] as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> createEntry({
