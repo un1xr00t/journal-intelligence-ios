@@ -422,6 +422,67 @@ class ApiService {
 
   Future<Response> _authedDelete(String path) =>
       _dio.delete(path);
+
+  // ── Detective Mode ────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> detectiveCheckAccess() async {
+    final r = await _authedGet('/api/detective/access');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<List<dynamic>> detectiveGetCases() async {
+    final r = await _authedGet('/api/detective/cases');
+    return List<dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveCreateCase(String title) async {
+    final r = await _authedPost('/api/detective/cases', data: {'title': title});
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<List<dynamic>> detectiveGetEntries(String caseId) async {
+    final r = await _authedGet('/api/detective/cases/$caseId/entries');
+    return List<dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> detectiveAddEntry(String caseId, Map<String, dynamic> data) async {
+    final r = await _authedPost('/api/detective/cases/$caseId/entries', data: data);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> detectiveUpdateEntry(String caseId, String entryId, Map<String, dynamic> data) async {
+    await _authedPut('/api/detective/cases/$caseId/entries/$entryId', data: data);
+  }
+
+  Future<void> detectiveDeleteEntry(String caseId, String entryId) async {
+    await _authedDelete('/api/detective/cases/$caseId/entries/$entryId');
+  }
+
+  Future<Map<String, dynamic>> detectiveUploadEntryPhoto(
+      String caseId, String entryId, List<int> bytes, String filename) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.post(
+      '/api/detective/cases/$caseId/entries/$entryId/photos',
+      data: formData,
+      options: Options(headers: {'Authorization': 'Bearer $_accessToken'}),
+    );
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> detectiveDeleteEntryPhoto(
+      String caseId, String entryId, String photoId) async {
+    await _authedDelete(
+      '/api/detective/cases/$caseId/entries/$entryId/photos/$photoId');
+  }
+
+  Future<Map<String, dynamic>> detectiveSynthesizeEntryPhotos(
+      String caseId, String entryId) async {
+    final r = await _authedPost(
+      '/api/detective/cases/$caseId/entries/$entryId/photos/synthesize');
+    return Map<String, dynamic>.from(r.data);
+  }
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────

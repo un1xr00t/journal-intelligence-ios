@@ -10,7 +10,7 @@ import 'today_screen.dart';
 import 'write_screen.dart';
 import 'timeline_screen.dart';
 import 'ask_journal_screen.dart';
-import 'settings_screen.dart';
+import 'more_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -27,7 +27,7 @@ class _HomeShellState extends State<HomeShell> {
     WriteScreen(),
     TimelineScreen(),
     AskJournalScreen(),
-    SettingsScreen(),
+    MoreScreen(),
   ];
 
   @override
@@ -76,12 +76,12 @@ class _HomeShellState extends State<HomeShell> {
           ),
           AdaptiveNavigationDestination(
             icon: PlatformInfo.isIOS26OrHigher()
-                ? "gearshape.fill"
-                : CupertinoIcons.settings,
+                ? "ellipsis.circle"
+                : CupertinoIcons.ellipsis_circle,
             selectedIcon: PlatformInfo.isIOS26OrHigher()
-                ? "gearshape.fill"
-                : CupertinoIcons.settings,
-            label: 'Settings',
+                ? "ellipsis.circle.fill"
+                : CupertinoIcons.ellipsis_circle_fill,
+            label: 'More',
           ),
         ],
       ),
