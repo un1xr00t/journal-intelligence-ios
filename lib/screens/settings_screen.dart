@@ -2,6 +2,8 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -16,6 +18,115 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final _storage   = const FlutterSecureStorage();
+  final _localAuth = LocalAuthentication();
+
+  bool _biometricEnabled   = false;
+  bool _biometricAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricStatus();
+  }
+
+  Future<void> _checkBiometricStatus() async {
+    try {
+      final canCheck    = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      final storedUser  = await _storage.read(key: 'biometric_username');
+      if (mounted) setState(() {
+        _biometricAvailable = canCheck && isSupported;
+        _biometricEnabled   = storedUser != null;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _enableBiometrics(BuildContext context, String username) async {
+    final passwordCtrl = TextEditingController();
+    final password = await showCupertinoDialog<String>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Enable Face ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            const Text('Enter your password to save for Face ID sign-in.',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            CupertinoTextField(
+              controller: passwordCtrl,
+              placeholder: 'Password',
+              obscureText: true,
+              autofocus: true,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: JournalColors.bgSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JournalColors.border),
+              ),
+              style: const TextStyle(color: JournalColors.textPrimary),
+              placeholderStyle:
+                  const TextStyle(color: JournalColors.textMuted),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, passwordCtrl.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    passwordCtrl.dispose();
+    if (password == null || password.isEmpty) return;
+
+    try {
+      final didAuth = await _localAuth.authenticate(
+        localizedReason: 'Confirm to enable Face ID sign-in',
+        options: AuthenticationOptions(biometricOnly: false),
+      );
+      if (!didAuth) return;
+      await _storage.write(key: 'biometric_username', value: username);
+      await _storage.write(key: 'biometric_password', value: password);
+      if (mounted) setState(() => _biometricEnabled = true);
+    } catch (_) {}
+  }
+
+  Future<void> _disableBiometrics() async {
+    final confirm = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Disable Face ID?'),
+        content: const Text(
+            'You\'ll need to sign in with your password next time.'),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Disable'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _storage.delete(key: 'biometric_username');
+      await _storage.delete(key: 'biometric_password');
+      if (mounted) setState(() => _biometricEnabled = false);
+    }
+  }
+
   Future<void> _confirmLogout(BuildContext context) async {
     final confirm = await showCupertinoDialog<bool>(
       context: context,
@@ -102,7 +213,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text(
                                 user['email'] as String? ?? '',
                                 style: const TextStyle(
-                                    color: JournalColors.textSecondary, fontSize: 14),
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 14),
                               ),
                               const SizedBox(height: 4),
                               Container(
@@ -126,6 +238,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
+                // ── Security ──────────────────────────────────────────
+                if (_biometricAvailable) ...[
+                  const _SectionLabel('SECURITY'),
+                  const SizedBox(height: 8),
+                  GlassCard(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(
+                              color: _biometricEnabled
+                                  ? JournalColors.accent.withOpacity(0.15)
+                                  : JournalColors.bgSurface,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              CupertinoIcons.person_crop_circle,
+                              color: _biometricEnabled
+                                  ? JournalColors.accent
+                                  : JournalColors.textMuted,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Face ID / Touch ID',
+                                  style: TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _biometricEnabled
+                                      ? 'Enabled — sign in without your password'
+                                      : 'Sign in next time to enable',
+                                  style: const TextStyle(
+                                      color: JournalColors.textMuted,
+                                      fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_biometricEnabled)
+                            GestureDetector(
+                              onTap: _disableBiometrics,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: Colors.red.withOpacity(0.25)),
+                                ),
+                                child: const Text(
+                                  'Disable',
+                                  style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            )
+                          else
+                            GestureDetector(
+                              onTap: () => _enableBiometrics(
+                                  context,
+                                  user?['username'] as String? ?? ''),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: JournalColors.accent.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: JournalColors.accent
+                                          .withOpacity(0.30)),
+                                ),
+                                child: const Text(
+                                  'Enable',
+                                  style: TextStyle(
+                                      color: JournalColors.accent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),

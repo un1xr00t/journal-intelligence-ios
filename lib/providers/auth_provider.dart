@@ -36,9 +36,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Login ─────────────────────────────────────────────────────
+  // ── Login (standard — used for biometric quick-login) ─────────
+  //
+  // Transitions state immediately on success. Use loginGetToken
+  // when you need to show UI (e.g. biometric offer) before navigating.
 
-  /// Returns null on success, or a map with requires_2fa + partial_token on 2FA.
   Future<Map<String, dynamic>?> login(String username, String password) async {
     _loading = true;
     _error = null;
@@ -50,40 +52,138 @@ class AuthProvider extends ChangeNotifier {
       if (data['requires_2fa'] == true) {
         _loading = false;
         notifyListeners();
-        return data; // Caller handles 2FA screen
+        return data;
       }
 
       _api.setAccessToken(data['access_token'] as String);
-      _user = await _api.getMe();
+      _user  = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return null;
     } catch (e) {
-      _error = _parseError(e);
+      _error   = _parseError(e);
       _loading = false;
       notifyListeners();
       return null;
     }
   }
 
+  // ── Login (pre-transition) ────────────────────────────────────
+  //
+  // Fetches token + user but does NOT set AuthState.authenticated.
+  // Caller shows any post-login UI (biometric dialog etc) then calls
+  // completeAuthentication() to navigate to HomeShell.
+  //
+  // Returns:
+  //   { requires_2fa: true, partial_token: '...' }  →  2FA required
+  //   { token: '...', user: {...} }                 →  success, call completeAuthentication()
+  //   null                                          →  error, check auth.error
+
+  Future<Map<String, dynamic>?> loginGetToken(
+      String username, String password) async {
+    _loading = true;
+    _error   = null;
+    notifyListeners();
+    try {
+      final data = await _api.login(username, password);
+      if (data['requires_2fa'] == true) {
+        _loading = false;
+        notifyListeners();
+        return data;
+      }
+      _api.setAccessToken(data['access_token'] as String);
+      final user = await _api.getMe();
+      _loading = false;
+      notifyListeners();
+      return {'token': data['access_token'] as String, 'user': user};
+    } catch (e) {
+      _error   = _parseError(e);
+      _loading = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Completes the auth transition after post-login UI is done.
+  void completeAuthentication(Map<String, dynamic> user) {
+    _user  = user;
+    _state = AuthState.authenticated;
+    notifyListeners();
+  }
+
   // ── Complete login after 2FA ──────────────────────────────────
 
   Future<bool> complete2FA(String partialToken, String code) async {
     _loading = true;
-    _error = null;
+    _error   = null;
     notifyListeners();
-
     try {
       final data = await _api.verify2FA(partialToken, code);
       _api.setAccessToken(data['access_token'] as String);
-      _user = await _api.getMe();
+      _user  = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return true;
     } catch (e) {
+      _error   = _parseError(e);
+      _loading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ── 2FA backup code ───────────────────────────────────────────
+
+  Future<bool> completeWithBackupCode(String partialToken, String code) async {
+    _loading = true;
+    _error   = null;
+    notifyListeners();
+    try {
+      final data = await _api.useBackupCode(partialToken, code);
+      _api.setAccessToken(data['access_token'] as String);
+      _user  = await _api.getMe();
+      _state = AuthState.authenticated;
+      _loading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error   = _parseError(e);
+      _loading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ── Passkey ───────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> passkeyAuthBegin() async {
+    try {
+      return await _api.passkeyAuthBegin();
+    } catch (e) {
       _error = _parseError(e);
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> passkeyAuthComplete(
+      String challengeId, Map<String, dynamic> credential) async {
+    _loading = true;
+    _error   = null;
+    notifyListeners();
+    try {
+      final data = await _api.passkeyAuthComplete(
+          challengeId: challengeId, credential: credential);
+      _api.setAccessToken(data['access_token'] as String);
+      _user  = await _api.getMe();
+      _state = AuthState.authenticated;
+      _loading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error   = _parseError(e);
       _loading = false;
       notifyListeners();
       return false;
@@ -94,17 +194,21 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout() async {
     await _api.logout();
-    _user = null;
+    _user  = null;
     _state = AuthState.unauthenticated;
     notifyListeners();
   }
 
   // ── Helpers ───────────────────────────────────────────────────
 
+  void setError(String message) {
+    _error = message;
+    notifyListeners();
+  }
+
   String _parseError(dynamic e) {
     if (e is Exception) {
       final str = e.toString();
-      // Dio error with response body
       if (str.contains('"detail"')) {
         final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
         if (match != null) return match.group(1)!;

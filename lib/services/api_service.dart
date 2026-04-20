@@ -193,6 +193,35 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Passkey ───────────────────────────────────────────────────────────────
+ 
+  Future<Map<String, dynamic>> passkeyAuthBegin() async {
+    final res = await _dio.post('/auth/passkey/authenticate-begin', data: {});
+    return res.data as Map<String, dynamic>;
+  }
+ 
+  Future<Map<String, dynamic>> passkeyAuthComplete({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  }) async {
+    final res = await _dio.post('/auth/passkey/authenticate-complete', data: {
+      'challenge_id': challengeId,
+      'credential':   credential,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+ 
+  // ── 2FA backup code ───────────────────────────────────────────────────────
+ 
+  Future<Map<String, dynamic>> useBackupCode(
+      String partialToken, String backupCode) async {
+    final res = await _dio.post('/auth/2fa/use-backup', data: {
+      'partial_token': partialToken,
+      'backup_code':   backupCode,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
   // ── Private helpers ───────────────────────────────────────────
 
   Future<Response> _authedGet(String path, {Map<String, dynamic>? queryParameters}) =>
