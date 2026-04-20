@@ -337,6 +337,22 @@ class ApiService {
 
   // ── Private helpers ───────────────────────────────────────────
 
+  // ── Resources ────────────────────────────────────────────────────────────────
+
+  // GET /api/resources — returns { profile, generated_at } or null profile if not yet generated
+  Future<Map<String, dynamic>?> getResources() async {
+    final res = await _authedGet('/api/resources');
+    return res.data as Map<String, dynamic>?;
+  }
+
+  // POST /api/resources/generate — generates (or force-refreshes) personalized resources
+  // Returns { profile, generated_at }
+  Future<Map<String, dynamic>> generateResources({bool force = false}) async {
+    final path = force ? '/api/resources/generate?force=true' : '/api/resources/generate';
+    final res = await _authedPost(path, data: {});
+    return res.data as Map<String, dynamic>;
+  }
+
   Future<Response> _authedGet(String path, {Map<String, dynamic>? queryParameters}) =>
       _dio.get(path, queryParameters: queryParameters);
 

@@ -11,6 +11,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
+import 'resources_screen.dart';
 
 // ── Option constants ──────────────────────────────────────────────────────────
 
@@ -479,6 +480,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: CupertinoIcons.chat_bubble_2_fill,
                     label: 'Text Journal',
                     subtitle: 'Journal via SMS from your phone',
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // ── SUPPORT ───────────────────────────────────────────
+                const _SectionLabel('SUPPORT'),
+                const SizedBox(height: 8),
+                GlassCard(
+                  onTap: () => _push(const ResourcesScreen()),
+                  child: _NavRow(
+                    icon: CupertinoIcons.heart_fill,
+                    label: 'Resources',
+                    subtitle: 'Personalized support tools and services',
                   ),
                 ),
 
