@@ -23,7 +23,7 @@ dependencies:
 
   # URL launching (browser + phone app)
   url_launcher: ^6.3.0
-  
+
   #imagepicker
   image_picker: ^1.1.2
  
@@ -38,6 +38,9 @@ dependencies:
 
   # Authentication
   local_auth: ^2.3.0
+
+  # File picker — Day One import + attachments
+  file_picker: ^8.1.1
 
   # Markdown rendering (for AI responses)
   flutter_markdown: ^0.7.4

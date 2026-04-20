@@ -78,6 +78,60 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Registration / Onboarding ─────────────────────────────────
+
+  Future<Map<String, dynamic>> register(
+      String username, String email, String password) async {
+    final res = await _dio.post('/api/register', data: {
+      'username': username,
+      'email': email,
+      'password': password,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> setupSecurityQuestions({
+    required String q1, required String a1,
+    required String q2, required String a2,
+    required String q3, required String a3,
+  }) async {
+    await _authedPost('/auth/security-questions/setup', data: {
+      'question_1': q1, 'answer_1': a1,
+      'question_2': q2, 'answer_2': a2,
+      'question_3': q3, 'answer_3': a3,
+    });
+  }
+
+  Future<Map<String, dynamic>> onboardingMemoryPreview(Map<String, dynamic> data) async {
+    final res = await _authedPost('/api/onboarding/memory-preview', data: data);
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> onboardingMemorySave(Map<String, dynamic> data) async {
+    await _authedPost('/api/onboarding/memory', data: data);
+  }
+
+  // ── Day One Import ────────────────────────────────────────────
+
+  /// Uploads a .zip or .json Day One export.
+  /// Returns { job_id, total } — poll getDayOneImportStatus for progress.
+  Future<Map<String, dynamic>> importDayOne(String filePath, String fileName) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    final res = await _dio.post(
+      '/api/import/dayone',
+      data: formData,
+      options: Options(receiveTimeout: const Duration(minutes: 2)),
+    );
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getDayOneImportStatus(String jobId) async {
+    final res = await _authedGet('/api/import/dayone/status/$jobId');
+    return res.data as Map<String, dynamic>;
+  }
+
   Future<void> logout() async {
     try {
       await _dio.post('/auth/logout');

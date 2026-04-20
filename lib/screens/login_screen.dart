@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
+import 'onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -220,7 +221,50 @@ class _LoginScreenState extends State<LoginScreen> {
                             : null,
                         biometricLoading: _biometricLoading,
                       ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                // Create account
+                if (!_show2FA) ...[
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      CupertinoPageRoute(builder: (_) => const OnboardingScreen()),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: JournalColors.bgCard.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: JournalColors.border),
+                      ),
+                      child: const Column(
+                        children: [
+                          Text(
+                            'CREATE AN ACCOUNT',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: JournalColors.accent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'local-first · end-to-end secured',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 11,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                const SizedBox(height: 16),
                 Consumer<AuthProvider>(
                   builder: (_, auth, __) {
                     if (auth.error == null) return const SizedBox.shrink();
