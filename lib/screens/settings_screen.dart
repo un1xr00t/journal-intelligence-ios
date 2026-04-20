@@ -606,8 +606,9 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
       if (mounted) setState(() { _saving = false; _saved = true; });
       await Future.delayed(const Duration(seconds: 3));
       if (mounted) setState(() => _saved = false);
-    } catch (_) {
-      if (mounted) setState(() { _saving = false; _error = 'Failed to save'; });
+    } catch (e, s) {
+      debugPrint('⚠️ MemoryProfile save error: $e\n$s');
+      if (mounted) setState(() { _saving = false; _error = 'Failed to save: $e'; });
     }
   }
 
@@ -1412,8 +1413,9 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
         setState(() { _saving = false; _status = 'Settings saved.'; _statusErr = false; _editing = false; });
         await _load();
       }
-    } catch (_) {
-      if (mounted) setState(() { _saving = false; _status = 'Failed to save'; _statusErr = true; });
+    } catch (e, s) {
+      debugPrint('⚠️ AIProvider save error: $e\n$s');
+      if (mounted) setState(() { _saving = false; _status = 'Error: $e'; _statusErr = true; });
     }
   }
 
@@ -1684,9 +1686,10 @@ class _ToneScreenState extends State<_ToneScreen> {
       if (mounted) setState(() { _saving = false; _saved = true; });
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _saved = false);
-    } catch (_) {
+    } catch (e, s) {
+      debugPrint('⚠️ Tone save error: $e\n$s');
       if (mounted)
-        setState(() { _saving = false; _error = 'Failed to save'; });
+        setState(() { _saving = false; _error = 'Error: $e'; });
     }
   }
 
@@ -1722,6 +1725,7 @@ class _ToneScreenState extends State<_ToneScreen> {
                             const Divider(
                                 color: JournalColors.border, height: 1),
                           GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () => setState(() {
                               _tone = t.id;
                               _saved = false;

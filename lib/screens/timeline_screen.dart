@@ -47,14 +47,22 @@ class _TimelineScreenState extends State<TimelineScreen> {
     super.dispose();
   }
 
+  Future<String> _getPreferredTone() async {
+    try {
+      final data = await _api.getMemory();
+      final m = (data['memory'] ?? data) as Map<String, dynamic>;
+      return m['preferred_tone'] as String? ?? 'therapist';
+    } catch (_) {
+      return 'therapist';
+    }
+  }
+
   Future<void> _loadSummary() async {
-    // Only fetch if not cached this session
     if (_masterSummary != null) return;
     if (mounted) setState(() => _summaryLoading = true);
     try {
-      // GET /api/therapist/insight/status?tone=therapist
-      // Returns { insight, generated_at, entry_count, entry_date, cached, ... }
-      final data = await _api.getTherapistInsightStatus(tone: 'therapist');
+      final tone = await _getPreferredTone();
+      final data = await _api.getTherapistInsightStatus(tone: tone);
       final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
       if (mounted) setState(() {
         _masterSummary = hasContent ? data : null;
@@ -68,8 +76,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
   Future<void> _regenerateSummary() async {
     if (mounted) setState(() { _masterSummary = null; _summaryLoading = true; });
     try {
-      // POST /api/therapist/insight generates and caches — no polling needed
-      final data = await _api.generateTherapistInsight(tone: 'therapist', force: true);
+      final tone = await _getPreferredTone();
+      final data = await _api.generateTherapistInsight(tone: tone, force: true);
       final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
       if (mounted) setState(() {
         _masterSummary = hasContent ? data : null;
@@ -371,9 +379,9 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
                 const Icon(CupertinoIcons.sparkles,
                     color: JournalColors.accent, size: 14),
                 const SizedBox(width: 8),
-                const Text(
-                  'THERAPIST INSIGHT',
-                  style: TextStyle(
+                Text(
+                  '${((widget.summary?['tone_name'] as String?) ?? 'Therapist').toUpperCase()} INSIGHT',
+                  style: const TextStyle(
                     color: JournalColors.textMuted,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
