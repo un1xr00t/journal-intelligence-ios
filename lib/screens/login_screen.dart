@@ -230,6 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       CupertinoPageRoute(builder: (_) => const OnboardingScreen()),
                     ),
                     child: Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         color: JournalColors.bgCard.withOpacity(0.5),
