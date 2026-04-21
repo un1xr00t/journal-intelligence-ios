@@ -1,7 +1,7 @@
 // lib/screens/home_shell.dart
 //
 // AdaptiveScaffold with iOS 26 Liquid Glass bottom navigation.
-// Five tabs: Today · Write · Timeline · Intelligence · Settings
+// Five tabs: Today · Timeline · Write · Intelligence · More
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
@@ -24,8 +24,8 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _screens = [
     TodayScreen(),
-    WriteScreen(),
     TimelineScreen(),
+    WriteScreen(),
     AskJournalScreen(),
     MoreScreen(),
   ];
@@ -36,7 +36,10 @@ class _HomeShellState extends State<HomeShell> {
       body: _screens[_selectedIndex],
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: _selectedIndex,
-        onTap: (i) => setState(() => _selectedIndex = i),
+        onTap: (i) {
+          FocusManager.instance.primaryFocus?.unfocus();
+          setState(() => _selectedIndex = i);
+        },
         items: [
           AdaptiveNavigationDestination(
             icon: PlatformInfo.isIOS26OrHigher()
@@ -49,21 +52,21 @@ class _HomeShellState extends State<HomeShell> {
           ),
           AdaptiveNavigationDestination(
             icon: PlatformInfo.isIOS26OrHigher()
-                ? "pencil.and.list.clipboard"
-                : CupertinoIcons.pencil,
-            selectedIcon: PlatformInfo.isIOS26OrHigher()
-                ? "pencil.and.list.clipboard"
-                : CupertinoIcons.pencil,
-            label: 'Write',
-          ),
-          AdaptiveNavigationDestination(
-            icon: PlatformInfo.isIOS26OrHigher()
                 ? "calendar.badge.clock"
                 : CupertinoIcons.time,
             selectedIcon: PlatformInfo.isIOS26OrHigher()
                 ? "calendar.badge.clock"
                 : CupertinoIcons.time,
             label: 'Timeline',
+          ),
+          AdaptiveNavigationDestination(
+            icon: PlatformInfo.isIOS26OrHigher()
+                ? "pencil.and.list.clipboard"
+                : CupertinoIcons.pencil,
+            selectedIcon: PlatformInfo.isIOS26OrHigher()
+                ? "pencil.and.list.clipboard"
+                : CupertinoIcons.pencil,
+            label: 'Write',
           ),
           AdaptiveNavigationDestination(
             icon: PlatformInfo.isIOS26OrHigher()
@@ -87,6 +90,4 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
-
-
 }

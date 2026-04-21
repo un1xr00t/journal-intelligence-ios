@@ -319,7 +319,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 _HeroGlyph(icon: CupertinoIcons.book, size: 30),
                 SizedBox(height: 20),
                 Text(
-                  'Your story starts here',
+                  'No entries yet',
                   style: TextStyle(
                     color: JournalColors.textPrimary,
                     fontSize: 22,
@@ -328,7 +328,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 ),
                 SizedBox(height: 10),
                 Text(
-                  'Once you write a few entries, this screen becomes a living archive of your patterns, moods, and turning points.',
+                  'Once you write a few entries, they will show up here in order.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: JournalColors.textSecondary,
@@ -559,7 +559,7 @@ class _TimelineHero extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'YOUR RECENT ARC',
+                      'RECENT ACTIVITY',
                       style: TextStyle(
                         color: JournalColors.textMuted,
                         fontSize: 11,
@@ -569,7 +569,7 @@ class _TimelineHero extends StatelessWidget {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'A cinematic view of what your journal has been holding lately.',
+                      'A summary of your recent journal activity.',
                       style: TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 21,
@@ -1020,11 +1020,44 @@ class _EntryTileState extends State<_EntryTile> {
     }
   }
 
-  Color _moodColor(dynamic score) {
+  Color _fallbackMoodColor(dynamic score) {
     final value = (score as num?)?.toDouble() ?? 0.5;
     if (value >= 0.7) return JournalColors.success;
     if (value >= 0.4) return JournalColors.severity;
     return JournalColors.danger;
+  }
+
+  Color _moodAccent(String? label, dynamic score) {
+    final normalized = label?.trim().toLowerCase();
+    switch (normalized) {
+      case 'angry':
+      case 'rage':
+      case 'furious':
+      case 'resentful':
+        return JournalColors.danger;
+      case 'sad':
+      case 'grief':
+      case 'depressed':
+      case 'lonely':
+        return JournalColors.info;
+      case 'anxious':
+      case 'stressed':
+      case 'overwhelmed':
+      case 'worried':
+        return JournalColors.orange;
+      case 'happy':
+      case 'calm':
+      case 'hopeful':
+      case 'content':
+      case 'grateful':
+        return JournalColors.success;
+      case 'confused':
+      case 'uncertain':
+      case 'mixed':
+        return JournalColors.severity;
+      default:
+        return _fallbackMoodColor(score);
+    }
   }
 
   DateTime? _parseDate(String raw) {
@@ -1056,8 +1089,10 @@ class _EntryTileState extends State<_EntryTile> {
     final moodLabel = entry['mood_label'] as String?;
     final moodScore = entry['mood_score'];
     final tags = _parseTags(entry['tags']);
+    final visibleTags = _expanded ? tags : tags.take(3).toList();
+    final hiddenTagCount = _expanded ? 0 : tags.length - visibleTags.length;
     final isLong = displayText.length > 280;
-    final railColor = _moodColor(moodScore);
+    final railColor = _moodAccent(moodLabel, moodScore);
 
     return Dismissible(
       key: ValueKey('entry-${entry['id']}'),
@@ -1173,16 +1208,6 @@ class _EntryTileState extends State<_EntryTile> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'ENTRY ${widget.index + 1}',
-                                style: TextStyle(
-                                  color: railColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
                                 displayDate,
                                 style: const TextStyle(
                                   color: JournalColors.textPrimary,
@@ -1209,11 +1234,6 @@ class _EntryTileState extends State<_EntryTile> {
                           icon: CupertinoIcons.text_alignleft,
                           label: '$wordCount words',
                         ),
-                        if (tags.isNotEmpty)
-                          _SubtleMetaChip(
-                            icon: CupertinoIcons.number,
-                            label: '${tags.length} themes',
-                          ),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -1248,32 +1268,36 @@ class _EntryTileState extends State<_EntryTile> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: tags
-                            .take(8)
-                            .map(
-                              (tag) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(999),
-                                  color: railColor.withOpacity(0.08),
-                                  border: Border.all(
-                                    color: railColor.withOpacity(0.16),
-                                  ),
-                                ),
-                                child: Text(
-                                  tag,
-                                  style: TextStyle(
-                                    color: railColor.withOpacity(0.92),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                        children: [
+                          ...visibleTags.map(
+                            (tag) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                color: railColor.withOpacity(0.08),
+                                border: Border.all(
+                                  color: railColor.withOpacity(0.16),
                                 ),
                               ),
-                            )
-                            .toList(),
+                              child: Text(
+                                tag,
+                                style: TextStyle(
+                                  color: railColor.withOpacity(0.92),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (hiddenTagCount > 0)
+                            _SubtleMetaChip(
+                              icon: CupertinoIcons.ellipsis,
+                              label: '+$hiddenTagCount more',
+                            ),
+                        ],
                       ),
                     ],
                   ],

@@ -51,7 +51,7 @@ class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
   List<_Section> _sections() => [
-        _Section('Premium', 'Your highest-signal intelligence tools.',
+        _Section('Featured', 'Frequently used tools and analysis views.',
             JournalColors.accent, [
           _Item(
             label: 'Ask My Journal',
@@ -105,7 +105,9 @@ class MoreScreen extends StatelessWidget {
             builder: (_) => const WarRoomScreen(),
           ),
         ]),
-        _Section('Case Building', 'Structure your proof, exports, and record.',
+        _Section(
+            'Case Building',
+            'Organize records, exports, and supporting details.',
             const Color(0xFF10B981), [
           _Item(
             label: 'Contradictions',
@@ -131,7 +133,7 @@ class MoreScreen extends StatelessWidget {
             builder: (_) => const _PlaceholderScreen(title: 'Exports'),
           ),
         ]),
-        _Section('Insights', 'Watch patterns before they become problems.',
+        _Section('Insights', 'Review patterns and longer-term signals.',
             const Color(0xFFF59E0B), [
           _Item(
             label: 'Early Warning',
@@ -157,7 +159,7 @@ class MoreScreen extends StatelessWidget {
             builder: (_) => const _PlaceholderScreen(title: 'Patterns'),
           ),
         ]),
-        _Section('People', 'See who shapes your story and how.',
+        _Section('People', 'Review people mentioned in your journal.',
             const Color(0xFF06B6D4), [
           _Item(
             label: 'People Map',
@@ -175,8 +177,8 @@ class MoreScreen extends StatelessWidget {
             builder: (_) => const _PlaceholderScreen(title: 'People & Topics'),
           ),
         ]),
-        _Section('Tools', 'Support systems for real-life logistics.',
-            const Color(0xFF10B981), [
+        _Section(
+            'Tools', 'Planning and support tools.', const Color(0xFF10B981), [
           _Item(
             label: 'Budget Planner',
             subtitle: 'Plan finances and run AI comparisons',
@@ -256,7 +258,7 @@ class MoreScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Your private intelligence suite',
+                      'More tools',
                       style: TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 22,
@@ -265,7 +267,7 @@ class MoreScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Everything beyond journaling lives here: support tools, case-building, deep analysis, and the systems that keep your record usable.',
+                      'Additional tools, analysis views, and account controls live here.',
                       style: TextStyle(
                         color: JournalColors.textSecondary,
                         fontSize: 13,
@@ -288,7 +290,7 @@ class MoreScreen extends StatelessWidget {
                         ),
                         const _HeroMetric(
                           value: '1',
-                          label: 'Fresh Launch',
+                          label: 'New',
                           highlight: 'Proof Vault',
                         ),
                       ],

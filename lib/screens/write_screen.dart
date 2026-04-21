@@ -1,7 +1,6 @@
 // lib/screens/write_screen.dart
 import 'dart:io';
 
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -284,7 +283,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                         ),
                                         SizedBox(height: 4),
                                         Text(
-                                          'Capture the part of the day you do not want to lose.',
+                                          'Write today\'s entry.',
                                           style: TextStyle(
                                             color: JournalColors.textPrimary,
                                             fontSize: 16,
@@ -346,8 +345,8 @@ class _WriteScreenState extends State<WriteScreen> {
                                   Expanded(
                                     child: Text(
                                       _focusNode.hasFocus
-                                          ? 'Stay messy in the draft. We can make it beautiful later.'
-                                          : 'A strong entry can be a paragraph, a sentence, or a single honest line.',
+                                          ? 'Keep going. You can clean it up later if you want to.'
+                                          : 'A short note is enough if that is all you have today.',
                                       style: const TextStyle(
                                         color: JournalColors.textSecondary,
                                         fontSize: 13,
@@ -389,7 +388,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                     ),
                                     SizedBox(height: 6),
                                     Text(
-                                      'Add the receipts, the chaos, the proof.',
+                                      'Add photos if they belong with this entry.',
                                       style: TextStyle(
                                         color: JournalColors.textPrimary,
                                         fontSize: 17,
@@ -453,7 +452,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                   SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      'Drop in photos to preserve the texture of the day alongside the words.',
+                                      'Add photos to keep them with the entry.',
                                       style: TextStyle(
                                         color: JournalColors.textSecondary,
                                         fontSize: 14,
@@ -574,14 +573,11 @@ class _WriteScreenState extends State<WriteScreen> {
                                 ),
                               );
 
-                              final saveButton = AdaptiveButton(
-                                style: AdaptiveButtonStyle.prominentGlass,
-                                onPressed: _canSave ? _save : null,
-                                label: _saving
-                                    ? 'Saving...'
-                                    : _saved
-                                        ? 'Entry Saved'
-                                        : 'Save Entry',
+                              final saveButton = _SaveEntryButton(
+                                enabled: _canSave,
+                                saving: _saving,
+                                saved: _saved,
+                                onPressed: _save,
                               );
 
                               if (compactActions) {
@@ -795,8 +791,8 @@ class _WriteHero extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       isFocused
-                          ? 'Stay with the moment long enough to hear what it is trying to say.'
-                          : 'Turn the plain draft box into a place that feels worth opening every day.',
+                          ? 'Add what happened while it is still fresh.'
+                          : 'Start a new entry when you are ready.',
                       style: const TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 21,
@@ -811,7 +807,7 @@ class _WriteHero extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           const Text(
-            'Use this space for the honest version, not the polished one. The premium part is what it helps you notice later.',
+            'Use this space for notes, context, or anything you want to keep.',
             style: TextStyle(
               color: JournalColors.textSecondary,
               fontSize: 14,
@@ -920,6 +916,78 @@ class _InfoChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SaveEntryButton extends StatelessWidget {
+  const _SaveEntryButton({
+    required this.enabled,
+    required this.saving,
+    required this.saved,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final bool saving;
+  final bool saved;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = saved
+        ? JournalColors.success
+        : enabled
+            ? JournalColors.accent
+            : JournalColors.bgCardAlt;
+    final borderColor = saved
+        ? JournalColors.success
+        : enabled
+            ? JournalColors.borderBright
+            : JournalColors.border;
+    final labelColor =
+        enabled || saved ? JournalColors.textPrimary : JournalColors.textMuted;
+    final label = saving
+        ? 'Saving...'
+        : saved
+            ? 'Entry Saved'
+            : 'Save Entry';
+
+    return GestureDetector(
+      onTap: enabled ? onPressed : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        height: 54,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+          boxShadow: enabled
+              ? const [
+                  BoxShadow(
+                    color: JournalColors.accentGlow,
+                    blurRadius: 16,
+                    offset: Offset(0, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: saving
+              ? const CupertinoActivityIndicator(
+                  color: JournalColors.textPrimary,
+                )
+              : Text(
+                  label,
+                  style: TextStyle(
+                    color: labelColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+        ),
       ),
     );
   }

@@ -141,7 +141,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Today will light up once you have a little more journal history.',
+                      'This view needs a little more journal history.',
                       style: TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 18,
@@ -154,7 +154,7 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
               SizedBox(height: 14),
               Text(
-                'Write a few more entries and this page will turn into a daily intelligence brief with risks, momentum, and what deserves your attention.',
+                'Write a few more entries and this page will start showing a daily summary here.',
                 style: TextStyle(
                   color: JournalColors.textSecondary,
                   fontSize: 14,
@@ -579,8 +579,8 @@ class _TodayHero extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       noData
-                          ? 'Your daily brief is waiting for more signal.'
-                          : 'A premium read on what your journal is trying to tell you today.',
+                          ? 'Today\'s summary will appear once there is more to read.'
+                          : 'A quick read on what your journal is showing today.',
                       style: const TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 22,
@@ -617,7 +617,7 @@ class _TodayHero extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   emotionalState ??
-                      'No dominant emotional signal has surfaced yet, but the page is primed for it.',
+                      'No clear emotional signal has surfaced yet.',
                   style: const TextStyle(
                     color: JournalColors.textPrimary,
                     fontSize: 16,
