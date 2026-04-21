@@ -476,6 +476,20 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
               maxLines: _expanded ? null : 4,
               overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             ),
+
+            // Explicit show more/less — needed because Dismissible can eat card taps
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _expanded ? 'Show less' : 'Show more',
+                style: const TextStyle(
+                  color: JournalColors.accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -485,7 +499,7 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
 
 // ── Entry Tile ────────────────────────────────────────────────────────────────
 
-class _EntryTile extends StatelessWidget {
+class _EntryTile extends StatefulWidget {
   const _EntryTile({
     required this.entry,
     required this.onDelete,
@@ -497,30 +511,70 @@ class _EntryTile extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
+  State<_EntryTile> createState() => _EntryTileState();
+}
+
+class _EntryTileState extends State<_EntryTile> {
+  bool _expanded = false;
+
+  List<String> _parseTags(dynamic raw) {
+    if (raw == null) return [];
+    if (raw is List) return raw.map((e) => e.toString()).toList();
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == '[]' || s == 'null') return [];
+    try {
+      final inner = s.replaceAll(RegExp(r'^\[|\]$'), '');
+      return inner
+          .split(RegExp(r',\s*'))
+          .map((t) => t.replaceAll('"', '').trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Color _moodColor(dynamic score) {
+    final s = (score as num?)?.toDouble() ?? 0.5;
+    if (s >= 0.7) return const Color(0xFF22C55E);
+    if (s >= 0.4) return const Color(0xFFF59E0B);
+    return const Color(0xFFEF4444);
+  }
+
+  String _parseDate(String raw) {
+    try {
+      return DateFormat('EEE, MMM d, y').format(DateTime.parse(raw));
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final entry       = widget.entry;
     final rawDate     = (entry['entry_date'] ?? entry['ingested_at'] ?? '') as String;
     final date        = _parseDate(rawDate);
     final text        = (entry['text'] as String? ?? '').trim();
     final displayText = ((entry['summary_text'] ??
             entry['normalized_text'] ??
             entry['text']) as String? ?? '').trim();
-    final preview     = displayText.length > 200
-        ? '${displayText.substring(0, 200)}...'
-        : displayText;
     final wordCount   = (entry['word_count'] as num?)?.toInt() ??
         text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final moodLabel   = entry['mood_label'] as String?;
+    final moodScore   = entry['mood_score'];
+    final tags        = _parseTags(entry['tags']);
+    // Only show "Show more" if text is actually long
+    final isLong = displayText.length > 280;
 
     return Dismissible(
       key: ValueKey('entry-${entry['id']}'),
       direction: DismissDirection.horizontal,
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Swipe right → delete
-          onDelete();
-          return false; // We handle removal ourselves after confirm
+          widget.onDelete();
+          return false;
         } else {
-          // Swipe left → edit
-          onEdit();
+          widget.onEdit();
           return false;
         }
       },
@@ -569,6 +623,7 @@ class _EntryTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header row: date + mood badge + word count ──
             Row(
               children: [
                 Expanded(
@@ -578,34 +633,90 @@ class _EntryTile extends StatelessWidget {
                           fontSize: 13,
                           fontWeight: FontWeight.w600)),
                 ),
+                if (moodLabel != null && moodLabel.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _moodColor(moodScore).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: _moodColor(moodScore).withOpacity(0.4), width: 0.5),
+                    ),
+                    child: Text(
+                      moodLabel,
+                      style: TextStyle(
+                          color: _moodColor(moodScore),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Text('$wordCount words',
                     style: const TextStyle(
                         color: JournalColors.textMuted, fontSize: 12)),
               ],
             ),
+
             const SizedBox(height: 10),
+
+            // ── Entry text with expand/collapse ──
             Text(
-              preview,
+              displayText,
               style: const TextStyle(
                 color: JournalColors.textPrimary,
                 fontSize: 15,
                 height: 1.55,
               ),
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
+              maxLines: _expanded ? null : 4,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             ),
+
+            if (isLong) ...[
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Text(
+                  _expanded ? 'Show less' : 'Show more',
+                  style: const TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+
+            // ── Tags ──
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: tags.map((tag) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: JournalColors.accent.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                        color: JournalColors.accent.withOpacity(0.2), width: 0.5),
+                  ),
+                  child: Text(
+                    tag,
+                    style: const TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                )).toList(),
+              ),
+            ],
           ],
         ),
       ),
     );
-  }
-
-  String _parseDate(String raw) {
-    try {
-      return DateFormat('EEE, MMM d, y').format(DateTime.parse(raw));
-    } catch (_) {
-      return raw;
-    }
   }
 }
 
