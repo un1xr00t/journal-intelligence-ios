@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -1001,7 +1002,10 @@ class _EntryTile extends StatefulWidget {
 }
 
 class _EntryTileState extends State<_EntryTile> {
+  final _api = ApiService();
   bool _expanded = false;
+  bool _attachmentsLoading = false;
+  List<Map<String, dynamic>> _attachments = [];
 
   List<String> _parseTags(dynamic raw) {
     if (raw == null) return [];
@@ -1066,6 +1070,56 @@ class _EntryTileState extends State<_EntryTile> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _ensureAttachmentsLoaded() async {
+    if (_attachmentsLoading || _attachments.isNotEmpty) return;
+    final entryId = widget.entry['id'];
+    if (entryId is! int) return;
+    setState(() => _attachmentsLoading = true);
+    try {
+      final result = await _api.getEntryAttachments(entryId);
+      final imageAttachments = result
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .where(
+            (item) => (item['media_type'] as String? ?? '')
+                .toLowerCase()
+                .startsWith('image/'),
+          )
+          .toList();
+      if (mounted) {
+        setState(() {
+          _attachments = imageAttachments;
+          _attachmentsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _attachmentsLoading = false);
+    }
+  }
+
+  void _toggleExpanded() {
+    final nextExpanded = !_expanded;
+    setState(() => _expanded = nextExpanded);
+    if (nextExpanded) _ensureAttachmentsLoaded();
+  }
+
+  String _attachmentImagePath(String attachmentId) {
+    return '/api/entry-attachments/$attachmentId/file';
+  }
+
+  Future<void> _openImageLightbox(String path) async {
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.9),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _TimelineImageLightbox(path: path),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
   }
 
   @override
@@ -1249,19 +1303,62 @@ class _EntryTileState extends State<_EntryTile> {
                           ? TextOverflow.visible
                           : TextOverflow.ellipsis,
                     ),
-                    if (isLong) ...[
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: () => setState(() => _expanded = !_expanded),
-                        child: Text(
-                          _expanded ? 'Show less' : 'Read more',
-                          style: TextStyle(
-                            color: railColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: _toggleExpanded,
+                      child: Text(
+                        _expanded
+                            ? 'Show less'
+                            : (isLong ? 'Read more' : 'Open entry'),
+                        style: TextStyle(
+                          color: railColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                    ),
+                    if (_expanded) ...[
+                      if (_attachmentsLoading) ...[
+                        const SizedBox(height: 16),
+                        const Center(
+                          child: CupertinoActivityIndicator(
+                            color: JournalColors.accent,
+                          ),
+                        ),
+                      ] else if (_attachments.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 72,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _attachments.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 10),
+                            itemBuilder: (context, index) {
+                              final attachment = _attachments[index];
+                              final path = _attachmentImagePath(
+                                  attachment['id'].toString());
+                              return GestureDetector(
+                                onTap: () => _openImageLightbox(path),
+                                child: Container(
+                                  width: 72,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.10),
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(15),
+                                    child: _AuthImage(path: path),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                     if (tags.isNotEmpty) ...[
                       const SizedBox(height: 16),
@@ -1402,6 +1499,145 @@ class _SubtleMetaChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AuthImage extends StatefulWidget {
+  const _AuthImage({required this.path});
+
+  final String path;
+
+  @override
+  State<_AuthImage> createState() => _AuthImageState();
+}
+
+class _AuthImageState extends State<_AuthImage> {
+  final _api = ApiService();
+  _ImgState _state = _ImgState.loading;
+  List<int>? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuthImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.path != widget.path) {
+      setState(() {
+        _state = _ImgState.loading;
+        _bytes = null;
+      });
+      _fetch();
+    }
+  }
+
+  Future<void> _fetch() async {
+    if (widget.path.isEmpty) {
+      if (mounted) setState(() => _state = _ImgState.error);
+      return;
+    }
+    try {
+      final bytes = await _api.fetchImageBytes(widget.path);
+      if (mounted) {
+        setState(() {
+          _bytes = bytes;
+          _state = _ImgState.done;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _state = _ImgState.error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    switch (_state) {
+      case _ImgState.loading:
+        return const Center(
+          child: CupertinoActivityIndicator(color: JournalColors.accent),
+        );
+      case _ImgState.error:
+        return const Center(
+          child: Icon(
+            CupertinoIcons.photo,
+            color: JournalColors.textMuted,
+            size: 20,
+          ),
+        );
+      case _ImgState.done:
+        return Image.memory(
+          Uint8List.fromList(_bytes!),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(
+              CupertinoIcons.photo,
+              color: JournalColors.textMuted,
+              size: 20,
+            ),
+          ),
+        );
+    }
+  }
+}
+
+enum _ImgState { loading, done, error }
+
+class _TimelineImageLightbox extends StatelessWidget {
+  const _TimelineImageLightbox({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      backgroundColor: Colors.black.withValues(alpha: 0.92),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 64, 20, 20),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: _AuthImage(path: path),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 20,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.xmark,
+                    color: JournalColors.textPrimary,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

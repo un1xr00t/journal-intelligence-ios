@@ -292,6 +292,12 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> getEntryAttachments(int entryId) async {
+    final res = await _authedGet('/api/entries/$entryId/attachments');
+    final body = res.data as Map<String, dynamic>? ?? {};
+    return List<dynamic>.from(body['attachments'] ?? const []);
+  }
+
   // ── AI Reflections ────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getReflection(int entryId,
