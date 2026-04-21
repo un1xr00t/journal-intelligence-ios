@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
 import 'detective_screen.dart';
 import 'exit_plan_screen.dart';
+import 'my_story_screen.dart';
 import 'resources_screen.dart';
 import 'settings_screen.dart';
 
@@ -81,7 +82,7 @@ class MoreScreen extends StatelessWidget {
             label: 'My Story',
             subtitle: 'AI-generated narrative drafts of your journey',
             icon: CupertinoIcons.book,
-            builder: (_) => const _PlaceholderScreen(title: 'My Story'),
+            builder: (_) => const MyStoryScreen(),
           ),
           _Item(
             label: 'War Room',

@@ -749,6 +749,48 @@ class ApiService {
     if (taskId != null) body['task_id'] = taskId;
     await _authedPost('/api/exit-plan/notes', data: body);
   }
+
+  // ── My Story ──────────────────────────────────────────────────────────────
+
+  /// GET /api/my-story/cases
+  /// Returns { cases: [...], has_detective_access: bool }
+  Future<Map<String, dynamic>> myStoryGetCases() async {
+    final r = await _authedGet('/api/my-story/cases');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  /// POST /api/my-story/generate
+  /// Body: { case_ids, include_journal, journal_entry_count, manual_context,
+  ///         include_fairness, output_purpose, output_style }
+  /// Returns { narrative: str }
+  Future<Map<String, dynamic>> myStoryGenerate(Map<String, dynamic> body) async {
+    final r = await _authedPost('/api/my-story/generate', data: body);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  /// GET /api/my-story/drafts → List of draft summaries
+  Future<List<dynamic>> myStoryGetDrafts() async {
+    final r = await _authedGet('/api/my-story/drafts');
+    return List<dynamic>.from(r.data);
+  }
+
+  /// GET /api/my-story/drafts/{id} → full draft with generated_text
+  Future<Map<String, dynamic>> myStoryGetDraft(int id) async {
+    final r = await _authedGet('/api/my-story/drafts/$id');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  /// POST /api/my-story/drafts
+  /// Body: { title, generated_text, manual_context, output_purpose, sources_summary }
+  Future<Map<String, dynamic>> myStorySaveDraft(Map<String, dynamic> body) async {
+    final r = await _authedPost('/api/my-story/drafts', data: body);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  /// DELETE /api/my-story/drafts/{id}
+  Future<void> myStoryDeleteDraft(int id) async {
+    await _authedDelete('/api/my-story/drafts/$id');
+  }
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────
