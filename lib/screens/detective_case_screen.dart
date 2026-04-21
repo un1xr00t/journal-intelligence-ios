@@ -5,6 +5,7 @@
 
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show lerpDouble;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -333,18 +334,26 @@ class _GlowOrb extends StatelessWidget {
 }
 
 class _HeroMetric extends StatelessWidget {
-  const _HeroMetric({required this.label, required this.value});
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    this.compact = false,
+  });
 
   final String label;
   final String value;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 8 : 10,
+      ),
       decoration: BoxDecoration(
         color: _withAlpha(JournalColors.bgSurface, 0.72),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
         border: Border.all(color: JournalColors.border),
       ),
       child: Column(
@@ -359,12 +368,12 @@ class _HeroMetric extends StatelessWidget {
               letterSpacing: 1.1,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: compact ? 4 : 6),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: JournalColors.textPrimary,
-              fontSize: 15,
+              fontSize: compact ? 14 : 15,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -387,6 +396,7 @@ class DetectiveCaseScreen extends StatefulWidget {
 class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
   final _api = ApiService();
   int _tabIndex = 0;
+  double _heroCollapse = 0;
   List<Map<String, dynamic>> _entries = [];
   bool _loadingEntries = true;
   List<Map<String, dynamic>> _uploads = [];
@@ -553,9 +563,36 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
     return _uploads.length;
   }
 
+  void _handleInnerScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return;
+    final next = ((notification.metrics.pixels) / 96).clamp(0.0, 1.0);
+    if ((next - _heroCollapse).abs() < 0.03) return;
+    if (!mounted) return;
+    setState(() => _heroCollapse = next);
+  }
+
   Widget _buildHero() {
+    final collapse = _heroCollapse.clamp(0.0, 1.0);
+    final iconSize = lerpDouble(42, 32, collapse)!;
+    final iconGlyphSize = lerpDouble(20, 16, collapse)!;
+    final titleSize = lerpDouble(22, 17, collapse)!;
+    final outerPadding = EdgeInsets.fromLTRB(
+      20,
+      lerpDouble(8, 4, collapse)!,
+      20,
+      lerpDouble(18, 8, collapse)!,
+    );
+    final cardPadding = EdgeInsets.fromLTRB(
+      lerpDouble(20, 16, collapse)!,
+      lerpDouble(20, 14, collapse)!,
+      lerpDouble(20, 16, collapse)!,
+      lerpDouble(20, 14, collapse)!,
+    );
+    final showDetail = collapse < 0.92;
+    final compactMetrics = collapse > 0.45;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      padding: outerPadding,
       child: GlassCard(
         accentBorder: true,
         padding: const EdgeInsets.all(0),
@@ -571,16 +608,18 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
               ],
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: cardPadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: iconSize,
+                      height: iconSize,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -594,10 +633,10 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                       child: Icon(
                         _kTabs[_tabIndex].icon,
                         color: JournalColors.textPrimary,
-                        size: 20,
+                        size: iconGlyphSize,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: lerpDouble(12, 10, collapse)!),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -614,9 +653,9 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                           const SizedBox(height: 4),
                           Text(
                             widget.caseData['title'] as String? ?? 'Case',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: JournalColors.textPrimary,
-                              fontSize: 22,
+                              fontSize: titleSize,
                               fontWeight: FontWeight.w700,
                               height: 1.15,
                             ),
@@ -646,39 +685,84 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  _tabSummary(),
-                  style: const TextStyle(
-                    color: JournalColors.textSecondary,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _HeroMetric(
-                        label: 'Entries',
-                        value: '${_entries.length}',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _HeroMetric(
-                        label: 'Photos',
-                        value: '${_photoCount()}',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _HeroMetric(
-                        label: 'View',
-                        value: _kTabs[_tabIndex].label,
-                      ),
-                    ),
-                  ],
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  child: showDetail
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(height: lerpDouble(16, 8, collapse)!),
+                            Opacity(
+                              opacity: lerpDouble(1, 0, collapse)!,
+                              child: Text(
+                                _tabSummary(),
+                                style: TextStyle(
+                                  color: JournalColors.textSecondary,
+                                  fontSize: lerpDouble(14, 12, collapse)!,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: lerpDouble(16, 8, collapse)!),
+                            compactMetrics
+                                ? Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      SizedBox(
+                                        width: 96,
+                                        child: _HeroMetric(
+                                          label: 'Entries',
+                                          value: '${_entries.length}',
+                                          compact: true,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 96,
+                                        child: _HeroMetric(
+                                          label: 'Photos',
+                                          value: '${_photoCount()}',
+                                          compact: true,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 108,
+                                        child: _HeroMetric(
+                                          label: 'View',
+                                          value: _kTabs[_tabIndex].label,
+                                          compact: true,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: _HeroMetric(
+                                          label: 'Entries',
+                                          value: '${_entries.length}',
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _HeroMetric(
+                                          label: 'Photos',
+                                          value: '${_photoCount()}',
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _HeroMetric(
+                                          label: 'View',
+                                          value: _kTabs[_tabIndex].label,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -709,7 +793,13 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
               SliverToBoxAdapter(child: _buildTabBar()),
               SliverFillRemaining(
                 hasScrollBody: true,
-                child: _buildTab(),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    _handleInnerScroll(notification);
+                    return false;
+                  },
+                  child: _buildTab(),
+                ),
               ),
             ],
           ),
@@ -720,11 +810,18 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
 
   Widget _buildTabBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        lerpDouble(14, 8, _heroCollapse.clamp(0.0, 1.0))!,
+      ),
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(
+          vertical: lerpDouble(8, 6, _heroCollapse.clamp(0.0, 1.0))!,
+        ),
         child: SizedBox(
-          height: 52,
+          height: lerpDouble(52, 46, _heroCollapse.clamp(0.0, 1.0))!,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1966,79 +2063,12 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
     final extraCount = (_loading ? 1 : 0) + (_showWire ? 1 : 0);
     return Column(
       children: [
-        Padding(
-          padding: _kScreenPadding.copyWith(bottom: 12),
-          child: GlassCard(
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        _withAlpha(JournalColors.accent, 0.24),
-                        _withAlpha(JournalColors.accent2, 0.16),
-                      ],
-                    ),
-                    border: Border.all(color: JournalColors.borderBright),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.chat_bubble_2_fill,
-                    color: JournalColors.textPrimary,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'PARTNER',
-                        style: TextStyle(
-                          color: JournalColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Ask against the current case record.',
-                        style: TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: _newSession,
-                  child: const Text(
-                    'New chat',
-                    style: TextStyle(
-                      color: JournalColors.accent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
         Expanded(
           child: _loadingChat
             ? const Center(child: CupertinoActivityIndicator())
             : ListView.builder(
                 controller: _scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
                 itemCount: _messages.length + extraCount,
                 itemBuilder: (ctx, i) {
                   if (i < _messages.length) return _buildMessage(_messages[i]);
@@ -2052,29 +2082,64 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
         Container(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(children: [
-            GestureDetector(
-              onTap: _wiring ? null : _dropWire,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      _withAlpha(JournalColors.accent, 0.16),
-                      _withAlpha(JournalColors.accent2, 0.12),
-                    ],
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: _wiring ? null : _dropWire,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.accent, 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: JournalColors.borderBright),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_wiring) ...[
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CupertinoActivityIndicator(radius: 6),
+                            ),
+                            const SizedBox(width: 8),
+                          ] else ...[
+                            const Icon(
+                              CupertinoIcons.refresh,
+                              color: JournalColors.accent,
+                              size: 13,
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(
+                            _wiring ? 'Refreshing…' : 'Refresh briefing',
+                            style: TextStyle(
+                              color: _wiring ? JournalColors.textMuted : JournalColors.accent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: JournalColors.borderBright),
-                ),
-                child: Text(
-                  _wiring ? 'Refreshing case briefing…' : 'Refresh case briefing',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _wiring ? JournalColors.textMuted : JournalColors.accent,
-                    fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.4),
-                ),
+                  const Spacer(),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
+                    minimumSize: Size.zero,
+                    onPressed: _newSession,
+                    child: const Text(
+                      'New chat',
+                      style: TextStyle(
+                        color: JournalColors.accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             GlassCard(
