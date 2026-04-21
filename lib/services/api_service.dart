@@ -571,6 +571,19 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── War Room ────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> warRoomTriage({
+    required String brainDump,
+    bool includeJournalContext = true,
+  }) async {
+    final res = await _authedPost('/api/war-room/triage', data: {
+      'brain_dump': brainDump,
+      'include_journal_context': includeJournalContext,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
   Future<Response> _authedGet(String path,
           {Map<String, dynamic>? queryParameters}) =>
       _dio.get(path, queryParameters: queryParameters);
@@ -585,6 +598,101 @@ class ApiService {
       _dio.patch(path, data: data);
 
   Future<Response> _authedDelete(String path) => _dio.delete(path);
+
+  // ── Proof Vault ───────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> vaultGetFolders() async {
+    final r = await _authedGet('/api/vault/folders');
+    return List<dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultCreateFolder({
+    required String name,
+    required String icon,
+    required String color,
+    String? description,
+  }) async {
+    final r = await _authedPost('/api/vault/folders', data: {
+      'name': name,
+      'icon': icon,
+      'color': color,
+      'description': description,
+    });
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> vaultDeleteFolder(String folderId) async {
+    await _authedDelete('/api/vault/folders/$folderId');
+  }
+
+  Future<List<dynamic>> vaultGetFolderItems(String folderId) async {
+    final r = await _authedGet('/api/vault/folders/$folderId/items');
+    return List<dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultCreateItem(
+      String folderId, Map<String, dynamic> data) async {
+    final r =
+        await _authedPost('/api/vault/folders/$folderId/items', data: data);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultUpdateItem(
+      String itemId, Map<String, dynamic> data) async {
+    final r = await _authedPut('/api/vault/items/$itemId', data: data);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> vaultDeleteItem(String itemId) async {
+    await _authedDelete('/api/vault/items/$itemId');
+  }
+
+  Future<Map<String, dynamic>> vaultUploadItemPhoto(
+      String itemId, List<int> bytes, String filename) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: _imageMimeType(filename),
+      ),
+    });
+    final r = await _dio.post(
+      '/api/vault/items/$itemId/photos',
+      data: formData,
+      options: Options(headers: {'Authorization': 'Bearer $_accessToken'}),
+    );
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> vaultDeleteItemPhoto(String itemId, String photoId) async {
+    await _authedDelete('/api/vault/items/$itemId/photos/$photoId');
+  }
+
+  Future<Map<String, dynamic>> vaultGetCachedFolderSummary(
+      String folderId) async {
+    final r = await _authedGet('/api/vault/folders/$folderId/summary/cached');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultGenerateFolderSummary(String folderId,
+      {bool force = false}) async {
+    final r = await _authedPost(
+      '/api/vault/folders/$folderId/summary?force=$force',
+      data: {},
+    );
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultGetCachedSummary() async {
+    final r = await _authedGet('/api/vault/summary/cached');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> vaultGenerateSummary(
+      {bool force = false}) async {
+    final r = await _authedPost('/api/vault/summary?force=$force', data: {});
+    return Map<String, dynamic>.from(r.data);
+  }
 
   // ── Detective Mode ────────────────────────────────────────────
 
