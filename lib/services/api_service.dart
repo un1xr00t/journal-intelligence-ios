@@ -9,6 +9,21 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http_parser/http_parser.dart';
+
+// Returns the correct MediaType for an image filename so the backend
+// can pass a valid media_type to the Anthropic API.
+MediaType _imageMimeType(String filename) {
+  final ext = filename.split('.').last.toLowerCase();
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg': return MediaType('image', 'jpeg');
+    case 'png':  return MediaType('image', 'png');
+    case 'webp': return MediaType('image', 'webp');
+    case 'gif':  return MediaType('image', 'gif');
+    default:     return MediaType('image', 'jpeg');
+  }
+}
 
 class ApiService {
   static const String baseUrl = 'https://journal.williamthomas.name';
@@ -506,7 +521,11 @@ class ApiService {
   Future<Map<String, dynamic>> detectiveUploadEntryPhoto(
       String caseId, String entryId, List<int> bytes, String filename) async {
     final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename),
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: _imageMimeType(filename),
+      ),
     });
     final r = await _dio.post(
       '/api/detective/cases/$caseId/entries/$entryId/photos',
@@ -573,6 +592,20 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
+  // ── Authenticated image bytes ──────────────────────────────────────────────
+  // Used by _AuthImage in detective_case_screen to bypass Flutter's URL-keyed
+  // image cache, which doesn't re-send auth headers after a failed fetch.
+  Future<List<int>> fetchImageBytes(String relativePath) async {
+    final r = await _dio.get<List<int>>(
+      relativePath,
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {'Authorization': 'Bearer $_accessToken'},
+      ),
+    );
+    return r.data ?? [];
+  }
+
   // ── Case-level uploads (Photos tab) ─────────────────────────────────────
 
   Future<List<dynamic>> detectiveGetUploads(String caseId) async {
@@ -583,7 +616,11 @@ class ApiService {
   Future<Map<String, dynamic>> detectiveUploadCasePhoto(
       String caseId, List<int> bytes, String filename) async {
     final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename),
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: _imageMimeType(filename),
+      ),
     });
     final r = await _dio.post(
       '/api/detective/cases/$caseId/upload',
@@ -595,6 +632,11 @@ class ApiService {
 
   Future<void> detectiveDeleteUpload(String caseId, String uploadId) async {
     await _authedDelete('/api/detective/cases/$caseId/uploads/$uploadId');
+  }
+
+  // Deletes an entry-attached photo by its bare photo id (no mphoto_ prefix)
+  Future<void> detectiveDeleteEntryPhotoById(String caseId, String photoId) async {
+    await _authedDelete('/api/detective/cases/$caseId/entry-photos/$photoId');
   }
 
   // ── Intelligence ──────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 // Log tab: fully built with photo attachments + thumbnails.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -46,29 +47,74 @@ final _kTabs = [
 ];
 
 // ── Authenticated image widget ─────────────────────────────────────────────
+// Uses Dio (not Image.network) to fetch bytes so auth headers are always sent
+// and Flutter's URL-keyed image cache never caches a failed/missing response.
 
-class _AuthImage extends StatelessWidget {
+class _AuthImage extends StatefulWidget {
   final String path;   // relative path e.g. /api/detective/cases/1/entries/2/photos/3/image
   final BoxFit fit;
 
   const _AuthImage({required this.path, this.fit = BoxFit.cover});
 
   @override
+  State<_AuthImage> createState() => _AuthImageState();
+}
+
+class _AuthImageState extends State<_AuthImage> {
+  final _api = ApiService();
+  _ImgState _state = _ImgState.loading;
+  List<int>? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  @override
+  void didUpdateWidget(_AuthImage old) {
+    super.didUpdateWidget(old);
+    if (old.path != widget.path) {
+      setState(() { _state = _ImgState.loading; _bytes = null; });
+      _fetch();
+    }
+  }
+
+  Future<void> _fetch() async {
+    if (widget.path.isEmpty) {
+      if (mounted) setState(() => _state = _ImgState.error);
+      return;
+    }
+    try {
+      final bytes = await _api.fetchImageBytes(widget.path);
+      if (mounted) setState(() { _bytes = bytes; _state = _ImgState.done; });
+    } catch (_) {
+      if (mounted) setState(() => _state = _ImgState.error);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final token = ApiService().accessToken ?? '';
-    return Image.network(
-      '${ApiService.baseUrl}$path',
-      fit: fit,
-      headers: {'Authorization': 'Bearer $token'},
-      loadingBuilder: (_, child, progress) => progress == null
-          ? child
-          : const Center(child: CupertinoActivityIndicator()),
-      errorBuilder: (_, __, ___) => const Center(
-        child: Icon(CupertinoIcons.photo, color: JournalColors.textMuted, size: 20),
-      ),
-    );
+    switch (_state) {
+      case _ImgState.loading:
+        return const Center(child: CupertinoActivityIndicator(radius: 8));
+      case _ImgState.error:
+        return const Center(
+          child: Icon(CupertinoIcons.photo,
+              color: JournalColors.textMuted, size: 20));
+      case _ImgState.done:
+        return Image.memory(
+          Uint8List.fromList(_bytes!),
+          fit: widget.fit,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(CupertinoIcons.photo,
+                color: JournalColors.textMuted, size: 20)),
+        );
+    }
   }
 }
+
+enum _ImgState { loading, done, error }
 
 // ── Main screen ────────────────────────────────────────────────────────────
 
@@ -142,11 +188,19 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
     } catch (e) { _showError(e.toString()); }
   }
 
-  Future<void> _deleteUpload(String uploadId) async {
+  Future<void> _deleteUpload(Map<String, dynamic> upload) async {
+    final source = upload['source'] as String? ?? 'upload';
+    final rawId  = upload['id'].toString();
     try {
-      await _api.detectiveDeleteUpload(_caseId, uploadId);
+      if (source == 'multi_entry') {
+        // Entry-attached photos use a separate endpoint; strip the mphoto_ prefix
+        final photoId = rawId.replaceFirst('mphoto_', '');
+        await _api.detectiveDeleteEntryPhotoById(_caseId, photoId);
+      } else {
+        await _api.detectiveDeleteUpload(_caseId, rawId);
+      }
       if (mounted) setState(() =>
-        _uploads = _uploads.where((u) => u['id'].toString() != uploadId).toList());
+        _uploads = _uploads.where((u) => u['id'].toString() != rawId).toList());
     } catch (e) { _showError(e.toString()); }
   }
 
@@ -273,7 +327,11 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                 children: List.generate(_kTabs.length, (i) {
                   final selected = _tabIndex == i;
                   return GestureDetector(
-                    onTap: () => setState(() => _tabIndex = i),
+                    onTap: () {
+                setState(() => _tabIndex = i);
+                // Refresh uploads when switching to Photos or Gallery tab
+                if (i == 2 || i == 3) _loadUploads();
+              },
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -315,6 +373,7 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
           onPhotoAdded: _onPhotoAdded,
           onPhotoDeleted: _onPhotoDeleted,
           onAnalysisUpdated: _onAnalysisUpdated,
+          onUploadsRefresh: _loadUploads,
         );
       case 1:
         return _CasePartnerTab(
@@ -366,6 +425,7 @@ class _LogTab extends StatefulWidget {
   final void Function(String entryId, Map<String, dynamic> photo) onPhotoAdded;
   final void Function(String entryId, String photoId) onPhotoDeleted;
   final void Function(String entryId, String analysis) onAnalysisUpdated;
+  final VoidCallback onUploadsRefresh;
 
   const _LogTab({
     required this.caseId,
@@ -377,6 +437,7 @@ class _LogTab extends StatefulWidget {
     required this.onPhotoAdded,
     required this.onPhotoDeleted,
     required this.onAnalysisUpdated,
+    required this.onUploadsRefresh,
   });
 
   @override
@@ -455,6 +516,8 @@ class _LogTabState extends State<_LogTab> {
       await _synthesize(entryId);
     } finally {
       if (mounted) setState(() => _uploadingFor.remove(entryId));
+      // Refresh uploads list so Photos + Gallery tabs pick up new entry photos
+      widget.onUploadsRefresh();
     }
   }
 
@@ -1628,7 +1691,7 @@ class _PhotosTab extends StatefulWidget {
   final List<Map<String, dynamic>> uploads;
   final bool loading;
   final Future<void> Function(PlatformFile) onUpload;
-  final Future<void> Function(String) onDelete;
+  final Future<void> Function(Map<String, dynamic>) onDelete;
 
   const _PhotosTab({
     required this.caseId,
@@ -1808,7 +1871,7 @@ class _PhotosTabState extends State<_PhotosTab> {
                                   isDestructiveAction: true,
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    widget.onDelete(uid);
+                                    widget.onDelete(u);
                                   },
                                   child: const Text('Delete')),
                                 CupertinoDialogAction(
@@ -1837,7 +1900,7 @@ class _PhotosTabState extends State<_PhotosTab> {
 class _GalleryTab extends StatefulWidget {
   final String caseId;
   final List<Map<String, dynamic>> uploads;
-  final Future<void> Function(String) onDelete;
+  final Future<void> Function(Map<String, dynamic>) onDelete;
 
   const _GalleryTab({
     required this.caseId,
@@ -1968,7 +2031,7 @@ class _GalleryTabState extends State<_GalleryTab> {
                                           isDestructiveAction: true,
                                           onPressed: () {
                                             Navigator.pop(context);
-                                            widget.onDelete(u['id'].toString());
+                                            widget.onDelete(u);
                                           },
                                           child: const Text('Delete')),
                                         CupertinoDialogAction(
