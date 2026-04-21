@@ -359,12 +359,20 @@ class _ExitPlanScreenState extends State<ExitPlanScreen> {
 
   Widget _buildPlan() {
     final plan = _plan ?? {};
-    final planType = plan['plan_type'] as String? ?? '';
-    final progress = (plan['progress'] as num?)?.toDouble() ?? 0.0;
-    final totalTasks = (plan['total_tasks'] as num?)?.toInt() ?? 0;
-    final doneTasks  = (plan['done_tasks']  as num?)?.toInt() ?? 0;
+    final planType  = plan['plan_type'] as String? ?? '';
+    final progress  = (plan['overall_progress'] as num?)?.toDouble() ?? 0.0;
 
-    // Flatten all tasks for Today tab
+    // Compute task counts from phases
+    final allPhaseTasks = _phases.expand((ph) =>
+        List<Map<String, dynamic>>.from(ph['tasks'] ?? [])).toList();
+    final totalTasks = allPhaseTasks.length;
+    final doneTasks  = allPhaseTasks.where((t) => t['status'] == 'done').length;
+
+    // Today tasks — backend provides explicit list of IDs
+    final todayTaskIds = List<dynamic>.from(plan['today_tasks'] ?? [])
+        .map((id) => id.toString())
+        .toSet();
+
     final allTasks = _phases.expand((ph) {
       return List<Map<String, dynamic>>.from(ph['tasks'] ?? []).map((t) => {
         ...t,
@@ -373,7 +381,7 @@ class _ExitPlanScreenState extends State<ExitPlanScreen> {
     }).toList();
 
     final todayTasks = allTasks
-        .where((t) => t['status'] == 'doing' || t['status'] == 'next')
+        .where((t) => todayTaskIds.contains(t['id']?.toString()))
         .toList();
 
     return Column(
@@ -437,18 +445,24 @@ class _ExitPlanScreenState extends State<ExitPlanScreen> {
             thumbColor: JournalColors.accent,
             groupValue: _activeTab,
             onValueChanged: (v) { if (v != null) setState(() => _activeTab = v); },
-            children: const {
+            children: {
               0: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: Text('Today', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: Text('Today',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: _activeTab == 0 ? Colors.white : JournalColors.textSecondary)),
               ),
               1: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: Text('Phases', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: Text('Phases',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: _activeTab == 1 ? Colors.white : JournalColors.textSecondary)),
               ),
               2: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: Text('Notes', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: Text('Notes',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: _activeTab == 2 ? Colors.white : JournalColors.textSecondary)),
               ),
             },
           ),
@@ -529,30 +543,138 @@ class _TodayTab extends StatelessWidget {
       );
     }
 
-    final doing  = tasks.where((t) => t['status'] == 'doing').toList();
-    final next   = tasks.where((t) => t['status'] == 'next').toList();
-
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        if (doing.isNotEmpty) ...[
-          _groupHeader('In Progress'),
-          ...doing.map((t) => _TaskCard(task: t, onStatusChange: onStatusChange, onTap: () => onTapTask(t))),
-        ],
-        if (next.isNotEmpty) ...[
-          if (doing.isNotEmpty) const SizedBox(height: 4),
-          _groupHeader('Up Next'),
-          ...next.map((t) => _TaskCard(task: t, onStatusChange: onStatusChange, onTap: () => onTapTask(t))),
-        ],
+        ...tasks.map((t) => _TodayTaskCard(
+          task: t,
+          onStatusChange: onStatusChange,
+          onTapTask: () => onTapTask(t),
+        )),
         const SizedBox(height: 32),
       ],
     );
   }
+}
 
-  Widget _groupHeader(String text) => Padding(
-    padding: const EdgeInsets.only(top: 4, bottom: 8),
-    child: Text(text.toUpperCase(),
-        style: const TextStyle(color: JournalColors.textMuted, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8)),
+class _TodayTaskCard extends StatelessWidget {
+  final Map<String, dynamic> task;
+  final Future<void> Function(String, String) onStatusChange;
+  final VoidCallback onTapTask;
+
+  _TodayTaskCard({required this.task, required this.onStatusChange, required this.onTapTask});
+
+  @override
+  Widget build(BuildContext context) {
+    final id       = task['id']?.toString() ?? '';
+    final status   = task['status'] as String? ?? 'backlog';
+    final priority = task['priority'] as String? ?? 'normal';
+    final isDoing  = status == 'doing';
+    final isDone   = status == 'done';
+    final priColor = _priorityColors[priority] ?? JournalColors.accent;
+    final dueDate  = task['due_date'] as String?;
+
+    String? dueDateStr;
+    if (dueDate != null && dueDate.isNotEmpty) {
+      try { dueDateStr = DateTime.parse(dueDate).toLocal().toString().substring(0, 10); } catch (_) {}
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Priority left bar
+              Container(width: 3, color: priColor),
+              // Card body
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: JournalColors.bgCard,
+                    border: Border(
+                      top: BorderSide(color: JournalColors.border),
+                      right: BorderSide(color: JournalColors.border),
+                      bottom: BorderSide(color: JournalColors.border),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8, runSpacing: 4,
+                        children: [
+                          Text(task['title'] as String? ?? '',
+                              style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                          _Pill(priority.toUpperCase(), priColor),
+                          if (isDoing) const _Pill('In Progress', Color(0xFF10B981)),
+                        ],
+                      ),
+                      if ((task['_phase_title'] as String? ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(task['_phase_title'] as String,
+                            style: const TextStyle(color: JournalColors.textMuted, fontSize: 10)),
+                      ],
+                      if (dueDateStr != null) ...[
+                        const SizedBox(height: 4),
+                        Text('Due $dueDateStr',
+                            style: const TextStyle(color: JournalColors.severity, fontSize: 10)),
+                      ],
+                      if (!isDone) ...[
+                        const SizedBox(height: 12),
+                        Wrap(spacing: 8, runSpacing: 6, children: [
+                          if (!isDoing)
+                            _SmallBtn(label: 'Start', filled: true,
+                                onTap: () => onStatusChange(id, 'doing')),
+                          _SmallBtn(label: 'Mark Done', filled: true,
+                              onTap: () => onStatusChange(id, 'done')),
+                          _SmallBtn(label: 'Details', filled: false, onTap: onTapTask),
+                        ]),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallBtn extends StatelessWidget {
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+  final Color color;
+
+  _SmallBtn({required this.label, required this.filled, required this.onTap, this.color = JournalColors.accent});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: filled ? color : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: filled ? null : Border.all(color: JournalColors.border),
+      ),
+      child: Text(label,
+          style: TextStyle(
+            color: filled ? Colors.white : JournalColors.textSecondary,
+            fontSize: 12, fontWeight: FontWeight.w600,
+          )),
+    ),
   );
 }
 
