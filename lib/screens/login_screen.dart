@@ -576,67 +576,48 @@ class _LoginCard extends StatelessWidget {
             body: 'Open your entries, reflections, and saved tools.',
           ),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  _withAlpha(JournalColors.bgSurface, 0.9),
-                  _withAlpha(JournalColors.bgCardAlt, 0.78),
-                ],
+          _AuthField(
+            controller: usernameCtrl,
+            placeholder: 'Username',
+            icon: CupertinoIcons.person_crop_circle,
+            textInputAction: TextInputAction.next,
+            autocorrect: false,
+          ),
+          const SizedBox(height: 14),
+          _AuthField(
+            controller: passwordCtrl,
+            placeholder: 'Password',
+            icon: CupertinoIcons.lock_shield_fill,
+            obscureText: obscurePassword,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSubmit(),
+            suffix: GestureDetector(
+              onTap: onToggleObscure,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: Icon(
+                  obscurePassword
+                      ? CupertinoIcons.eye
+                      : CupertinoIcons.eye_slash,
+                  color: JournalColors.textMuted,
+                  size: 18,
+                ),
               ),
-              border: Border.all(color: JournalColors.border),
             ),
-            child: Column(
-              children: [
-                _AuthField(
-                  controller: usernameCtrl,
-                  placeholder: 'Username',
-                  icon: CupertinoIcons.person_crop_circle,
-                  textInputAction: TextInputAction.next,
-                  autocorrect: false,
-                ),
-                const SizedBox(height: 14),
-                _AuthField(
-                  controller: passwordCtrl,
-                  placeholder: 'Password',
-                  icon: CupertinoIcons.lock_shield_fill,
-                  obscureText: obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => onSubmit(),
-                  suffix: GestureDetector(
-                    onTap: onToggleObscure,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 14),
-                      child: Icon(
-                        obscurePassword
-                            ? CupertinoIcons.eye
-                            : CupertinoIcons.eye_slash,
-                        color: JournalColors.textMuted,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Row(
-                  children: [
-                    _MicroStat(
-                      value: 'Encrypted',
-                      label: 'session layer',
-                    ),
-                    SizedBox(width: 10),
-                    _MicroStat(
-                      value: 'Fast',
-                      label: 'resume flow',
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          ),
+          const SizedBox(height: 18),
+          const Row(
+            children: [
+              _MicroStat(
+                value: 'Encrypted',
+                label: 'session layer',
+              ),
+              SizedBox(width: 10),
+              _MicroStat(
+                value: 'Fast',
+                label: 'resume flow',
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           Consumer<AuthProvider>(
