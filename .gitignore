@@ -69,3 +69,5 @@ GoogleService-Info.plist
 */Codex
 codex*
 codex/*
+# Local Codex repo instructions
+AGENTS.md
