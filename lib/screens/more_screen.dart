@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
 import 'detective_screen.dart';
 import 'exit_plan_screen.dart';
+import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
 import 'resources_screen.dart';
 import 'settings_screen.dart';
@@ -76,7 +77,7 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Mood trends, crisis indicators & narrative',
             icon: CupertinoIcons.heart,
             iconColor: const Color(0xFFEC4899),
-            builder: (_) => const _PlaceholderScreen(title: 'My Mental Health'),
+            builder: (_) => const MentalHealthScreen(),
           ),
           _Item(
             label: 'My Story',

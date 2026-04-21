@@ -328,6 +328,11 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> refreshMentalHealthNarrative() async {
+    final res = await _authedPost('/api/mental-health/narrative/refresh', data: {});
+    return res.data as Map<String, dynamic>;
+  }
+
   // ── Passkey ───────────────────────────────────────────────────────────────
  
   Future<Map<String, dynamic>> passkeyAuthBegin() async {
