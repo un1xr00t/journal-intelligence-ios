@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart';
 import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
 import 'detective_screen.dart';
+import 'exit_plan_screen.dart';
 import 'resources_screen.dart';
 import 'settings_screen.dart';
 
@@ -60,7 +61,7 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Structured roadmap for major life changes',
             icon: CupertinoIcons.map,
             iconColor: const Color(0xFF10B981),
-            builder: (_) => const _PlaceholderScreen(title: 'Exit Plan'),
+            builder: (_) => const ExitPlanScreen(),
           ),
           _Item(
             label: 'Fairness Ledger',

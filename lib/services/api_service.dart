@@ -699,6 +699,56 @@ class ApiService {
   Future<void> detectiveSaveSettings(Map<String, dynamic> data) async {
     await _authedPost('/api/detective/settings', data: data);
   }
+
+  // ── Exit Plan ──────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> exitPlanGet() async {
+    final r = await _authedGet('/api/exit-plan');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<Map<String, dynamic>> exitPlanDetect() async {
+    final r = await _authedGet('/api/exit-plan/detect');
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> exitPlanGenerate({List<String> confirmedBranches = const []}) async {
+    await _authedPost('/api/exit-plan/generate', data: {
+      'force': false,
+      'confirmed_branches': confirmedBranches,
+    });
+  }
+
+  Future<void> exitPlanPatchTask(String taskId, Map<String, dynamic> data) async {
+    await _authedPatch('/api/exit-plan/tasks/$taskId', data: data);
+  }
+
+  Future<Map<String, dynamic>> exitPlanAddTask(Map<String, dynamic> data) async {
+    final r = await _authedPost('/api/exit-plan/tasks', data: data);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> exitPlanEnrichTask(String taskId) async {
+    await _authedPost('/api/exit-plan/tasks/$taskId/enrich', data: {});
+  }
+
+  Future<void> exitPlanDeleteTask(String taskId) async {
+    await _authedDelete('/api/exit-plan/tasks/$taskId');
+  }
+
+  Future<Map<String, dynamic>> exitPlanGetNotes({String? taskId}) async {
+    final path = taskId != null
+        ? '/api/exit-plan/notes?task_id=$taskId'
+        : '/api/exit-plan/notes';
+    final r = await _authedGet(path);
+    return Map<String, dynamic>.from(r.data);
+  }
+
+  Future<void> exitPlanAddNote(String noteText, {String? taskId}) async {
+    final body = <String, dynamic>{'note_text': noteText};
+    if (taskId != null) body['task_id'] = taskId;
+    await _authedPost('/api/exit-plan/notes', data: body);
+  }
 }
 
 // ── Auto-refresh interceptor ──────────────────────────────────────────────────
