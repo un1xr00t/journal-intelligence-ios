@@ -500,6 +500,10 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
+  Future<void> detectiveDeleteCase(String caseId) async {
+    await _authedDelete('/api/detective/cases/$caseId');
+  }
+
   Future<List<dynamic>> detectiveGetEntries(String caseId) async {
     final r = await _authedGet('/api/detective/cases/$caseId/entries');
     return List<dynamic>.from(r.data);

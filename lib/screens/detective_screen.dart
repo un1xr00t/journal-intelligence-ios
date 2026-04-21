@@ -65,6 +65,17 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
     }
   }
 
+  Future<void> _deleteCase(Map<String, dynamic> c) async {
+    final caseId = c['id'].toString();
+    try {
+      await _api.detectiveDeleteCase(caseId);
+      if (mounted) setState(() =>
+        _cases = _cases.where((x) => x['id'].toString() != caseId).toList());
+    } catch (e) {
+      if (mounted) _loadCases(); // re-fetch so dismissed tile reappears
+    }
+  }
+
   void _openCase(Map<String, dynamic> c) {
     Navigator.push(
       context,
@@ -81,13 +92,16 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
     final controller = TextEditingController();
     showCupertinoModalPopup(
       context: context,
-      builder: (_) => _CreateCaseSheet(
-        controller: controller,
-        creating: _creating,
-        onSubmit: (title) {
-          Navigator.pop(context);
-          _createCase(title);
-        },
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: _CreateCaseSheet(
+          controller: controller,
+          creating: _creating,
+          onSubmit: (title) {
+            Navigator.pop(context);
+            _createCase(title);
+          },
+        ),
       ),
     );
   }
@@ -158,9 +172,10 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (_, i) => _CaseTile(
+                    (ctx, i) => _CaseTile(
                       caseData: _cases[i],
                       onTap: () => _openCase(_cases[i]),
+                      onDelete: () => _deleteCase(_cases[i]),
                     ),
                     childCount: _cases.length,
                   ),
@@ -176,14 +191,47 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
 }
 
 // ── Case tile ──────────────────────────────────────────────────────────────
+// StatefulWidget so we can track the horizontal drag offset and reveal a
+// delete button — avoids Dismissible/SliverList gesture competition issues.
 
-class _CaseTile extends StatelessWidget {
+class _CaseTile extends StatefulWidget {
   final Map<String, dynamic> caseData;
   final VoidCallback onTap;
-  const _CaseTile({required this.caseData, required this.onTap});
+  final VoidCallback onDelete;
+  const _CaseTile({
+    required this.caseData,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  State<_CaseTile> createState() => _CaseTileState();
+}
+
+class _CaseTileState extends State<_CaseTile>
+    with SingleTickerProviderStateMixin {
+  static const double _deleteWidth = 72;
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   Color get _statusColor {
-    switch (caseData['status']) {
+    switch (widget.caseData['status']) {
       case 'active':   return const Color(0xFF22C55E);
       case 'closed':   return JournalColors.textMuted;
       case 'archived': return const Color(0xFFF59E0B);
@@ -191,64 +239,156 @@ class _CaseTile extends StatelessWidget {
     }
   }
 
+  void _close() => _ctrl.reverse();
+
+  void _confirmDelete(BuildContext context) {
+    _close();
+    showCupertinoDialog(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Delete Case'),
+        content: Text(
+          'Delete "${widget.caseData['title']}"? This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () { Navigator.pop(context); widget.onDelete(); },
+            child: const Text('Delete')),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          // Status dot
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: _statusColor,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      // Horizontal drag reveals the delete button
+      onHorizontalDragUpdate: (d) {
+        if (d.delta.dx < 0) {
+          _ctrl.value =
+              (_ctrl.value - d.delta.dx / _deleteWidth).clamp(0.0, 1.0);
+        } else {
+          _ctrl.value =
+              (_ctrl.value - d.delta.dx / _deleteWidth).clamp(0.0, 1.0);
+        }
+      },
+      onHorizontalDragEnd: (d) {
+        if (_ctrl.value > 0.4) {
+          _ctrl.forward();
+        } else {
+          _ctrl.reverse();
+        }
+      },
+      onTap: () {
+        if (_ctrl.value > 0) {
+          _close();
+        } else {
+          widget.onTap();
+        }
+      },
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) {
+          final offset = _anim.value * _deleteWidth;
+          return SizedBox(
+            height: 72,
+            child: Stack(
               children: [
-                Text(
-                  caseData['title'] ?? 'Untitled',
-                  style: const TextStyle(
-                    color: JournalColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                // Delete button behind the tile
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: () => _confirmDelete(context),
+                      child: Container(
+                        width: _deleteWidth,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(CupertinoIcons.trash,
+                            color: CupertinoColors.white, size: 20),
+                      ),
+                    ),
                   ),
                 ),
-                if ((caseData['description'] ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    caseData['description'],
-                    style: const TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 12,
+                // Tile slides left
+                Transform.translate(
+                  offset: Offset(-offset, 0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: JournalColors.bgCard,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: JournalColors.border),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  (caseData['status'] ?? 'active').toString().toUpperCase(),
-                  style: TextStyle(
-                    color: _statusColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.8,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _statusColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.caseData['title'] ?? 'Untitled',
+                                style: const TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if ((widget.caseData['description'] ?? '')
+                                  .isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  widget.caseData['description'],
+                                  style: const TextStyle(
+                                    color: JournalColors.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                (widget.caseData['status'] ?? 'active')
+                                    .toString()
+                                    .toUpperCase(),
+                                style: TextStyle(
+                                  color: _statusColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(CupertinoIcons.chevron_right,
+                            color: JournalColors.textMuted, size: 14),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(CupertinoIcons.chevron_right,
-              color: JournalColors.textMuted, size: 14),
-        ],
+          );
+        },
       ),
     );
   }
