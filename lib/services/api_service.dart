@@ -4,7 +4,6 @@
 // Uses Dio + CookieManager so the HttpOnly refresh_token cookie is handled
 // exactly like the web app — no backend changes required.
 
-import 'package:flutter/foundation.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -17,11 +16,16 @@ MediaType _imageMimeType(String filename) {
   final ext = filename.split('.').last.toLowerCase();
   switch (ext) {
     case 'jpg':
-    case 'jpeg': return MediaType('image', 'jpeg');
-    case 'png':  return MediaType('image', 'png');
-    case 'webp': return MediaType('image', 'webp');
-    case 'gif':  return MediaType('image', 'gif');
-    default:     return MediaType('image', 'jpeg');
+    case 'jpeg':
+      return MediaType('image', 'jpeg');
+    case 'png':
+      return MediaType('image', 'png');
+    case 'webp':
+      return MediaType('image', 'webp');
+    case 'gif':
+      return MediaType('image', 'gif');
+    default:
+      return MediaType('image', 'jpeg');
   }
 }
 
@@ -85,7 +89,8 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> verify2FA(String partialToken, String code) async {
+  Future<Map<String, dynamic>> verify2FA(
+      String partialToken, String code) async {
     final res = await _dio.post('/auth/2fa/verify-login', data: {
       'partial_token': partialToken,
       'totp_code': code,
@@ -106,14 +111,20 @@ class ApiService {
   }
 
   Future<void> setupSecurityQuestions({
-    required String q1, required String a1,
-    required String q2, required String a2,
-    required String q3, required String a3,
+    required String q1,
+    required String a1,
+    required String q2,
+    required String a2,
+    required String q3,
+    required String a3,
   }) async {
     await _authedPost('/auth/security-questions/setup', data: {
-      'question_1': q1, 'answer_1': a1,
-      'question_2': q2, 'answer_2': a2,
-      'question_3': q3, 'answer_3': a3,
+      'question_1': q1,
+      'answer_1': a1,
+      'question_2': q2,
+      'answer_2': a2,
+      'question_3': q3,
+      'answer_3': a3,
     });
   }
 
@@ -146,7 +157,8 @@ class ApiService {
 
   Future<bool> hasSecurityQuestions() async {
     final res = await _authedGet('/auth/security-questions/has-questions');
-    return (res.data as Map<String, dynamic>)['has_questions'] as bool? ?? false;
+    return (res.data as Map<String, dynamic>)['has_questions'] as bool? ??
+        false;
   }
 
   Future<List<String>> getSecurityQuestionsBank() async {
@@ -160,7 +172,8 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> onboardingMemoryPreview(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> onboardingMemoryPreview(
+      Map<String, dynamic> data) async {
     final res = await _authedPost('/api/onboarding/memory-preview', data: data);
     return res.data as Map<String, dynamic>;
   }
@@ -173,7 +186,8 @@ class ApiService {
 
   /// Uploads a .zip or .json Day One export.
   /// Returns { job_id, total } — poll getDayOneImportStatus for progress.
-  Future<Map<String, dynamic>> importDayOne(String filePath, String fileName) async {
+  Future<Map<String, dynamic>> importDayOne(
+      String filePath, String fileName) async {
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(filePath, filename: fileName),
     });
@@ -247,7 +261,8 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateEntry(int entryId, String text) async {
-    final res = await _authedPut('/api/entries/$entryId', data: {'normalized_text': text});
+    final res = await _authedPut('/api/entries/$entryId',
+        data: {'normalized_text': text});
     final body = res.data as Map<String, dynamic>;
     // Server returns { entry: { ...full entry... } } on success
     return body['entry'] as Map<String, dynamic>? ?? body;
@@ -279,15 +294,18 @@ class ApiService {
 
   // ── AI Reflections ────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getReflection(int entryId, {String tone = 'therapist'}) async {
-    final res = await _authedPost('/api/reflect/$entryId', data: {'tone': tone});
+  Future<Map<String, dynamic>> getReflection(int entryId,
+      {String tone = 'therapist'}) async {
+    final res =
+        await _authedPost('/api/reflect/$entryId', data: {'tone': tone});
     return res.data as Map<String, dynamic>;
   }
 
   // ── Ask My Journal (RAG) ──────────────────────────────────────
 
   Future<Map<String, dynamic>> askJournal(String question) async {
-    final res = await _authedPost('/api/journal/ask', data: {'query': question});
+    final res =
+        await _authedPost('/api/journal/ask', data: {'query': question});
     return res.data as Map<String, dynamic>;
   }
 
@@ -297,15 +315,19 @@ class ApiService {
   //            tone, tone_name, cached, input_tokens, output_tokens }
   // Returns {} if no insight has been generated yet for that tone.
 
-  Future<Map<String, dynamic>> getTherapistInsightStatus({String tone = 'therapist'}) async {
-    final res = await _authedGet('/api/therapist/insight/status', queryParameters: {'tone': tone});
+  Future<Map<String, dynamic>> getTherapistInsightStatus(
+      {String tone = 'therapist'}) async {
+    final res = await _authedGet('/api/therapist/insight/status',
+        queryParameters: {'tone': tone});
     return res.data as Map<String, dynamic>;
   }
 
   // POST /api/therapist/insight — generates (or returns cached) insight
   // Body: { tone, force? }
-  Future<Map<String, dynamic>> generateTherapistInsight({String tone = 'therapist', bool force = false}) async {
-    final res = await _authedPost('/api/therapist/insight', data: {'tone': tone, 'force': force});
+  Future<Map<String, dynamic>> generateTherapistInsight(
+      {String tone = 'therapist', bool force = false}) async {
+    final res = await _authedPost('/api/therapist/insight',
+        data: {'tone': tone, 'force': force});
     return res.data as Map<String, dynamic>;
   }
 
@@ -316,7 +338,8 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateUserSettings(Map<String, dynamic> updates) async {
+  Future<Map<String, dynamic>> updateUserSettings(
+      Map<String, dynamic> updates) async {
     final res = await _authedPut('/api/settings', data: updates);
     return res.data as Map<String, dynamic>;
   }
@@ -329,35 +352,104 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> refreshMentalHealthNarrative() async {
-    final res = await _authedPost('/api/mental-health/narrative/refresh', data: {});
+    final res =
+        await _authedPost('/api/mental-health/narrative/refresh', data: {});
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Fairness Ledger ──────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getFairnessConfig() async {
+    final res = await _authedGet('/api/fairness/config');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> saveFairnessConfig(
+      Map<String, dynamic> data) async {
+    final res = await _authedPost('/api/fairness/config', data: data);
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<List<dynamic>> getFairnessTasks() async {
+    final res = await _authedGet('/api/fairness/tasks');
+    return (res.data as Map<String, dynamic>)['tasks'] as List<dynamic>? ?? [];
+  }
+
+  Future<void> logFairnessTask({
+    required int taskId,
+    required String performedBy,
+    String? note,
+  }) async {
+    await _authedPost('/api/fairness/log', data: {
+      'task_id': taskId,
+      'performed_by': performedBy,
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+  }
+
+  Future<void> deleteFairnessLog(int logId) async {
+    await _authedDelete('/api/fairness/log/$logId');
+  }
+
+  Future<List<dynamic>> getFairnessLogs({int limit = 60}) async {
+    final res = await _authedGet('/api/fairness/logs',
+        queryParameters: {'limit': limit});
+    return (res.data as Map<String, dynamic>)['logs'] as List<dynamic>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> getFairnessSummary() async {
+    final res = await _authedGet('/api/fairness/summary');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> generateFairnessSummary() async {
+    final res = await _authedPost('/api/fairness/summary/generate', data: {});
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> createFairnessContribution(
+      Map<String, dynamic> data) async {
+    final res = await _authedPost('/api/fairness/contributions', data: data);
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<List<dynamic>> getFairnessContributions({int limit = 60}) async {
+    final res = await _authedGet('/api/fairness/contributions',
+        queryParameters: {'limit': limit});
+    return (res.data as Map<String, dynamic>)['contributions']
+            as List<dynamic>? ??
+        [];
+  }
+
+  Future<void> deleteFairnessContribution(int contributionId) async {
+    await _authedDelete('/api/fairness/contributions/$contributionId');
+  }
+
   // ── Passkey ───────────────────────────────────────────────────────────────
- 
+
   Future<Map<String, dynamic>> passkeyAuthBegin() async {
     final res = await _dio.post('/auth/passkey/authenticate-begin', data: {});
     return res.data as Map<String, dynamic>;
   }
- 
+
   Future<Map<String, dynamic>> passkeyAuthComplete({
     required String challengeId,
     required Map<String, dynamic> credential,
   }) async {
     final res = await _dio.post('/auth/passkey/authenticate-complete', data: {
       'challenge_id': challengeId,
-      'credential':   credential,
+      'credential': credential,
     });
     return res.data as Map<String, dynamic>;
   }
- 
+
   // ── 2FA backup code ───────────────────────────────────────────────────────
- 
+
   Future<Map<String, dynamic>> useBackupCode(
       String partialToken, String backupCode) async {
     final res = await _dio.post('/auth/2fa/use-backup', data: {
       'partial_token': partialToken,
-      'backup_code':   backupCode,
+      'backup_code': backupCode,
     });
     return res.data as Map<String, dynamic>;
   }
@@ -379,7 +471,7 @@ class ApiService {
   Future<void> changePassword(String currentPw, String newPw) async {
     await _authedPost('/auth/change-password', data: {
       'current_password': currentPw,
-      'new_password':     newPw,
+      'new_password': newPw,
     });
   }
 
@@ -387,7 +479,8 @@ class ApiService {
 
   Future<List<dynamic>> getSessions() async {
     final res = await _authedGet('/auth/sessions');
-    return (res.data as Map<String, dynamic>)['sessions'] as List<dynamic>? ?? [];
+    return (res.data as Map<String, dynamic>)['sessions'] as List<dynamic>? ??
+        [];
   }
 
   Future<void> revokeSession(dynamic sessionId) async {
@@ -418,11 +511,13 @@ class ApiService {
   }
 
   Future<void> requestSmsVerification(String phone) async {
-    await _authedPost('/api/sms/request-verification', data: {'phone_number': phone});
+    await _authedPost('/api/sms/request-verification',
+        data: {'phone_number': phone});
   }
 
   Future<void> verifySmsCode(String phone, String code) async {
-    await _authedPost('/api/sms/verify', data: {'phone_number': phone, 'code': code});
+    await _authedPost('/api/sms/verify',
+        data: {'phone_number': phone, 'code': code});
   }
 
   Future<void> removeSmsPhone() async {
@@ -437,7 +532,8 @@ class ApiService {
   }
 
   Future<void> setReflectMode(bool autoReflect) async {
-    await _authedPut('/api/settings/reflect-mode', data: {'auto_reflect': autoReflect});
+    await _authedPut('/api/settings/reflect-mode',
+        data: {'auto_reflect': autoReflect});
   }
 
   // ── AI Provider ───────────────────────────────────────────────────────────────
@@ -468,12 +564,15 @@ class ApiService {
   // POST /api/resources/generate — generates (or force-refreshes) personalized resources
   // Returns { profile, generated_at }
   Future<Map<String, dynamic>> generateResources({bool force = false}) async {
-    final path = force ? '/api/resources/generate?force=true' : '/api/resources/generate';
+    final path = force
+        ? '/api/resources/generate?force=true'
+        : '/api/resources/generate';
     final res = await _authedPost(path, data: {});
     return res.data as Map<String, dynamic>;
   }
 
-  Future<Response> _authedGet(String path, {Map<String, dynamic>? queryParameters}) =>
+  Future<Response> _authedGet(String path,
+          {Map<String, dynamic>? queryParameters}) =>
       _dio.get(path, queryParameters: queryParameters);
 
   Future<Response> _authedPost(String path, {dynamic data}) =>
@@ -485,8 +584,7 @@ class ApiService {
   Future<Response> _authedPatch(String path, {dynamic data}) =>
       _dio.patch(path, data: data);
 
-  Future<Response> _authedDelete(String path) =>
-      _dio.delete(path);
+  Future<Response> _authedDelete(String path) => _dio.delete(path);
 
   // ── Detective Mode ────────────────────────────────────────────
 
@@ -514,13 +612,17 @@ class ApiService {
     return List<dynamic>.from(r.data);
   }
 
-  Future<Map<String, dynamic>> detectiveAddEntry(String caseId, Map<String, dynamic> data) async {
-    final r = await _authedPost('/api/detective/cases/$caseId/entries', data: data);
+  Future<Map<String, dynamic>> detectiveAddEntry(
+      String caseId, Map<String, dynamic> data) async {
+    final r =
+        await _authedPost('/api/detective/cases/$caseId/entries', data: data);
     return Map<String, dynamic>.from(r.data);
   }
 
-  Future<void> detectiveUpdateEntry(String caseId, String entryId, Map<String, dynamic> data) async {
-    await _authedPut('/api/detective/cases/$caseId/entries/$entryId', data: data);
+  Future<void> detectiveUpdateEntry(
+      String caseId, String entryId, Map<String, dynamic> data) async {
+    await _authedPut('/api/detective/cases/$caseId/entries/$entryId',
+        data: data);
   }
 
   Future<void> detectiveDeleteEntry(String caseId, String entryId) async {
@@ -547,20 +649,21 @@ class ApiService {
   Future<void> detectiveDeleteEntryPhoto(
       String caseId, String entryId, String photoId) async {
     await _authedDelete(
-      '/api/detective/cases/$caseId/entries/$entryId/photos/$photoId');
+        '/api/detective/cases/$caseId/entries/$entryId/photos/$photoId');
   }
 
   Future<Map<String, dynamic>> detectiveSynthesizeEntryPhotos(
       String caseId, String entryId) async {
     final r = await _authedPost(
-      '/api/detective/cases/$caseId/entries/$entryId/photos/synthesize');
+        '/api/detective/cases/$caseId/entries/$entryId/photos/synthesize');
     return Map<String, dynamic>.from(r.data);
   }
 
   // ── Case Partner chat ──────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> detectiveChatLatestSession(String caseId) async {
-    final r = await _authedGet('/api/detective/cases/$caseId/chat/latest-session');
+    final r =
+        await _authedGet('/api/detective/cases/$caseId/chat/latest-session');
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -578,10 +681,10 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
-  Future<void> detectiveChatSaveMessages(
-    String caseId, String sessionId, List<Map<String, dynamic>> messages) async {
+  Future<void> detectiveChatSaveMessages(String caseId, String sessionId,
+      List<Map<String, dynamic>> messages) async {
     await _authedPost('/api/detective/cases/$caseId/chat/messages',
-      data: {'session_id': sessionId, 'messages': messages});
+        data: {'session_id': sessionId, 'messages': messages});
   }
 
   Future<Map<String, dynamic>> detectiveChatNewSession(String caseId) async {
@@ -590,9 +693,9 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> detectiveChatCompress(
-    String caseId, List<Map<String, dynamic>> messages) async {
+      String caseId, List<Map<String, dynamic>> messages) async {
     final r = await _authedPost('/api/detective/cases/$caseId/chat/compress',
-      data: {'messages': messages});
+        data: {'messages': messages});
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -644,7 +747,8 @@ class ApiService {
   }
 
   // Deletes an entry-attached photo by its bare photo id (no mphoto_ prefix)
-  Future<void> detectiveDeleteEntryPhotoById(String caseId, String photoId) async {
+  Future<void> detectiveDeleteEntryPhotoById(
+      String caseId, String photoId) async {
     await _authedDelete('/api/detective/cases/$caseId/entry-photos/$photoId');
   }
 
@@ -655,8 +759,10 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
-  Future<Map<String, dynamic>> detectiveRefreshIntelligence(String caseId) async {
-    final r = await _authedPost('/api/detective/cases/$caseId/intelligence/refresh');
+  Future<Map<String, dynamic>> detectiveRefreshIntelligence(
+      String caseId) async {
+    final r =
+        await _authedPost('/api/detective/cases/$caseId/intelligence/refresh');
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -685,7 +791,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> detectiveRunResearch(
       String caseId, Map<String, dynamic> data) async {
-    final r = await _authedPost('/api/detective/cases/$caseId/research', data: data);
+    final r =
+        await _authedPost('/api/detective/cases/$caseId/research', data: data);
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -717,18 +824,21 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
-  Future<void> exitPlanGenerate({List<String> confirmedBranches = const []}) async {
+  Future<void> exitPlanGenerate(
+      {List<String> confirmedBranches = const []}) async {
     await _authedPost('/api/exit-plan/generate', data: {
       'force': false,
       'confirmed_branches': confirmedBranches,
     });
   }
 
-  Future<void> exitPlanPatchTask(String taskId, Map<String, dynamic> data) async {
+  Future<void> exitPlanPatchTask(
+      String taskId, Map<String, dynamic> data) async {
     await _authedPatch('/api/exit-plan/tasks/$taskId', data: data);
   }
 
-  Future<Map<String, dynamic>> exitPlanAddTask(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> exitPlanAddTask(
+      Map<String, dynamic> data) async {
     final r = await _authedPost('/api/exit-plan/tasks', data: data);
     return Map<String, dynamic>.from(r.data);
   }
@@ -768,7 +878,8 @@ class ApiService {
   /// Body: { case_ids, include_journal, journal_entry_count, manual_context,
   ///         include_fairness, output_purpose, output_style }
   /// Returns { narrative: str }
-  Future<Map<String, dynamic>> myStoryGenerate(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> myStoryGenerate(
+      Map<String, dynamic> body) async {
     final r = await _authedPost('/api/my-story/generate', data: body);
     return Map<String, dynamic>.from(r.data);
   }
@@ -787,7 +898,8 @@ class ApiService {
 
   /// POST /api/my-story/drafts
   /// Body: { title, generated_text, manual_context, output_purpose, sources_summary }
-  Future<Map<String, dynamic>> myStorySaveDraft(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> myStorySaveDraft(
+      Map<String, dynamic> body) async {
     final r = await _authedPost('/api/my-story/drafts', data: body);
     return Map<String, dynamic>.from(r.data);
   }

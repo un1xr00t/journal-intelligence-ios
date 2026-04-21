@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
 import 'detective_screen.dart';
 import 'exit_plan_screen.dart';
+import 'fairness_ledger_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
 import 'resources_screen.dart';
@@ -56,7 +57,7 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Build case files with evidence & graphs',
             icon: CupertinoIcons.search,
             iconColor: const Color(0xFF8B5CF6),
-            builder: (_) => DetectiveScreen(),
+            builder: (_) => const DetectiveScreen(),
           ),
           _Item(
             label: 'Exit Plan',
@@ -69,8 +70,8 @@ class MoreScreen extends StatelessWidget {
             label: 'Fairness Ledger',
             subtitle: 'Track tasks, contributions & equity',
             icon: CupertinoIcons.equal_circle,
-            iconColor: const Color(0xFFF59E0B),
-            builder: (_) => const _PlaceholderScreen(title: 'Fairness Ledger'),
+            iconColor: JournalColors.severity,
+            builder: (_) => const FairnessLedgerScreen(),
           ),
           _Item(
             label: 'My Mental Health',
@@ -196,7 +197,7 @@ class MoreScreen extends StatelessWidget {
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: const Text('More'),
-            backgroundColor: JournalColors.bgBase.withOpacity(0.92),
+            backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
             border: const Border(
               bottom: BorderSide(color: JournalColors.border, width: 0.5),
             ),
@@ -235,7 +236,8 @@ class MoreScreen extends StatelessWidget {
                         context,
                         CupertinoPageRoute(
                           builder: (ctx) => DefaultTextStyle.merge(
-                            style: const TextStyle(decoration: TextDecoration.none),
+                            style: const TextStyle(
+                                decoration: TextDecoration.none),
                             child: item.builder(ctx),
                           ),
                         ),
@@ -282,7 +284,7 @@ class _MoreRow extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: item.iconColor.withOpacity(0.15),
+                    color: item.iconColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(9),
                   ),
                   child: Icon(item.icon, color: item.iconColor, size: 18),
@@ -344,7 +346,7 @@ class _PlaceholderScreen extends StatelessWidget {
       backgroundColor: JournalColors.bgBase,
       navigationBar: CupertinoNavigationBar(
         middle: Text(title),
-        backgroundColor: JournalColors.bgBase.withOpacity(0.92),
+        backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
         border: const Border(
           bottom: BorderSide(color: JournalColors.border, width: 0.5),
         ),
