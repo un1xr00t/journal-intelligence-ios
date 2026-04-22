@@ -233,6 +233,21 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Early warning ────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getEarlyWarningStatus() async {
+    final res = await _authedGet('/api/early-warning/status');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> dismissEarlyWarning() async {
+    await _authedPost('/api/early-warning/dismiss', data: {});
+  }
+
+  Future<void> rebuildEarlyWarningPatterns() async {
+    await _authedPost('/api/early-warning/rebuild', data: {});
+  }
+
   // ── Budget Planner ───────────────────────────────────────────
 
   Future<Map<String, dynamic>> getBudgetPlan() async {

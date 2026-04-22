@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
 import 'budget_planner_screen.dart';
 import 'detective_screen.dart';
+import 'early_warning_screen.dart';
 import 'exit_plan_screen.dart';
 import 'fairness_ledger_screen.dart';
 import 'mental_health_screen.dart';
@@ -141,8 +142,8 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'AI alerts before patterns escalate',
             icon: CupertinoIcons.bell_circle,
             iconColor: const Color(0xFFF59E0B),
-            badge: 'Soon',
-            builder: (_) => const _PlaceholderScreen(title: 'Early Warning'),
+            badge: 'New',
+            builder: (_) => const EarlyWarningScreen(),
           ),
           _Item(
             label: 'Nervous System',
