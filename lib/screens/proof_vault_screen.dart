@@ -1637,15 +1637,34 @@ class _EntrySheetState extends State<_EntrySheet> {
             },
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               decoration: BoxDecoration(
                 color: JournalColors.bgSurface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JournalColors.border),
               ),
-              child: Text(
-                DateFormat('MMMM d, yyyy').format(_date),
-                style: const TextStyle(color: JournalColors.textPrimary),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat('MMMM d, yyyy').format(_date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Icon(
+                    CupertinoIcons.calendar,
+                    color: JournalColors.textMuted,
+                    size: 18,
+                  ),
+                ],
               ),
             ),
           ),
@@ -1653,12 +1672,20 @@ class _EntrySheetState extends State<_EntrySheet> {
           const _FieldLabel('Notes'),
           CupertinoTextField(
             controller: _notes,
+            autocorrect: false,
+            enableSuggestions: false,
             minLines: 3,
             maxLines: 5,
             padding: const EdgeInsets.all(14),
-            style: const TextStyle(color: JournalColors.textPrimary),
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              decoration: TextDecoration.none,
+            ),
             placeholder: 'Add extra context if it matters',
-            placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+            placeholderStyle: const TextStyle(
+              color: JournalColors.textMuted,
+              decoration: TextDecoration.none,
+            ),
             decoration: BoxDecoration(
               color: JournalColors.bgSurface,
               borderRadius: BorderRadius.circular(14),
@@ -1831,15 +1858,34 @@ class _QuickLogSheetState extends State<_QuickLogSheet> {
             },
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               decoration: BoxDecoration(
                 color: JournalColors.bgSurface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JournalColors.border),
               ),
-              child: Text(
-                DateFormat('MMMM d, yyyy').format(_date),
-                style: const TextStyle(color: JournalColors.textPrimary),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat('MMMM d, yyyy').format(_date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Icon(
+                    CupertinoIcons.calendar,
+                    color: JournalColors.textMuted,
+                    size: 18,
+                  ),
+                ],
               ),
             ),
           ),
@@ -1847,12 +1893,20 @@ class _QuickLogSheetState extends State<_QuickLogSheet> {
           const _FieldLabel('Notes'),
           CupertinoTextField(
             controller: _notes,
+            autocorrect: false,
+            enableSuggestions: false,
             minLines: 2,
             maxLines: 4,
             padding: const EdgeInsets.all(14),
-            style: const TextStyle(color: JournalColors.textPrimary),
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              decoration: TextDecoration.none,
+            ),
             placeholder: 'Optional context',
-            placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+            placeholderStyle: const TextStyle(
+              color: JournalColors.textMuted,
+              decoration: TextDecoration.none,
+            ),
             decoration: BoxDecoration(
               color: JournalColors.bgSurface,
               borderRadius: BorderRadius.circular(14),
@@ -1983,6 +2037,7 @@ class _VaultSheet extends StatelessWidget {
                         color: JournalColors.textPrimary,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                     const Spacer(),
@@ -2025,6 +2080,7 @@ class _FieldLabel extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
+          decoration: TextDecoration.none,
         ),
       ),
     );
@@ -2044,10 +2100,18 @@ class _VaultTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return CupertinoTextField(
       controller: controller,
+      autocorrect: false,
+      enableSuggestions: false,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      style: const TextStyle(color: JournalColors.textPrimary),
+      style: const TextStyle(
+        color: JournalColors.textPrimary,
+        decoration: TextDecoration.none,
+      ),
       placeholder: placeholder,
-      placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+      placeholderStyle: const TextStyle(
+        color: JournalColors.textMuted,
+        decoration: TextDecoration.none,
+      ),
       decoration: BoxDecoration(
         color: JournalColors.bgSurface,
         borderRadius: BorderRadius.circular(14),
