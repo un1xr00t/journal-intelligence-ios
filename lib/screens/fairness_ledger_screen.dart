@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/section_header.dart';
 
 const _fairnessCategories = <_FairnessCategory>[
   _FairnessCategory('childcare', 'Childcare', '◎'),
@@ -25,6 +26,8 @@ const _relationshipOptions = <String>[
   'Sibling',
   'Other',
 ];
+
+Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 class FairnessLedgerScreen extends StatefulWidget {
   const FairnessLedgerScreen({super.key});
@@ -262,7 +265,7 @@ class _FairnessLedgerScreenState extends State<FairnessLedgerScreen> {
           else
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -273,12 +276,12 @@ class _FairnessLedgerScreenState extends State<FairnessLedgerScreen> {
                       onLogTask: _openLogTask,
                       onAddContribution: _openContribution,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     _TabBar(
                       index: _tabIndex,
                       onChanged: (index) => setState(() => _tabIndex = index),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     if (_tabIndex == 0)
                       _OverviewTab(
                         summary: _summary,
@@ -337,59 +340,154 @@ class _HeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      accentBorder: true,
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: JournalColors.borderBright),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _withAlpha(JournalColors.bgCard, 0.97),
+            _withAlpha(JournalColors.bgCardAlt, 0.94),
+            _withAlpha(JournalColors.bgSurface, 0.92),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: JournalColors.accentGlow,
+            blurRadius: 30,
+            offset: Offset(0, 18),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(CupertinoIcons.equal_circle,
-                  color: JournalColors.severity, size: 22),
-              SizedBox(width: 10),
-              Text(
-                'Track who does what',
-                style: TextStyle(
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      _withAlpha(JournalColors.accent, 0.26),
+                      _withAlpha(JournalColors.info, 0.16),
+                    ],
+                  ),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: const Icon(
+                  CupertinoIcons.equal_circle,
                   color: JournalColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FAIRNESS LEDGER',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Track shared work, who carried it, and where the split is landing.',
+                      style: TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        height: 1.18,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            [myName, partnerName, if (member3Name != null) member3Name!]
-                .join(' · '),
-            style: const TextStyle(
-              color: JournalColors.textSecondary,
-              fontSize: 14,
-              height: 1.5,
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _withAlpha(JournalColors.bgSurface, 0.7),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: JournalColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'HOUSEHOLD',
+                  style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  [myName, partnerName, if (member3Name != null) member3Name!]
+                      .join(' · '),
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Use quick logs for recurring tasks or add one-off contributions when something important does not fit a preset.',
+                  style: TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 18),
-          AdaptiveButton(
-            style: AdaptiveButtonStyle.prominentGlass,
-            onPressed: onLogTask,
-            label: 'Log Task',
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              color: JournalColors.bgCardAlt,
-              borderRadius: BorderRadius.circular(14),
-              onPressed: onAddContribution,
-              child: const Text(
-                'Add Contribution',
-                style: TextStyle(
-                  color: JournalColors.accent,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Expanded(
+                child: AdaptiveButton(
+                  style: AdaptiveButtonStyle.prominentGlass,
+                  onPressed: onLogTask,
+                  label: 'Log Task',
                 ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CupertinoButton(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  color: JournalColors.bgCardAlt,
+                  borderRadius: BorderRadius.circular(14),
+                  onPressed: onAddContribution,
+                  child: const Text(
+                    'Add Contribution',
+                    style: TextStyle(
+                      color: JournalColors.accent,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -408,13 +506,8 @@ class _TabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: JournalColors.bgCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: JournalColors.border),
-      ),
+    return GlassCard(
+      padding: const EdgeInsets.all(8),
       child: Row(
         children: List.generate(_tabs.length, (i) {
           final selected = i == index;
@@ -423,10 +516,24 @@ class _TabBar extends StatelessWidget {
               onTap: () => onChanged(i),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: selected ? JournalColors.accent : JournalColors.bgCard,
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: selected
+                      ? LinearGradient(
+                          colors: [
+                            _withAlpha(JournalColors.accent, 0.9),
+                            _withAlpha(JournalColors.accent2, 0.72),
+                          ],
+                        )
+                      : null,
+                  color: selected ? null : JournalColors.bgCard,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected
+                        ? JournalColors.borderBright
+                        : JournalColors.bgCard,
+                  ),
                 ),
                 child: Text(
                   _tabs[i],
@@ -435,9 +542,9 @@ class _TabBar extends StatelessWidget {
                     color: selected
                         ? JournalColors.textPrimary
                         : JournalColors.textMuted,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.9,
+                    letterSpacing: 1.1,
                   ),
                 ),
               ),
@@ -468,14 +575,19 @@ class _OverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final score = summary?['score'] as Map<String, dynamic>?;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SectionHeader(title: 'Current Split'),
+        const SizedBox(height: 10),
         _ScoreBar(
           myName: myName,
           partnerName: partnerName,
           member3Name: member3Name,
           score: score,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
+        const SectionHeader(title: 'Totals'),
+        const SizedBox(height: 10),
         _PersonTotals(
           myName: myName,
           partnerName: partnerName,
@@ -516,12 +628,21 @@ class _ScoreBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'OVERALL LOAD SPLIT',
+            'OVERALL SPLIT',
             style: TextStyle(
               color: JournalColors.textMuted,
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Relative share across all logged work and contributions.',
+            style: TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 14,
+              height: 1.5,
             ),
           ),
           const SizedBox(height: 16),
@@ -580,6 +701,8 @@ class _ScoreBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
+          const SectionHeader(title: 'By Category'),
+          const SizedBox(height: 10),
           for (final category in _fairnessCategories)
             _CategorySplitRow(
               category: category,
@@ -762,12 +885,24 @@ class _PersonTotals extends StatelessWidget {
     ];
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var i = 0; i < cards.length; i++) ...[
           Expanded(
             child: GlassCard(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    cards[i]['name'] as String,
+                    style: const TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   Text(
                     '${cards[i]['total']}',
                     style: TextStyle(
@@ -777,14 +912,12 @@ class _PersonTotals extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    cards[i]['name'] as String,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.0,
+                  const Text(
+                    'logged items',
+                    style: TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.3,
                     ),
                   ),
                 ],
@@ -834,18 +967,36 @@ class _HistoryTab extends StatelessWidget {
 
     if (items.isEmpty) {
       return const GlassCard(
-        child: Text(
-          'No entries yet.',
-          style: TextStyle(
-            color: JournalColors.textMuted,
-            fontSize: 14,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'HISTORY',
+              style: TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.1,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Nothing has been logged yet.',
+              style: TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       );
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SectionHeader(title: 'Recent History'),
+        const SizedBox(height: 10),
         for (final item in items.take(50)) ...[
           _HistoryRow(
             item: item,
@@ -1036,6 +1187,7 @@ class _AssessmentTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final exists = (summary?['exists'] as bool?) == true;
     return GlassCard(
+      accentBorder: exists,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1043,7 +1195,7 @@ class _AssessmentTab extends StatelessWidget {
             children: [
               const Expanded(
                 child: Text(
-                  'AI ASSESSMENT',
+                  'WRITTEN ASSESSMENT',
                   style: TextStyle(
                     color: JournalColors.textMuted,
                     fontSize: 11,
@@ -1083,7 +1235,7 @@ class _AssessmentTab extends StatelessWidget {
             )
           else if (!exists)
             const Text(
-              'Log some tasks first, then generate your first assessment.',
+              'Generate a short written read once there is enough logged work to summarize.',
               style: TextStyle(
                 color: JournalColors.textMuted,
                 fontSize: 14,
