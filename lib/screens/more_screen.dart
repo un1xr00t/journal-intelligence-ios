@@ -6,6 +6,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../theme/app_theme.dart';
+import 'admin_screen.dart';
 import 'ask_journal_screen.dart';
 import 'budget_planner_screen.dart';
 import 'detective_screen.dart';
@@ -193,10 +194,10 @@ class MoreScreen extends StatelessWidget {
             const Color(0xFF9898B0), [
           _Item(
             label: 'Admin',
-            subtitle: 'Users, sessions, AI usage',
+            subtitle: 'Users, invites, sessions, AI usage',
             icon: CupertinoIcons.person_badge_plus,
             iconColor: const Color(0xFF9898B0),
-            builder: (_) => const _PlaceholderScreen(title: 'Admin'),
+            builder: (_) => const AdminScreen(),
           ),
           _Item(
             label: 'Resources',

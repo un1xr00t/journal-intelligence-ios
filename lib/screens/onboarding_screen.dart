@@ -1587,6 +1587,7 @@ class _AccountStepState extends State<_AccountStep> {
       final loginData = await _api.login(_userCtrl.text.trim(), _passCtrl.text);
       _api.setAccessToken(loginData['access_token'] as String);
       final user = await _api.getMe();
+      await _api.clearInviteAccessToken();
 
       if (!mounted) return;
       setState(() { _loading = false; _apiKey = apiKey; _user = user; });
@@ -1610,6 +1611,7 @@ class _AccountStepState extends State<_AccountStep> {
           final loginData = await _api.login(_userCtrl.text.trim(), _passCtrl.text);
           _api.setAccessToken(loginData['access_token'] as String);
           final user = await _api.getMe();
+          await _api.clearInviteAccessToken();
           if (!mounted) return;
           setState(() { _loading = false; _user = user; });
           widget.onSuccess(_userCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text, user, null);

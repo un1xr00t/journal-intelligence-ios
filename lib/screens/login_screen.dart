@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
+import 'invite_access_screen.dart';
 import 'onboarding_screen.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
@@ -364,6 +365,67 @@ class _LoginScreenState extends State<LoginScreen> {
                                       SizedBox(height: 4),
                                       Text(
                                         'Set up your journal and recovery options.',
+                                        style: TextStyle(
+                                          color: JournalColors.textSecondary,
+                                          fontSize: 13,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                                Icon(
+                                  CupertinoIcons.arrow_up_right,
+                                  color: JournalColors.accent,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const InviteAccessScreen(),
+                            ),
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              color: _withAlpha(JournalColors.bgCardAlt, 0.46),
+                              border: Border.all(color: JournalColors.border),
+                            ),
+                            child: const Row(
+                              children: [
+                                _OrbBadge(
+                                  icon: CupertinoIcons.link_circle_fill,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Use an invite',
+                                        style: TextStyle(
+                                          color: JournalColors.textPrimary,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Unlock private access before creating an account.',
                                         style: TextStyle(
                                           color: JournalColors.textSecondary,
                                           fontSize: 13,

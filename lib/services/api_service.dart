@@ -31,6 +31,7 @@ MediaType _imageMimeType(String filename) {
 
 class ApiService {
   static const String baseUrl = 'https://journal.williamthomas.name';
+  static const String _inviteTokenStorageKey = 'invite_access_token';
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
@@ -40,6 +41,7 @@ class ApiService {
   final _storage = const FlutterSecureStorage();
 
   String? _accessToken;
+  String? _inviteAccessToken;
 
   ApiService._internal() {
     _cookieJar = CookieJar();
@@ -54,9 +56,13 @@ class ApiService {
     _dio.interceptors.add(CookieManager(_cookieJar));
     // Inject auth header on every request
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
+      onRequest: (options, handler) async {
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
+        }
+        _inviteAccessToken ??= await _storage.read(key: _inviteTokenStorageKey);
+        if (_inviteAccessToken != null) {
+          options.headers['X-Invite-Token'] = _inviteAccessToken;
         }
         return handler.next(options);
       },
@@ -74,6 +80,16 @@ class ApiService {
     _accessToken = null;
     await _cookieJar.deleteAll();
     await _storage.delete(key: 'username');
+  }
+
+  Future<void> setInviteAccessToken(String token) async {
+    _inviteAccessToken = token;
+    await _storage.write(key: _inviteTokenStorageKey, value: token);
+  }
+
+  Future<void> clearInviteAccessToken() async {
+    _inviteAccessToken = null;
+    await _storage.delete(key: _inviteTokenStorageKey);
   }
 
   String? get accessToken => _accessToken;
@@ -108,6 +124,20 @@ class ApiService {
       'password': password,
     });
     return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getInviteStatus(String token) async {
+    final res = await _dio.get('/api/invite/$token/status');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> verifyInvite({
+    required String token,
+    required String passphrase,
+  }) async {
+    final res = await _dio
+        .post('/api/invite/$token/verify', data: {'passphrase': passphrase});
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   Future<void> setupSecurityQuestions({
@@ -597,6 +627,78 @@ class ApiService {
 
   Future<void> clearAiProvider() async {
     await _authedDelete('/api/settings/ai-provider');
+  }
+
+  // ── Admin ────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> getMasterSummary() async {
+    final res = await _authedGet('/api/summary/master');
+    final data = Map<String, dynamic>.from(res.data as Map);
+    final summary = data['data'];
+    if (summary is Map) {
+      return summary.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+    }
+    return data;
+  }
+
+  Future<List<dynamic>> getAdminUsers() async {
+    final res = await _authedGet('/api/admin/users');
+    return (res.data as Map<String, dynamic>)['users'] as List<dynamic>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createAdminUser({
+    required String username,
+    required String email,
+    required String password,
+    required String role,
+  }) async {
+    final res = await _authedPost('/api/admin/users', data: {
+      'username': username,
+      'email': email,
+      'password': password,
+      'role': role,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> deleteAdminUser(int userId) async {
+    await _authedDelete('/api/admin/users/$userId');
+  }
+
+  Future<void> revokeAdminUserSessions(int userId) async {
+    await _authedDelete('/api/admin/sessions/$userId');
+  }
+
+  Future<Map<String, dynamic>> getAdminAiUsage() async {
+    final res = await _authedGet('/api/admin/ai-usage');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<List<dynamic>> getAdminInvites() async {
+    final res = await _authedGet('/api/admin/invites');
+    return (res.data as Map<String, dynamic>)['invites'] as List<dynamic>? ??
+        [];
+  }
+
+  Future<Map<String, dynamic>> createAdminInvite({
+    String? label,
+    required String expiresIn,
+  }) async {
+    final res = await _authedPost('/api/admin/invites', data: {
+      'label': label?.trim().isNotEmpty == true ? label!.trim() : null,
+      'expires_in': expiresIn,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> deleteAdminInvite(int inviteId) async {
+    await _authedDelete('/api/admin/invites/$inviteId');
+  }
+
+  Future<void> runPatternDetection() async {
+    await _authedPost('/api/patterns/run', data: {});
   }
 
   // ── Private helpers ───────────────────────────────────────────
