@@ -94,6 +94,21 @@ class _TodayScreenState extends State<TodayScreen> {
     return null;
   }
 
+  String? _readTrend(Map<String, dynamic> map, String key) {
+    final value = _readText(map, key)?.toLowerCase();
+    if (value == 'rising' || value == 'falling' || value == 'stable') {
+      return value;
+    }
+    return null;
+  }
+
+  String? _formatDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    return DateFormat('MMM d, y').format(parsed);
+  }
+
   List<Widget> _buildContent() {
     final noData = _brief!['no_data'] as bool? ?? false;
     final brief = _readMap(_brief!['brief']);
@@ -107,16 +122,33 @@ class _TodayScreenState extends State<TodayScreen> {
     final biggestRisk = _readText(brief, 'biggest_risk');
     final gettingBetter = _readText(brief, 'getting_better');
     final gettingWorse = _readText(brief, 'getting_worse');
+    final mostImportantDecision = _readText(brief, 'most_important_decision');
+    final avoiding = _readText(brief, 'avoiding');
+    final independenceNote = _readText(brief, 'independence_note');
     final trajectorySummary = _readText(trajectory, 'summary');
 
     final latestMood = _readDouble(stats, 'latest_mood');
     final latestSeverity = _readDouble(stats, 'latest_sev');
+    final avgMood7d = _readDouble(stats, 'avg_mood_7d');
+    final avgSeverity7d = _readDouble(stats, 'avg_sev_7d');
     final entries30d = _readInt(stats, 'total_entries_30d');
+    final exitPlanPct = _readDouble(stats, 'exit_plan_pct');
+    final exitPlanIdleDays = _readInt(stats, 'exit_plan_idle_days');
+    final latestDate = _formatDate(_readText(stats, 'latest_date'));
+    final moodTrend = _readTrend(stats, 'mood_trend');
+    final stressTrend = _readTrend(stats, 'stress_trend');
+    final conflictTrend = _readTrend(stats, 'conflict_trend');
 
     final todayHorizon = _readText(horizons, 'today');
     final weekHorizon = _readText(horizons, 'this_week');
     final monthHorizon = _readText(horizons, 'this_month');
     final longTermHorizon = _readText(horizons, 'long_term');
+    final trajectoryChangesIf = (trajectory['changes_if'] as List?)
+            ?.map((item) => item?.toString().trim())
+            .whereType<String>()
+            .where((item) => item.isNotEmpty)
+            .toList() ??
+        const <String>[];
 
     final items = <Widget>[
       _TodayHero(
@@ -167,6 +199,82 @@ class _TodayScreenState extends State<TodayScreen> {
       );
       items.add(const SizedBox(height: 40));
       return items;
+    }
+
+    if (avgMood7d != null ||
+        avgSeverity7d != null ||
+        latestDate != null ||
+        exitPlanPct != null ||
+        exitPlanIdleDays != null ||
+        moodTrend != null ||
+        stressTrend != null ||
+        conflictTrend != null) {
+      items.addAll([
+        const SectionHeader(title: 'Recent Signals'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            if (avgMood7d != null)
+              _InsightStatCard(
+                label: 'Mood 7d',
+                value: avgMood7d.toStringAsFixed(1),
+                color: JournalColors.success,
+              ),
+            if (avgSeverity7d != null)
+              _InsightStatCard(
+                label: 'Severity 7d',
+                value: avgSeverity7d.toStringAsFixed(1),
+                color: _severityColor(avgSeverity7d),
+              ),
+            if (latestDate != null)
+              _InsightStatCard(
+                label: 'Latest Entry',
+                value: latestDate,
+                color: JournalColors.info,
+              ),
+            if (exitPlanPct != null)
+              _InsightStatCard(
+                label: 'Exit Plan',
+                value: '${exitPlanPct.round()}%',
+                color: JournalColors.accent2,
+              ),
+            if (exitPlanIdleDays != null)
+              _InsightStatCard(
+                label: 'Exit Plan Idle',
+                value: '$exitPlanIdleDays days',
+                color: JournalColors.orange,
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (moodTrend != null)
+              _TrendPill(
+                label: 'Mood Trend',
+                value: moodTrend,
+                positiveWhenRising: true,
+              ),
+            if (stressTrend != null)
+              _TrendPill(
+                label: 'Stress Trend',
+                value: stressTrend,
+                positiveWhenRising: false,
+              ),
+            if (conflictTrend != null)
+              _TrendPill(
+                label: 'Conflict Trend',
+                value: conflictTrend,
+                positiveWhenRising: false,
+              ),
+          ],
+        ),
+        const SizedBox(height: 18),
+      ]);
     }
 
     if (doToday != null || stopDoing != null) {
@@ -229,6 +337,36 @@ class _TodayScreenState extends State<TodayScreen> {
               ],
             );
           },
+        ),
+        const SizedBox(height: 18),
+      ]);
+    }
+
+    if (mostImportantDecision != null || avoiding != null) {
+      items.addAll([
+        const SectionHeader(title: 'Decision Pressure'),
+        const SizedBox(height: 10),
+        Column(
+          children: [
+            if (mostImportantDecision != null)
+              _SignalCard(
+                eyebrow: 'MOST IMPORTANT DECISION',
+                title: 'This wants a clear call',
+                body: mostImportantDecision,
+                icon: CupertinoIcons.arrow_branch,
+                color: JournalColors.info,
+              ),
+            if (mostImportantDecision != null && avoiding != null)
+              const SizedBox(height: 10),
+            if (avoiding != null)
+              _SignalCard(
+                eyebrow: 'AVOIDING',
+                title: 'Resistance is showing up here',
+                body: avoiding,
+                icon: CupertinoIcons.hand_raised_fill,
+                color: JournalColors.orange,
+              ),
+          ],
         ),
         const SizedBox(height: 18),
       ]);
@@ -322,10 +460,55 @@ class _TodayScreenState extends State<TodayScreen> {
                     label: 'Conflict',
                     value: trajectory['conflict'] as String?,
                   ),
+                  _TrajectoryPill(
+                    label: 'Independence',
+                    value: trajectory['independence'] as String?,
+                    risingIsPositive: true,
+                  ),
+                  _TrajectoryPill(
+                    label: 'Overall',
+                    value: trajectory['overall'] as String?,
+                    treatsOverall: true,
+                  ),
                 ],
               ),
+              if (trajectoryChangesIf.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'THIS TRAJECTORY CHANGES IF',
+                  style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (var index = 0; index < trajectoryChangesIf.length; index++)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == trajectoryChangesIf.length - 1 ? 0 : 10,
+                    ),
+                    child: _BulletLine(text: trajectoryChangesIf[index]),
+                  ),
+              ],
             ],
           ),
+        ),
+        const SizedBox(height: 18),
+      ]);
+    }
+
+    if (independenceNote != null) {
+      items.addAll([
+        const SectionHeader(title: 'Independence'),
+        const SizedBox(height: 10),
+        _SignalCard(
+          eyebrow: 'PROGRESS TOWARD INDEPENDENCE',
+          title: 'Movement on autonomy',
+          body: independenceNote,
+          icon: CupertinoIcons.person_crop_circle_badge_checkmark,
+          color: JournalColors.accent2,
         ),
         const SizedBox(height: 18),
       ]);
@@ -521,12 +704,6 @@ class _TodayHero extends StatelessWidget {
     return JournalColors.danger;
   }
 
-  Color _severityColor(double severity) {
-    if (severity <= 3.0) return JournalColors.success;
-    if (severity <= 6.0) return JournalColors.severity;
-    return JournalColors.danger;
-  }
-
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -650,7 +827,7 @@ class _TodayHero extends StatelessWidget {
                     child: _MetricTile(
                       label: 'Severity',
                       value: latestSeverity!.toStringAsFixed(1),
-                      color: _severityColor(latestSeverity!),
+                      color: _severityColor(latestSeverity),
                     ),
                   ),
                 if (latestSeverity != null && entries30d != null)
@@ -696,6 +873,13 @@ class _HeroGlyph extends StatelessWidget {
       child: Icon(icon, color: JournalColors.textPrimary, size: size),
     );
   }
+}
+
+Color _severityColor(double? severity) {
+  if (severity == null) return JournalColors.severity;
+  if (severity <= 3.0) return JournalColors.success;
+  if (severity <= 6.0) return JournalColors.severity;
+  return JournalColors.danger;
 }
 
 class _MetricTile extends StatelessWidget {
@@ -968,24 +1152,48 @@ class _SignalCard extends StatelessWidget {
 }
 
 class _TrajectoryPill extends StatelessWidget {
-  const _TrajectoryPill({required this.label, this.value});
+  const _TrajectoryPill({
+    required this.label,
+    this.value,
+    this.risingIsPositive = false,
+    this.treatsOverall = false,
+  });
 
   final String label;
   final String? value;
+  final bool risingIsPositive;
+  final bool treatsOverall;
 
   @override
   Widget build(BuildContext context) {
     final trend = value?.toLowerCase();
-    final icon = switch (trend) {
-      'rising' => CupertinoIcons.arrow_up,
-      'falling' => CupertinoIcons.arrow_down,
-      _ => CupertinoIcons.minus,
-    };
-    final color = switch (trend) {
-      'rising' => JournalColors.success,
-      'falling' => JournalColors.danger,
-      _ => JournalColors.textMuted,
-    };
+    final icon = treatsOverall
+        ? switch (trend) {
+            'positive' => CupertinoIcons.arrow_up_circle,
+            'negative' => CupertinoIcons.arrow_down_circle,
+            _ => CupertinoIcons.minus_circle,
+          }
+        : switch (trend) {
+            'rising' => CupertinoIcons.arrow_up,
+            'falling' => CupertinoIcons.arrow_down,
+            _ => CupertinoIcons.minus,
+          };
+    final color = treatsOverall
+        ? switch (trend) {
+            'positive' => JournalColors.success,
+            'negative' => JournalColors.danger,
+            _ => JournalColors.textMuted,
+          }
+        : switch (trend) {
+            'rising' =>
+              risingIsPositive ? JournalColors.success : JournalColors.danger,
+            'falling' =>
+              risingIsPositive ? JournalColors.danger : JournalColors.success,
+            _ => JournalColors.textMuted,
+          };
+    final text = value == null
+        ? label
+        : '$label: ${value![0].toUpperCase()}${value!.substring(1)}';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1000,7 +1208,7 @@ class _TrajectoryPill extends StatelessWidget {
           Icon(icon, color: color, size: 12),
           const SizedBox(width: 6),
           Text(
-            label,
+            text,
             style: TextStyle(
               color: color,
               fontSize: 12,
@@ -1009,6 +1217,143 @@ class _TrajectoryPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _InsightStatCard extends StatelessWidget {
+  const _InsightStatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 152,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _withAlpha(color, 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _withAlpha(color, 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: _withAlpha(color, 0.92),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrendPill extends StatelessWidget {
+  const _TrendPill({
+    required this.label,
+    required this.value,
+    required this.positiveWhenRising,
+  });
+
+  final String label;
+  final String value;
+  final bool positiveWhenRising;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = value.toLowerCase();
+    final isRising = normalized == 'rising';
+    final isFalling = normalized == 'falling';
+    final color = isRising
+        ? (positiveWhenRising ? JournalColors.success : JournalColors.danger)
+        : isFalling
+            ? (positiveWhenRising
+                ? JournalColors.danger
+                : JournalColors.success)
+            : JournalColors.textMuted;
+    final icon = isRising
+        ? CupertinoIcons.arrow_up
+        : isFalling
+            ? CupertinoIcons.arrow_down
+            : CupertinoIcons.minus;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: _withAlpha(color, 0.10),
+        border: Border.all(color: _withAlpha(color, 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ${value[0].toUpperCase()}${value.substring(1)}',
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BulletLine extends StatelessWidget {
+  const _BulletLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 2),
+          child: Icon(
+            CupertinoIcons.arrow_right,
+            color: JournalColors.success,
+            size: 14,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 14,
+              height: 1.55,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
