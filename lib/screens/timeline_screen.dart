@@ -1229,175 +1229,179 @@ class _EntryTileState extends State<_EntryTile> {
             ),
           ),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(26),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    JournalColors.bgCard.withOpacity(0.96),
-                    const Color(0xFF121625).withOpacity(0.94),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleExpanded,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(26),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      JournalColors.bgCard.withOpacity(0.96),
+                      const Color(0xFF121625).withOpacity(0.94),
+                    ],
+                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: railColor.withOpacity(0.10),
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                    ),
                   ],
                 ),
-                border: Border.all(color: Colors.white.withOpacity(0.08)),
-                boxShadow: [
-                  BoxShadow(
-                    color: railColor.withOpacity(0.10),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                displayDate,
-                                style: const TextStyle(
-                                  color: JournalColors.textPrimary,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (moodLabel != null && moodLabel.isNotEmpty)
-                          _MetaBadge(
-                            label: moodLabel,
-                            color: railColor,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _SubtleMetaChip(
-                          icon: CupertinoIcons.text_alignleft,
-                          label: '$wordCount words',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      displayText,
-                      style: const TextStyle(
-                        color: JournalColors.textSecondary,
-                        fontSize: 15,
-                        height: 1.62,
-                      ),
-                      maxLines: _expanded ? null : 5,
-                      overflow: _expanded
-                          ? TextOverflow.visible
-                          : TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      onTap: _toggleExpanded,
-                      child: Text(
-                        _expanded
-                            ? 'Show less'
-                            : (isLong ? 'Read more' : 'Open entry'),
-                        style: TextStyle(
-                          color: railColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (_expanded) ...[
-                      if (_attachmentsLoading) ...[
-                        const SizedBox(height: 16),
-                        const Center(
-                          child: CupertinoActivityIndicator(
-                            color: JournalColors.accent,
-                          ),
-                        ),
-                      ] else if (_attachments.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 72,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _attachments.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 10),
-                            itemBuilder: (context, index) {
-                              final attachment = _attachments[index];
-                              final path = _attachmentImagePath(
-                                  attachment['id'].toString());
-                              return GestureDetector(
-                                onTap: () => _openImageLightbox(path),
-                                child: Container(
-                                  width: 72,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.10),
-                                    ),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(15),
-                                    child: _AuthImage(path: path),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayDate,
+                                  style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                              );
-                            },
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ],
-                    if (tags.isNotEmpty) ...[
-                      const SizedBox(height: 16),
+                          if (moodLabel != null && moodLabel.isNotEmpty)
+                            _MetaBadge(
+                              label: moodLabel,
+                              color: railColor,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          ...visibleTags.map(
-                            (tag) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 7,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                color: railColor.withOpacity(0.08),
-                                border: Border.all(
-                                  color: railColor.withOpacity(0.16),
-                                ),
-                              ),
-                              child: Text(
-                                tag,
-                                style: TextStyle(
-                                  color: railColor.withOpacity(0.92),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                          _SubtleMetaChip(
+                            icon: CupertinoIcons.text_alignleft,
+                            label: '$wordCount words',
                           ),
-                          if (hiddenTagCount > 0)
-                            _SubtleMetaChip(
-                              icon: CupertinoIcons.ellipsis,
-                              label: '+$hiddenTagCount more',
-                            ),
                         ],
                       ),
+                      const SizedBox(height: 14),
+                      Text(
+                        displayText,
+                        style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 15,
+                          height: 1.62,
+                        ),
+                        maxLines: _expanded ? null : 5,
+                        overflow: _expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: _toggleExpanded,
+                        child: Text(
+                          _expanded
+                              ? 'Show less'
+                              : (isLong ? 'Read more' : 'Open entry'),
+                          style: TextStyle(
+                            color: railColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (_expanded) ...[
+                        if (_attachmentsLoading) ...[
+                          const SizedBox(height: 16),
+                          const Center(
+                            child: CupertinoActivityIndicator(
+                              color: JournalColors.accent,
+                            ),
+                          ),
+                        ] else if (_attachments.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 72,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _attachments.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 10),
+                              itemBuilder: (context, index) {
+                                final attachment = _attachments[index];
+                                final path = _attachmentImagePath(
+                                    attachment['id'].toString());
+                                return GestureDetector(
+                                  onTap: () => _openImageLightbox(path),
+                                  child: Container(
+                                    width: 72,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.10),
+                                      ),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(15),
+                                      child: _AuthImage(path: path),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                      if (tags.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ...visibleTags.map(
+                              (tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: railColor.withOpacity(0.08),
+                                  border: Border.all(
+                                    color: railColor.withOpacity(0.16),
+                                  ),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: TextStyle(
+                                    color: railColor.withOpacity(0.92),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (hiddenTagCount > 0)
+                              _SubtleMetaChip(
+                                icon: CupertinoIcons.ellipsis,
+                                label: '+$hiddenTagCount more',
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
