@@ -233,6 +233,33 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── Budget Planner ───────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getBudgetPlan() async {
+    final res = await _authedGet('/api/budget/plan');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> saveBudgetPlan(Map<String, dynamic> data) async {
+    final res = await _authedPost('/api/budget/plan', data: data);
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> deleteBudgetPlan() async {
+    await _authedDelete('/api/budget/plan');
+  }
+
+  Future<Map<String, dynamic>> budgetAi({
+    required String prompt,
+    int maxTokens = 700,
+  }) async {
+    final res = await _authedPost('/api/budget/ai', data: {
+      'prompt': prompt,
+      'max_tokens': maxTokens,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
   // ── Entries / Timeline ────────────────────────────────────────
 
   Future<List<dynamic>> getTimeline({int page = 1, int limit = 20}) async {

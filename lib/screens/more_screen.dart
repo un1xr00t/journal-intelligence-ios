@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../theme/app_theme.dart';
 import 'ask_journal_screen.dart';
+import 'budget_planner_screen.dart';
 import 'detective_screen.dart';
 import 'exit_plan_screen.dart';
 import 'fairness_ledger_screen.dart';
@@ -184,8 +185,7 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Plan finances and run AI comparisons',
             icon: CupertinoIcons.creditcard,
             iconColor: const Color(0xFF10B981),
-            badge: 'Soon',
-            builder: (_) => const _PlaceholderScreen(title: 'Budget Planner'),
+            builder: (_) => const BudgetPlannerScreen(),
           ),
         ]),
         _Section('System', 'Safety rails, settings, and account controls.',
