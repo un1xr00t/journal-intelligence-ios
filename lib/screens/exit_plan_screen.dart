@@ -1438,9 +1438,13 @@ class _PhasesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final listPadding = EdgeInsets.fromLTRB(20, 4, 20, 28 + bottomInset);
+
     if (phases.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        padding: listPadding,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
           if (topContent != null) ...[
             topContent!,
@@ -1460,7 +1464,8 @@ class _PhasesTab extends StatelessWidget {
       );
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: listPadding,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         if (topContent != null) ...[
           topContent!,
@@ -1506,18 +1511,52 @@ class _PhaseRowState extends State<_PhaseRow> {
   String _newPriority = 'normal';
   String? _taskError;
   final _titleCtrl = TextEditingController();
+  final _titleFocusNode = FocusNode();
+  final _addTaskFormKey = GlobalKey();
   final _api = ApiService();
 
   @override
   void initState() {
     super.initState();
     _expanded = widget.phase['status'] == 'active';
+    _titleFocusNode.addListener(_handleTitleFocusChange);
   }
 
   @override
   void dispose() {
+    _titleFocusNode.removeListener(_handleTitleFocusChange);
+    _titleFocusNode.dispose();
     _titleCtrl.dispose();
     super.dispose();
+  }
+
+  void _handleTitleFocusChange() {
+    if (_titleFocusNode.hasFocus) {
+      _scheduleEnsureAddTaskVisible();
+    }
+  }
+
+  void _scheduleEnsureAddTaskVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureAddTaskVisible();
+      Future<void>.delayed(const Duration(milliseconds: 280), () {
+        if (!mounted) return;
+        _ensureAddTaskVisible();
+      });
+    });
+  }
+
+  void _ensureAddTaskVisible() {
+    final formContext = _addTaskFormKey.currentContext;
+    if (formContext == null) return;
+    Scrollable.ensureVisible(
+      formContext,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      alignment: 0.92,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
   }
 
   Future<void> _submitTask() async {
@@ -1687,7 +1726,10 @@ class _PhaseRowState extends State<_PhaseRow> {
                 if (!_addingTask)
                   // Dashed "+ Add task" button
                   GestureDetector(
-                    onTap: () => setState(() => _addingTask = true),
+                    onTap: () {
+                      setState(() => _addingTask = true);
+                      _scheduleEnsureAddTaskVisible();
+                    },
                     child: Container(
                       width: double.infinity,
                       margin: const EdgeInsets.fromLTRB(14, 10, 14, 14),
@@ -1710,6 +1752,7 @@ class _PhaseRowState extends State<_PhaseRow> {
                 else
                   // Inline add form
                   Padding(
+                    key: _addTaskFormKey,
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                     child: Container(
                       padding: const EdgeInsets.all(14),
@@ -1724,6 +1767,7 @@ class _PhaseRowState extends State<_PhaseRow> {
                           // Title input
                           CupertinoTextField(
                             controller: _titleCtrl,
+                            focusNode: _titleFocusNode,
                             autofocus: true,
                             placeholder: 'Task title…',
                             placeholderStyle: const TextStyle(
@@ -2617,17 +2661,99 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
   bool _loadingNotes = false;
   bool _savingNote = false;
   final _ctrl = TextEditingController();
+  final _noteFocusNode = FocusNode();
+  final _noteComposerKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    _noteFocusNode.addListener(_handleNoteFocusChange);
     _loadNotes();
   }
 
   @override
   void dispose() {
+    _noteFocusNode.removeListener(_handleNoteFocusChange);
+    _noteFocusNode.dispose();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  void _handleNoteFocusChange() {
+    if (_noteFocusNode.hasFocus) {
+      _scheduleEnsureNoteComposerVisible();
+    }
+  }
+
+  void _scheduleEnsureNoteComposerVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureNoteComposerVisible();
+      Future<void>.delayed(const Duration(milliseconds: 280), () {
+        if (!mounted) return;
+        _ensureNoteComposerVisible();
+      });
+    });
+  }
+
+  void _ensureNoteComposerVisible() {
+    final composerContext = _noteComposerKey.currentContext;
+    if (composerContext == null) return;
+    Scrollable.ensureVisible(
+      composerContext,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      alignment: 0.96,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
+  }
+
+  Widget _buildNoteComposer() {
+    return KeyedSubtree(
+      key: _noteComposerKey,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: CupertinoTextField(
+              controller: _ctrl,
+              focusNode: _noteFocusNode,
+              placeholder: 'Add a note…',
+              placeholderStyle:
+                  const TextStyle(color: JournalColors.textMuted, fontSize: 12),
+              style: const TextStyle(
+                  color: JournalColors.textPrimary, fontSize: 12),
+              decoration: BoxDecoration(
+                color: JournalColors.bgBase,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: JournalColors.border),
+              ),
+              padding: const EdgeInsets.all(10),
+              maxLines: 3,
+              minLines: 2,
+              onChanged: (_) => setState(() {}),
+              onTap: _scheduleEnsureNoteComposerVisible,
+            ),
+          ),
+          const SizedBox(width: 8),
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: JournalColors.accent,
+            borderRadius: BorderRadius.circular(8),
+            onPressed:
+                (_savingNote || _ctrl.text.trim().isEmpty) ? null : _addNote,
+            child: _savingNote
+                ? const CupertinoActivityIndicator(
+                    radius: 8, color: Colors.white)
+                : const Text('Add',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadNotes() async {
@@ -2751,232 +2877,219 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet> {
     final isDone = status == 'done' || status == 'skipped';
     final id = task['id']?.toString() ?? '';
     final priColor = _priorityColors[priority] ?? JournalColors.accent;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+    final bottomSafeArea = mediaQuery.padding.bottom;
+    final maxSheetHeight = mediaQuery.size.height * 0.82;
+    final liftedSheetHeight =
+        (maxSheetHeight - (bottomInset * 0.45)).clamp(320.0, maxSheetHeight);
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.82,
-      decoration: const BoxDecoration(
-        color: JournalColors.bgCard,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Drag handle
-          Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 8),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: JournalColors.border,
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
-          // Content
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title row
-                  Row(children: [
-                    Expanded(
-                      child: Text(
-                        task['title'] as String? ?? '',
-                        style: const TextStyle(
-                            color: JournalColors.textPrimary,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            height: 1.4),
-                      ),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Icon(CupertinoIcons.xmark_circle_fill,
-                          color: JournalColors.textMuted, size: 26),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-
-                  // Phase + meta pills
-                  Wrap(spacing: 6, runSpacing: 6, children: [
-                    _Pill(
-                        _statusLabels[status] ?? status, JournalColors.accent),
-                    _Pill('$priority priority', priColor),
-                    if (task['_phase_title'] != null &&
-                        (task['_phase_title'] as String).isNotEmpty)
-                      _Pill(task['_phase_title'] as String,
-                          JournalColors.textMuted),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // Description
-                  if ((task['description'] as String? ?? '').isNotEmpty) ...[
-                    _sheetLabel('What to do'),
-                    const SizedBox(height: 6),
-                    Text(task['description'] as String,
-                        style: const TextStyle(
-                            color: JournalColors.textSecondary,
-                            fontSize: 13,
-                            height: 1.65)),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Why it matters
-                  if ((task['why_it_matters'] as String? ?? '').isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: JournalColors.accent.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: JournalColors.accent.withValues(alpha: 0.2)),
-                      ),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sheetLabel('Why this matters',
-                                color: JournalColors.accent),
-                            const SizedBox(height: 6),
-                            Text(task['why_it_matters'] as String,
-                                style: const TextStyle(
-                                    color: JournalColors.textSecondary,
-                                    fontSize: 13,
-                                    height: 1.65)),
-                          ]),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Resources
-                  ..._buildResources(task),
-
-                  // Status actions
-                  if (!isDone) ...[
-                    Row(children: [
-                      if (status != 'doing')
-                        Expanded(
-                          child: _ActionBtn(
-                            label: 'Mark In Progress',
-                            onTap: () => widget.onStatusChange(id, 'doing'),
-                            color: JournalColors.accent,
-                            ghost: true,
-                          ),
-                        ),
-                      if (status != 'doing') const SizedBox(width: 8),
-                      Expanded(
-                        child: _ActionBtn(
-                          label: 'Mark Done',
-                          onTap: () => widget.onStatusChange(id, 'done'),
-                          color: const Color(0xFF10B981),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _ActionBtn(
-                        label: 'Skip',
-                        onTap: () => widget.onStatusChange(id, 'skipped'),
-                        color: JournalColors.textMuted,
-                        ghost: true,
-                      ),
-                    ]),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Delete task
-                  GestureDetector(
-                    onTap: () => _confirmDelete(context, id),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0x33EF4444)),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text('🗑  Delete task',
-                          style: TextStyle(
-                              color: Color(0xFFEF4444),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500)),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Notes
-                  _sheetLabel('Notes'),
-                  const SizedBox(height: 8),
-                  if (_loadingNotes)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8, bottom: 12),
-                      child: CupertinoActivityIndicator(
-                          radius: 8, color: JournalColors.accent),
-                    )
-                  else
-                    ..._notes.map((n) {
-                      final note = Map<String, dynamic>.from(n);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: JournalColors.bgBase,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: JournalColors.border),
-                          ),
-                          child: Text(note['note_text'] as String? ?? '',
-                              style: const TextStyle(
-                                  color: JournalColors.textSecondary,
-                                  fontSize: 12,
-                                  height: 1.6)),
-                        ),
-                      );
-                    }),
-
-                  // Add note input
-                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Expanded(
-                      child: CupertinoTextField(
-                        controller: _ctrl,
-                        placeholder: 'Add a note…',
-                        placeholderStyle: const TextStyle(
-                            color: JournalColors.textMuted, fontSize: 12),
-                        style: const TextStyle(
-                            color: JournalColors.textPrimary, fontSize: 12),
-                        decoration: BoxDecoration(
-                          color: JournalColors.bgBase,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: JournalColors.border),
-                        ),
-                        padding: const EdgeInsets.all(10),
-                        maxLines: 3,
-                        minLines: 2,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      color: JournalColors.accent,
-                      borderRadius: BorderRadius.circular(8),
-                      onPressed: (_savingNote || _ctrl.text.trim().isEmpty)
-                          ? null
-                          : _addNote,
-                      child: _savingNote
-                          ? const CupertinoActivityIndicator(
-                              radius: 8, color: Colors.white)
-                          : const Text('Add',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
-                    ),
-                  ]),
-                ],
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: bottomInset + 20),
+      child: Container(
+        height: liftedSheetHeight,
+        decoration: const BoxDecoration(
+          color: JournalColors.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Drag handle
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: JournalColors.border,
+                borderRadius: BorderRadius.circular(99),
               ),
             ),
-          ),
-        ],
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 132),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title row
+                    Row(children: [
+                      Expanded(
+                        child: Text(
+                          task['title'] as String? ?? '',
+                          style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              height: 1.4),
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Icon(CupertinoIcons.xmark_circle_fill,
+                            color: JournalColors.textMuted, size: 26),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+
+                    // Phase + meta pills
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      _Pill(_statusLabels[status] ?? status,
+                          JournalColors.accent),
+                      _Pill('$priority priority', priColor),
+                      if (task['_phase_title'] != null &&
+                          (task['_phase_title'] as String).isNotEmpty)
+                        _Pill(task['_phase_title'] as String,
+                            JournalColors.textMuted),
+                    ]),
+                    const SizedBox(height: 16),
+
+                    // Description
+                    if ((task['description'] as String? ?? '').isNotEmpty) ...[
+                      _sheetLabel('What to do'),
+                      const SizedBox(height: 6),
+                      Text(task['description'] as String,
+                          style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 13,
+                              height: 1.65)),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Why it matters
+                    if ((task['why_it_matters'] as String? ?? '')
+                        .isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: JournalColors.accent.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color:
+                                  JournalColors.accent.withValues(alpha: 0.2)),
+                        ),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _sheetLabel('Why this matters',
+                                  color: JournalColors.accent),
+                              const SizedBox(height: 6),
+                              Text(task['why_it_matters'] as String,
+                                  style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 13,
+                                      height: 1.65)),
+                            ]),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Resources
+                    ..._buildResources(task),
+
+                    // Status actions
+                    if (!isDone) ...[
+                      Row(children: [
+                        if (status != 'doing')
+                          Expanded(
+                            child: _ActionBtn(
+                              label: 'Mark In Progress',
+                              onTap: () => widget.onStatusChange(id, 'doing'),
+                              color: JournalColors.accent,
+                              ghost: true,
+                            ),
+                          ),
+                        if (status != 'doing') const SizedBox(width: 8),
+                        Expanded(
+                          child: _ActionBtn(
+                            label: 'Mark Done',
+                            onTap: () => widget.onStatusChange(id, 'done'),
+                            color: const Color(0xFF10B981),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _ActionBtn(
+                          label: 'Skip',
+                          onTap: () => widget.onStatusChange(id, 'skipped'),
+                          color: JournalColors.textMuted,
+                          ghost: true,
+                        ),
+                      ]),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Delete task
+                    GestureDetector(
+                      onTap: () => _confirmDelete(context, id),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0x33EF4444)),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text('🗑  Delete task',
+                            style: TextStyle(
+                                color: Color(0xFFEF4444),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Notes
+                    _sheetLabel('Notes'),
+                    const SizedBox(height: 8),
+                    if (_loadingNotes)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8, bottom: 12),
+                        child: CupertinoActivityIndicator(
+                            radius: 8, color: JournalColors.accent),
+                      )
+                    else
+                      ..._notes.map((n) {
+                        final note = Map<String, dynamic>.from(n);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: JournalColors.bgBase,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: JournalColors.border),
+                            ),
+                            child: Text(note['note_text'] as String? ?? '',
+                                style: const TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 12,
+                                    height: 1.6)),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + bottomSafeArea),
+              decoration: BoxDecoration(
+                color: JournalColors.bgCard,
+                border: Border(
+                  top: BorderSide(
+                    color: JournalColors.border.withValues(alpha: 0.8),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: _buildNoteComposer(),
+            ),
+          ],
+        ),
       ),
     );
   }
