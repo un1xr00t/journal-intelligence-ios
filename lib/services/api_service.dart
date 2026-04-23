@@ -1114,6 +1114,51 @@ class ApiService {
     return List<int>.from(r.data as List);
   }
 
+  Future<Map<String, dynamic>> generateExport({
+    required String packetType,
+    required String dateStart,
+    required String dateEnd,
+    String? format,
+    bool redact = false,
+    List<int> alertIds = const [],
+  }) async {
+    final r = await _dio.post(
+      '/api/export/generate',
+      data: {
+        'packet_type': packetType,
+        'date_start': dateStart,
+        'date_end': dateEnd,
+        if (format != null) 'format': format,
+        'redact': redact,
+        'alert_ids': alertIds,
+      },
+      options: Options(receiveTimeout: const Duration(minutes: 3)),
+    );
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<void> downloadExportToFile(int exportId, String savePath) async {
+    await _dio.download(
+      '/api/export/$exportId',
+      savePath,
+      options: Options(
+        headers: {'Accept': '*/*'},
+        receiveTimeout: const Duration(minutes: 2),
+      ),
+    );
+  }
+
+  Future<Response<List<int>>> fetchExportBlob(int exportId) async {
+    return _dio.get<List<int>>(
+      '/api/export/$exportId',
+      options: Options(
+        headers: {'Accept': '*/*'},
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(minutes: 2),
+      ),
+    );
+  }
+
   // ── Research ──────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> detectiveRunResearch(

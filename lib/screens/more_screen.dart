@@ -12,6 +12,7 @@ import 'budget_planner_screen.dart';
 import 'detective_screen.dart';
 import 'early_warning_screen.dart';
 import 'exit_plan_screen.dart';
+import 'exports_screen.dart';
 import 'fairness_ledger_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
@@ -141,8 +142,7 @@ class MoreScreen extends StatelessWidget {
             label: 'Exports',
             subtitle: 'Download your data as PDF or ZIP',
             icon: CupertinoIcons.arrow_up_doc,
-            badge: 'Soon',
-            builder: (_) => const _PlaceholderScreen(title: 'Exports'),
+            builder: (_) => const ExportsScreen(),
           ),
         ]),
         _Section('Insights', 'Review patterns and longer-term signals.',
