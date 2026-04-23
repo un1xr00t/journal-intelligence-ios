@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -48,7 +49,8 @@ const _kSageKnowledgeChips = <({String label, String prompt})>[
   ),
   (
     label: 'Narrative summary',
-    prompt: 'Give me the clearest read on what chapter of life I am in right now.'
+    prompt:
+        'Give me the clearest read on what chapter of life I am in right now.'
   ),
   (
     label: 'Active alerts',
@@ -68,7 +70,8 @@ const _kSageKnowledgeChips = <({String label, String prompt})>[
   ),
   (
     label: 'Fairness ledger',
-    prompt: 'What does the fairness ledger say about load, effort, or imbalance?'
+    prompt:
+        'What does the fairness ledger say about load, effort, or imbalance?'
   ),
   (
     label: 'Budget & spending',
@@ -76,7 +79,8 @@ const _kSageKnowledgeChips = <({String label, String prompt})>[
   ),
   (
     label: 'People intelligence',
-    prompt: 'What should I notice about the people showing up most in my journal?'
+    prompt:
+        'What should I notice about the people showing up most in my journal?'
   ),
   (
     label: 'User memory/profile',
@@ -147,6 +151,26 @@ class _SageScreenState extends State<SageScreen> {
   }
 
   String _parseError(dynamic e) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final detail = data['detail'];
+        if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+        if (detail is List && detail.isNotEmpty) {
+          return detail.map((item) {
+            if (item is Map && item['msg'] != null) {
+              return item['msg'].toString();
+            }
+            return item.toString();
+          }).join(', ');
+        }
+      }
+      if (data is String && data.trim().isNotEmpty) return data.trim();
+      final status = e.response?.statusCode;
+      if (status != null) {
+        return 'Server error ($status). Check the Sage vision request.';
+      }
+    }
     final str = e.toString();
     final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
     return match?.group(1) ?? 'Something went wrong.';
@@ -241,7 +265,7 @@ ${_settings.toPromptInstruction()}
 
     final requestMessages = [
       ..._messages.map((message) => message.toApiMessage()),
-      {'role': 'user', 'content': prompt},
+      outgoing.toApiMessage(),
     ];
 
     try {
@@ -339,7 +363,8 @@ $assistantReply
   List<String> _extractFacts(String raw) {
     if (raw.trim().isEmpty) return const [];
     String candidate = raw.trim();
-    final fenced = RegExp(r'```(?:json)?\s*([\s\S]*?)```').firstMatch(candidate);
+    final fenced =
+        RegExp(r'```(?:json)?\s*([\s\S]*?)```').firstMatch(candidate);
     if (fenced != null) candidate = fenced.group(1)?.trim() ?? candidate;
 
     try {
@@ -399,7 +424,8 @@ $assistantReply
   Future<void> _toggleSpeak(_SageMessage message) async {
     if (message.role != 'assistant' || message.text.trim().isEmpty) return;
 
-    if (_speakingMessageId == message.id || _ttsLoadingMessageId == message.id) {
+    if (_speakingMessageId == message.id ||
+        _ttsLoadingMessageId == message.id) {
       await _audioPlayer.stop();
       if (!mounted) return;
       setState(() {
@@ -521,7 +547,8 @@ $assistantReply
     return null;
   }
 
-  List<Map<String, dynamic>> _resolvableActions(List<Map<String, dynamic>> raw) {
+  List<Map<String, dynamic>> _resolvableActions(
+      List<Map<String, dynamic>> raw) {
     return raw.where((item) => _screenForAction(item) != null).toList();
   }
 
@@ -782,7 +809,8 @@ class _HeaderButton extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: JournalColors.bgCard.withValues(alpha: onTap != null ? 0.82 : 0.36),
+          color: JournalColors.bgCard
+              .withValues(alpha: onTap != null ? 0.82 : 0.36),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: JournalColors.border),
         ),
@@ -823,7 +851,8 @@ class _SageThread extends StatelessWidget {
   final List<_SageMessage> messages;
   final Future<void> Function({bool forceRefresh}) onRetryContext;
   final Future<void> Function(Map<String, dynamic>) onActionTap;
-  final List<Map<String, dynamic>> Function(List<Map<String, dynamic>>) resolveActions;
+  final List<Map<String, dynamic>> Function(List<Map<String, dynamic>>)
+      resolveActions;
   final Future<void> Function(_SageMessage) onToggleSpeak;
   final String? speakingMessageId;
   final String? ttsLoadingMessageId;
@@ -1225,12 +1254,16 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
                   ...actions.map((action) {
-                    final label = action['label']?.toString().trim().isNotEmpty ==
+                    final label = action['label']
+                                ?.toString()
+                                .trim()
+                                .isNotEmpty ==
                             true
                         ? action['label'].toString().trim()
                         : action['title']?.toString().trim().isNotEmpty == true
                             ? action['title'].toString().trim()
-                            : action['name']?.toString().trim().isNotEmpty == true
+                            : action['name']?.toString().trim().isNotEmpty ==
+                                    true
                                 ? action['name'].toString().trim()
                                 : 'Open';
 
@@ -1408,7 +1441,8 @@ class _SageInputBar extends StatelessWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemBuilder: (_, index) => GestureDetector(
-                onTap: () => onSuggestionTap(_kSageKnowledgeChips[index].prompt),
+                onTap: () =>
+                    onSuggestionTap(_kSageKnowledgeChips[index].prompt),
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
