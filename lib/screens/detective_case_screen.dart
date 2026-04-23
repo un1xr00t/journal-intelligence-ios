@@ -23,14 +23,21 @@ Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 const _kScreenPadding = EdgeInsets.fromLTRB(20, 8, 20, 28);
 
-const _kEntryTypes = ['note', 'observation', 'statement', 'admission', 'contradiction', 'timeline'];
+const _kEntryTypes = [
+  'note',
+  'observation',
+  'statement',
+  'admission',
+  'contradiction',
+  'timeline'
+];
 const _kSeverities = ['critical', 'high', 'medium', 'low', 'info'];
 const _kSeverityColors = {
   'critical': Color(0xFFEF4444),
-  'high':     Color(0xFFF97316),
-  'medium':   Color(0xFFF59E0B),
-  'low':      Color(0xFF6366F1),
-  'info':     Color(0xFF22C55E),
+  'high': Color(0xFFF97316),
+  'medium': Color(0xFFF59E0B),
+  'low': Color(0xFF6366F1),
+  'info': Color(0xFF22C55E),
 };
 
 class _TabMeta {
@@ -40,15 +47,15 @@ class _TabMeta {
 }
 
 final _kTabs = [
-  const _TabMeta('Log',          CupertinoIcons.doc_text),
-  const _TabMeta('Partner',      CupertinoIcons.chat_bubble),
-  const _TabMeta('Photos',       CupertinoIcons.photo),
-  const _TabMeta('Gallery',      CupertinoIcons.photo_on_rectangle),
+  const _TabMeta('Log', CupertinoIcons.doc_text),
+  const _TabMeta('Partner', CupertinoIcons.chat_bubble),
+  const _TabMeta('Photos', CupertinoIcons.photo),
+  const _TabMeta('Gallery', CupertinoIcons.photo_on_rectangle),
   const _TabMeta('Intelligence', CupertinoIcons.sparkles),
-  const _TabMeta('Wires',        CupertinoIcons.wifi),
-  const _TabMeta('Export',       CupertinoIcons.arrow_up_doc),
-  const _TabMeta('Research',     CupertinoIcons.search),
-  const _TabMeta('Settings',     CupertinoIcons.settings),
+  const _TabMeta('Wires', CupertinoIcons.wifi),
+  const _TabMeta('Export', CupertinoIcons.arrow_up_doc),
+  const _TabMeta('Research', CupertinoIcons.search),
+  const _TabMeta('Settings', CupertinoIcons.settings),
 ];
 
 const _kTabDescriptions = {
@@ -68,7 +75,8 @@ const _kTabDescriptions = {
 // and Flutter's URL-keyed image cache never caches a failed/missing response.
 
 class _AuthImage extends StatefulWidget {
-  final String path;   // relative path e.g. /api/detective/cases/1/entries/2/photos/3/image
+  final String
+      path; // relative path e.g. /api/detective/cases/1/entries/2/photos/3/image
   final BoxFit fit;
   final int? cacheWidth;
   final int? cacheHeight;
@@ -100,7 +108,10 @@ class _AuthImageState extends State<_AuthImage> {
   void didUpdateWidget(_AuthImage old) {
     super.didUpdateWidget(old);
     if (old.path != widget.path) {
-      setState(() { _state = _ImgState.loading; _bytes = null; });
+      setState(() {
+        _state = _ImgState.loading;
+        _bytes = null;
+      });
       _fetch();
     }
   }
@@ -141,8 +152,8 @@ class _AuthImageState extends State<_AuthImage> {
         return const Center(child: CupertinoActivityIndicator(radius: 8));
       case _ImgState.error:
         return const Center(
-          child: Icon(CupertinoIcons.photo,
-              color: JournalColors.textMuted, size: 20));
+            child: Icon(CupertinoIcons.photo,
+                color: JournalColors.textMuted, size: 20));
       case _ImgState.done:
         return Image.memory(
           _bytes!,
@@ -150,8 +161,8 @@ class _AuthImageState extends State<_AuthImage> {
           cacheWidth: widget.cacheWidth,
           cacheHeight: widget.cacheHeight,
           errorBuilder: (_, __, ___) => const Center(
-            child: Icon(CupertinoIcons.photo,
-                color: JournalColors.textMuted, size: 20)),
+              child: Icon(CupertinoIcons.photo,
+                  color: JournalColors.textMuted, size: 20)),
         );
     }
   }
@@ -436,10 +447,14 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
 
   Color get _statusColor {
     switch (widget.caseData['status']) {
-      case 'active':   return const Color(0xFF22C55E);
-      case 'closed':   return JournalColors.textMuted;
-      case 'archived': return const Color(0xFFF59E0B);
-      default:         return JournalColors.textMuted;
+      case 'active':
+        return const Color(0xFF22C55E);
+      case 'closed':
+        return JournalColors.textMuted;
+      case 'archived':
+        return const Color(0xFFF59E0B);
+      default:
+        return JournalColors.textMuted;
     }
   }
 
@@ -454,10 +469,11 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
     setState(() => _loadingEntries = true);
     try {
       final res = await _api.detectiveGetEntries(_caseId);
-      if (mounted) setState(() {
-        _entries = List<Map<String, dynamic>>.from(res);
-        _loadingEntries = false;
-      });
+      if (mounted)
+        setState(() {
+          _entries = List<Map<String, dynamic>>.from(res);
+          _loadingEntries = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loadingEntries = false);
     }
@@ -467,10 +483,11 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
     if (mounted) setState(() => _loadingUploads = true);
     try {
       final res = await _api.detectiveGetUploads(_caseId);
-      if (mounted) setState(() {
-        _uploads = List<Map<String, dynamic>>.from(res);
-        _loadingUploads = false;
-      });
+      if (mounted)
+        setState(() {
+          _uploads = List<Map<String, dynamic>>.from(res);
+          _loadingUploads = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loadingUploads = false);
     }
@@ -481,14 +498,17 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
     try {
       final upload = await _api.detectiveUploadCasePhoto(
           _caseId, file.bytes!.toList(), file.name);
-      if (mounted) setState(() =>
-        _uploads = [Map<String, dynamic>.from(upload), ..._uploads]);
-    } catch (e) { _showError(e.toString()); }
+      if (mounted)
+        setState(
+            () => _uploads = [Map<String, dynamic>.from(upload), ..._uploads]);
+    } catch (e) {
+      _showError(e.toString());
+    }
   }
 
   Future<void> _deleteUpload(Map<String, dynamic> upload) async {
     final source = upload['source'] as String? ?? 'upload';
-    final rawId  = upload['id'].toString();
+    final rawId = upload['id'].toString();
     try {
       if (source == 'multi_entry') {
         // Entry-attached photos use a separate endpoint; strip the mphoto_ prefix
@@ -497,37 +517,53 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
       } else {
         await _api.detectiveDeleteUpload(_caseId, rawId);
       }
-      if (mounted) setState(() =>
-        _uploads = _uploads.where((u) => u['id'].toString() != rawId).toList());
-    } catch (e) { _showError(e.toString()); }
+      if (mounted)
+        setState(() => _uploads =
+            _uploads.where((u) => u['id'].toString() != rawId).toList());
+    } catch (e) {
+      _showError(e.toString());
+    }
   }
 
-  Future<Map<String, dynamic>?> _addEntry(String content, String type, String severity) async {
+  Future<Map<String, dynamic>?> _addEntry(
+      String content, String type, String severity) async {
     try {
       final entry = await _api.detectiveAddEntry(_caseId, {
-        'content': content, 'entry_type': type, 'severity': severity,
+        'content': content,
+        'entry_type': type,
+        'severity': severity,
       });
       if (mounted) setState(() => _entries = [entry, ..._entries]);
       return entry;
-    } catch (e) { _showError(e.toString()); return null; }
+    } catch (e) {
+      _showError(e.toString());
+      return null;
+    }
   }
 
   Future<void> _updateEntry(String entryId, Map<String, dynamic> data) async {
     try {
       await _api.detectiveUpdateEntry(_caseId, entryId, data);
-      if (mounted) setState(() {
-        _entries = _entries.map((e) =>
-          e['id'].toString() == entryId ? {...e, ...data} : e).toList();
-      });
-    } catch (e) { _showError(e.toString()); }
+      if (mounted)
+        setState(() {
+          _entries = _entries
+              .map((e) => e['id'].toString() == entryId ? {...e, ...data} : e)
+              .toList();
+        });
+    } catch (e) {
+      _showError(e.toString());
+    }
   }
 
   Future<void> _deleteEntry(String entryId) async {
     try {
       await _api.detectiveDeleteEntry(_caseId, entryId);
-      if (mounted) setState(() =>
-        _entries = _entries.where((e) => e['id'].toString() != entryId).toList());
-    } catch (e) { _showError(e.toString()); }
+      if (mounted)
+        setState(() => _entries =
+            _entries.where((e) => e['id'].toString() != entryId).toList());
+    } catch (e) {
+      _showError(e.toString());
+    }
   }
 
   void _onPhotoAdded(String entryId, Map<String, dynamic> photo) {
@@ -557,10 +593,11 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
   void _onAnalysisUpdated(String entryId, String analysis) {
     if (!mounted) return;
     setState(() {
-      _entries = _entries.map((e) =>
-        e['id'].toString() == entryId
-          ? {...e, 'multi_photo_analysis': analysis}
-          : e).toList();
+      _entries = _entries
+          .map((e) => e['id'].toString() == entryId
+              ? {...e, 'multi_photo_analysis': analysis}
+              : e)
+          .toList();
     });
   }
 
@@ -571,9 +608,10 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Error'),
         content: Text(msg),
-        actions: [CupertinoDialogAction(
-          child: const Text('OK'),
-          onPressed: () => Navigator.pop(context))],
+        actions: [
+          CupertinoDialogAction(
+              child: const Text('OK'), onPressed: () => Navigator.pop(context))
+        ],
       ),
     );
   }
@@ -701,7 +739,8 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                       decoration: BoxDecoration(
                         color: _withAlpha(_statusColor, 0.12),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: _withAlpha(_statusColor, 0.35)),
+                        border:
+                            Border.all(color: _withAlpha(_statusColor, 0.35)),
                       ),
                       child: Text(
                         _statusLabel().toUpperCase(),
@@ -869,7 +908,8 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOut,
                     margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
                       color: selected
@@ -898,7 +938,8 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
                                 ? JournalColors.textPrimary
                                 : JournalColors.textSecondary,
                             fontSize: 13,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
                           ),
                         ),
                       ],
@@ -1045,23 +1086,30 @@ class _LogTabState extends State<_LogTab> {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     final photos = List<PlatformFile>.from(_pendingPhotos);
-    setState(() { _adding = true; _pendingPhotos = []; });
+    setState(() {
+      _adding = true;
+      _pendingPhotos = [];
+    });
 
     final entry = await widget.onAdd(text, _type, _severity);
     if (entry != null && photos.isNotEmpty) {
       await _uploadPhotosAndSynthesize(entry['id'].toString(), photos);
     }
-    if (mounted) { _ctrl.clear(); setState(() => _adding = false); }
+    if (mounted) {
+      _ctrl.clear();
+      setState(() => _adding = false);
+    }
   }
 
-  Future<void> _uploadPhotosAndSynthesize(String entryId, List<PlatformFile> photos) async {
+  Future<void> _uploadPhotosAndSynthesize(
+      String entryId, List<PlatformFile> photos) async {
     setState(() => _uploadingFor[entryId] = true);
     try {
       for (final f in photos) {
         if (f.bytes == null) continue;
         try {
           final photo = await _api.detectiveUploadEntryPhoto(
-            widget.caseId, entryId, f.bytes!, f.name);
+              widget.caseId, entryId, f.bytes!, f.name);
           widget.onPhotoAdded(entryId, Map<String, dynamic>.from(photo));
         } catch (_) {}
       }
@@ -1077,9 +1125,11 @@ class _LogTabState extends State<_LogTab> {
   Future<void> _synthesize(String entryId) async {
     if (mounted) setState(() => _synthesizingFor[entryId] = true);
     try {
-      final res = await _api.detectiveSynthesizeEntryPhotos(widget.caseId, entryId);
+      final res =
+          await _api.detectiveSynthesizeEntryPhotos(widget.caseId, entryId);
       widget.onAnalysisUpdated(entryId, res['synthesis'] ?? '');
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       if (mounted) setState(() => _synthesizingFor.remove(entryId));
     }
   }
@@ -1105,7 +1155,11 @@ class _LogTabState extends State<_LogTab> {
       'entry_type': _editType,
       'severity': _editSeverity,
     });
-    if (mounted) setState(() { _editingId = null; _saving = false; });
+    if (mounted)
+      setState(() {
+        _editingId = null;
+        _saving = false;
+      });
   }
 
   void _confirmDelete(String id) {
@@ -1116,12 +1170,15 @@ class _LogTabState extends State<_LogTab> {
         content: const Text('This cannot be undone.'),
         actions: [
           CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () { Navigator.pop(context); widget.onDelete(id); },
-            child: const Text('Delete')),
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onDelete(id);
+              },
+              child: const Text('Delete')),
           CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
         ],
       ),
     );
@@ -1144,15 +1201,15 @@ class _LogTabState extends State<_LogTab> {
                 color: sel ? color.withOpacity(0.18) : const Color(0x0AFFFFFF),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: sel ? color.withOpacity(0.6) : JournalColors.border),
+                    color: sel ? color.withOpacity(0.6) : JournalColors.border),
               ),
               child: Text(o.toUpperCase(),
-                style: TextStyle(
-                  color: sel ? color : JournalColors.textMuted,
-                  fontSize: 10,
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
-                  letterSpacing: 0.4,
-                )),
+                  style: TextStyle(
+                    color: sel ? color : JournalColors.textMuted,
+                    fontSize: 10,
+                    fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                    letterSpacing: 0.4,
+                  )),
             ),
           );
         }).toList(),
@@ -1248,7 +1305,8 @@ class _LogTabState extends State<_LogTab> {
                           const SizedBox(height: 14),
                           CupertinoTextField(
                             controller: _ctrl,
-                            placeholder: 'What did you observe, hear, or find? Keep it specific and concrete.',
+                            placeholder:
+                                'What did you observe, hear, or find? Keep it specific and concrete.',
                             placeholderStyle: const TextStyle(
                               color: JournalColors.textMuted,
                               fontSize: 14,
@@ -1273,17 +1331,21 @@ class _LogTabState extends State<_LogTab> {
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: Row(
-                                children: _pendingPhotos.asMap().entries.map((entry) {
+                                children:
+                                    _pendingPhotos.asMap().entries.map((entry) {
                                   final i = entry.key;
                                   final f = entry.value;
                                   return Container(
                                     margin: const EdgeInsets.only(right: 8),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 8),
                                     decoration: BoxDecoration(
-                                      color: _withAlpha(JournalColors.accent, 0.10),
+                                      color: _withAlpha(
+                                          JournalColors.accent, 0.10),
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: _withAlpha(JournalColors.accent, 0.24),
+                                        color: _withAlpha(
+                                            JournalColors.accent, 0.24),
                                       ),
                                     ),
                                     child: Row(
@@ -1296,12 +1358,14 @@ class _LogTabState extends State<_LogTab> {
                                         ),
                                         const SizedBox(width: 6),
                                         ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 140),
+                                          constraints: const BoxConstraints(
+                                              maxWidth: 140),
                                           child: Text(
                                             f.name,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              color: JournalColors.textSecondary,
+                                              color:
+                                                  JournalColors.textSecondary,
                                               fontSize: 11,
                                             ),
                                           ),
@@ -1309,7 +1373,9 @@ class _LogTabState extends State<_LogTab> {
                                         const SizedBox(width: 8),
                                         GestureDetector(
                                           onTap: () => setState(
-                                            () => _pendingPhotos = List.from(_pendingPhotos)..removeAt(i),
+                                            () => _pendingPhotos =
+                                                List.from(_pendingPhotos)
+                                                  ..removeAt(i),
                                           ),
                                           child: const Icon(
                                             CupertinoIcons.xmark_circle_fill,
@@ -1344,11 +1410,13 @@ class _LogTabState extends State<_LogTab> {
                               GestureDetector(
                                 onTap: _pickingPhotos ? null : _pickPhotos,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 11),
                                   decoration: BoxDecoration(
                                     color: _pendingPhotos.isNotEmpty
                                         ? _withAlpha(JournalColors.accent, 0.14)
-                                        : _withAlpha(JournalColors.bgSurface, 0.68),
+                                        : _withAlpha(
+                                            JournalColors.bgSurface, 0.68),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
                                       color: _pendingPhotos.isNotEmpty
@@ -1360,7 +1428,8 @@ class _LogTabState extends State<_LogTab> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _pickingPhotos
-                                          ? const CupertinoActivityIndicator(radius: 8)
+                                          ? const CupertinoActivityIndicator(
+                                              radius: 8)
                                           : Icon(
                                               CupertinoIcons.paperclip,
                                               size: 16,
@@ -1387,15 +1456,18 @@ class _LogTabState extends State<_LogTab> {
                               Expanded(
                                 child: CupertinoButton.filled(
                                   borderRadius: BorderRadius.circular(14),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   onPressed: _adding ? null : _submit,
                                   child: _adding
-                                      ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                                      ? const CupertinoActivityIndicator(
+                                          color: CupertinoColors.white)
                                       : Text(
                                           _pendingPhotos.isNotEmpty
                                               ? 'Save entry with ${_pendingPhotos.length} photo${_pendingPhotos.length > 1 ? 's' : ''}'
                                               : 'Save entry',
-                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700),
                                         ),
                                 ),
                               ),
@@ -1410,7 +1482,6 @@ class _LogTabState extends State<_LogTab> {
             ),
           ),
         ),
-
         if (widget.loading)
           const SliverFillRemaining(
             child: Center(
@@ -1473,13 +1544,14 @@ class _LogTabState extends State<_LogTab> {
                     saving: _saving,
                     uploading: _uploadingFor[id] ?? false,
                     synthesizing: _synthesizingFor[id] ?? false,
-                    onTap: () => setState(() =>
-                      _expandedId = _expandedId == id ? null : id),
+                    onTap: () => setState(
+                        () => _expandedId = _expandedId == id ? null : id),
                     onEditStart: () => _startEdit(e),
                     onEditCancel: () => setState(() => _editingId = null),
                     onEditSave: () => _saveEdit(id),
                     onEditTypeChange: (t) => setState(() => _editType = t),
-                    onEditSeverityChange: (s) => setState(() => _editSeverity = s),
+                    onEditSeverityChange: (s) =>
+                        setState(() => _editSeverity = s),
                     onDelete: () => _confirmDelete(id),
                     onAddPhoto: () async {
                       final result = await FilePicker.platform.pickFiles(
@@ -1488,8 +1560,7 @@ class _LogTabState extends State<_LogTab> {
                         withData: true,
                       );
                       if (result != null) {
-                        await _uploadPhotosAndSynthesize(
-                          id, result.files);
+                        await _uploadPhotosAndSynthesize(id, result.files);
                       }
                     },
                     onDeletePhoto: (photoId) => _deletePhoto(id, photoId),
@@ -1507,7 +1578,7 @@ class _LogTabState extends State<_LogTab> {
 
 // ── Entry card ─────────────────────────────────────────────────────────────
 
-class _EntryCard extends StatelessWidget {
+class _EntryCard extends StatefulWidget {
   final Map<String, dynamic> entry;
   final String caseId;
   final bool expanded;
@@ -1530,25 +1601,129 @@ class _EntryCard extends StatelessWidget {
   final VoidCallback onSynthesize;
 
   const _EntryCard({
-    required this.entry, required this.caseId,
-    required this.expanded, required this.editing,
-    required this.editCtrl, required this.editType, required this.editSeverity,
-    required this.saving, required this.uploading, required this.synthesizing,
-    required this.onTap, required this.onEditStart, required this.onEditCancel,
-    required this.onEditSave, required this.onEditTypeChange,
-    required this.onEditSeverityChange, required this.onDelete,
-    required this.onAddPhoto, required this.onDeletePhoto, required this.onSynthesize,
+    required this.entry,
+    required this.caseId,
+    required this.expanded,
+    required this.editing,
+    required this.editCtrl,
+    required this.editType,
+    required this.editSeverity,
+    required this.saving,
+    required this.uploading,
+    required this.synthesizing,
+    required this.onTap,
+    required this.onEditStart,
+    required this.onEditCancel,
+    required this.onEditSave,
+    required this.onEditTypeChange,
+    required this.onEditSeverityChange,
+    required this.onDelete,
+    required this.onAddPhoto,
+    required this.onDeletePhoto,
+    required this.onSynthesize,
   });
 
-  Color get _sevColor => _kSeverityColors[entry['severity']] ?? JournalColors.border;
+  @override
+  State<_EntryCard> createState() => _EntryCardState();
+}
+
+class _EntryCardState extends State<_EntryCard>
+    with SingleTickerProviderStateMixin {
+  static const double _actionsWidth = 148;
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void didUpdateWidget(covariant _EntryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.editing || oldWidget.editing != widget.editing) {
+      _ctrl.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Color get _sevColor =>
+      _kSeverityColors[widget.entry['severity']] ?? JournalColors.border;
 
   String _fmt(String? raw) {
     if (raw == null || raw.length < 16) return raw ?? '';
     return raw.substring(0, 16).replaceAll('T', ' ');
   }
 
+  void _closeActions() => _ctrl.reverse();
+
+  void _handleCardTap() {
+    if (_ctrl.value > 0) {
+      _closeActions();
+      return;
+    }
+    if (!widget.editing) widget.onTap();
+  }
+
+  Widget _buildActionButton({
+    required VoidCallback onTap,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required double width,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        _closeActions();
+        onTap();
+      },
+      child: Container(
+        width: width,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: CupertinoColors.white, size: 20),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: CupertinoColors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final expanded = widget.expanded;
+    final editing = widget.editing;
+    final editCtrl = widget.editCtrl;
+    final editType = widget.editType;
+    final editSeverity = widget.editSeverity;
+    final saving = widget.saving;
+    final uploading = widget.uploading;
+    final synthesizing = widget.synthesizing;
     final photos = List<dynamic>.from(entry['photos'] ?? []);
     final analysis = entry['multi_photo_analysis'] as String?;
 
@@ -1556,356 +1731,579 @@ class _EntryCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: editing ? null : onTap,
-        child: GlassCard(
-          accentBorder: expanded || editing,
-          padding: const EdgeInsets.all(0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: IntrinsicHeight(
-              child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(width: 3, color: _sevColor),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+        onHorizontalDragUpdate: editing
+            ? null
+            : (d) {
+                _ctrl.value =
+                    (_ctrl.value - d.delta.dx / _actionsWidth).clamp(0.0, 1.0);
+              },
+        onHorizontalDragEnd: editing
+            ? null
+            : (_) {
+                if (_ctrl.value > 0.35) {
+                  _ctrl.forward();
+                } else {
+                  _ctrl.reverse();
+                }
+              },
+        onTap: _handleCardTap,
+        child: AnimatedBuilder(
+          animation: _anim,
+          builder: (_, __) {
+            final offset = _anim.value * _actionsWidth;
+            return SizedBox(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 44),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            Flexible(
-                              child: Wrap(
-                                spacing: 5,
-                                runSpacing: 4,
-                                children: [
-                                  _Chip(entry['entry_type'] ?? 'note', JournalColors.textMuted),
-                                  _Chip((entry['severity'] ?? 'medium').toString().toUpperCase(), _sevColor),
-                                  if (photos.isNotEmpty)
-                                    _Chip('📎 ${photos.length}', JournalColors.success),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _fmt(entry['created_at']),
-                              style: const TextStyle(color: JournalColors.textMuted, fontSize: 10),
+                            _buildActionButton(
+                              onTap: editing
+                                  ? widget.onEditCancel
+                                  : widget.onEditStart,
+                              icon: editing
+                                  ? CupertinoIcons.xmark
+                                  : CupertinoIcons.pencil,
+                              label: editing ? 'Close' : 'Edit',
+                              color: JournalColors.accent,
+                              width: 68,
                             ),
                             const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: onAddPhoto,
-                              child: const Icon(CupertinoIcons.paperclip, size: 15, color: JournalColors.textMuted),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: editing ? onEditCancel : onEditStart,
-                              child: Icon(
-                                editing ? CupertinoIcons.xmark : CupertinoIcons.pencil,
-                                size: 15,
-                                color: editing ? JournalColors.accent : JournalColors.textMuted,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: onDelete,
-                              child: const Icon(CupertinoIcons.trash, size: 15, color: Color(0x80EF4444)),
+                            _buildActionButton(
+                              onTap: widget.onDelete,
+                              icon: CupertinoIcons.trash,
+                              label: 'Delete',
+                              color: JournalColors.danger,
+                              width: 72,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        if (editing) ...[
-                          CupertinoTextField(
-                            controller: editCtrl,
-                            style: const TextStyle(
-                              color: JournalColors.textPrimary,
-                              fontSize: 13,
-                              height: 1.5,
-                            ),
-                            maxLines: null,
-                            minLines: 3,
-                            decoration: BoxDecoration(
-                              color: _withAlpha(JournalColors.bgSurface, 0.72),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: JournalColors.borderBright),
-                            ),
-                            padding: const EdgeInsets.all(10),
-                          ),
-                          const SizedBox(height: 8),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: _kEntryTypes.map((t) => GestureDetector(
-                                onTap: () => onEditTypeChange(t),
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 5),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: editType == t ? _withAlpha(JournalColors.accent, 0.18) : _withAlpha(JournalColors.bgSurface, 0.5),
-                                    borderRadius: BorderRadius.circular(5),
-                                    border: Border.all(
-                                      color: editType == t ? JournalColors.borderBright : JournalColors.border,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    t,
-                                    style: TextStyle(
-                                      color: editType == t ? JournalColors.accent : JournalColors.textMuted,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ),
-                              )).toList(),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: _kSeverities.map((s) {
-                                final c = _kSeverityColors[s]!;
-                                return GestureDetector(
-                                  onTap: () => onEditSeverityChange(s),
-                                  child: Container(
-                                    margin: const EdgeInsets.only(right: 5),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: editSeverity == s ? _withAlpha(c, 0.18) : _withAlpha(JournalColors.bgSurface, 0.5),
-                                      borderRadius: BorderRadius.circular(5),
-                                      border: Border.all(
-                                        color: editSeverity == s ? _withAlpha(c, 0.5) : JournalColors.border,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      s.toUpperCase(),
-                                      style: TextStyle(
-                                        color: editSeverity == s ? c : JournalColors.textMuted,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                      ),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: Offset(-offset, 0),
+                    child: GlassCard(
+                      accentBorder: expanded || editing,
+                      padding: const EdgeInsets.all(0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              CupertinoButton(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                onPressed: onEditCancel,
-                                child: const Text(
-                                  'Cancel',
-                                  style: TextStyle(color: JournalColors.textMuted, fontSize: 13),
+                              Container(width: 3, color: _sevColor),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          ...[
+                                            _Chip(entry['entry_type'] ?? 'note',
+                                                JournalColors.textMuted),
+                                            _Chip(
+                                                (entry['severity'] ?? 'medium')
+                                                    .toString()
+                                                    .toUpperCase(),
+                                                _sevColor),
+                                            if (photos.isNotEmpty)
+                                              _Chip(
+                                                  '${photos.length} photo${photos.length == 1 ? '' : 's'}',
+                                                  JournalColors.success),
+                                          ],
+                                          GestureDetector(
+                                            onTap: widget.onAddPhoto,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 7),
+                                              decoration: BoxDecoration(
+                                                color: _withAlpha(
+                                                    JournalColors.accent, 0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                  color: _withAlpha(
+                                                      JournalColors.accent,
+                                                      0.28),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    CupertinoIcons.paperclip,
+                                                    size: 15,
+                                                    color: JournalColors.accent,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    photos.isNotEmpty
+                                                        ? 'Attach more'
+                                                        : 'Attach photo',
+                                                    style: const TextStyle(
+                                                      color:
+                                                          JournalColors.accent,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            _fmt(entry['created_at']),
+                                            style: const TextStyle(
+                                              color: JournalColors.textMuted,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      if (editing) ...[
+                                        CupertinoTextField(
+                                          controller: editCtrl,
+                                          style: const TextStyle(
+                                            color: JournalColors.textPrimary,
+                                            fontSize: 13,
+                                            height: 1.5,
+                                          ),
+                                          maxLines: null,
+                                          minLines: 3,
+                                          decoration: BoxDecoration(
+                                            color: _withAlpha(
+                                                JournalColors.bgSurface, 0.72),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                                color:
+                                                    JournalColors.borderBright),
+                                          ),
+                                          padding: const EdgeInsets.all(10),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            children: _kEntryTypes
+                                                .map((t) => GestureDetector(
+                                                      onTap: () => widget
+                                                          .onEditTypeChange(t),
+                                                      child: Container(
+                                                        margin: const EdgeInsets
+                                                            .only(right: 5),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: editType == t
+                                                              ? _withAlpha(
+                                                                  JournalColors
+                                                                      .accent,
+                                                                  0.18)
+                                                              : _withAlpha(
+                                                                  JournalColors
+                                                                      .bgSurface,
+                                                                  0.5),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(5),
+                                                          border: Border.all(
+                                                            color: editType == t
+                                                                ? JournalColors
+                                                                    .borderBright
+                                                                : JournalColors
+                                                                    .border,
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          t,
+                                                          style: TextStyle(
+                                                            color: editType == t
+                                                                ? JournalColors
+                                                                    .accent
+                                                                : JournalColors
+                                                                    .textMuted,
+                                                            fontSize: 10,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ))
+                                                .toList(),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            children: _kSeverities.map((s) {
+                                              final c = _kSeverityColors[s]!;
+                                              return GestureDetector(
+                                                onTap: () => widget
+                                                    .onEditSeverityChange(s),
+                                                child: Container(
+                                                  margin: const EdgeInsets.only(
+                                                      right: 5),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: editSeverity == s
+                                                        ? _withAlpha(c, 0.18)
+                                                        : _withAlpha(
+                                                            JournalColors
+                                                                .bgSurface,
+                                                            0.5),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            5),
+                                                    border: Border.all(
+                                                      color: editSeverity == s
+                                                          ? _withAlpha(c, 0.5)
+                                                          : JournalColors
+                                                              .border,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    s.toUpperCase(),
+                                                    style: TextStyle(
+                                                      color: editSeverity == s
+                                                          ? c
+                                                          : JournalColors
+                                                              .textMuted,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
+                                          children: [
+                                            CupertinoButton(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 6),
+                                              onPressed: widget.onEditCancel,
+                                              child: const Text(
+                                                'Cancel',
+                                                style: TextStyle(
+                                                    color:
+                                                        JournalColors.textMuted,
+                                                    fontSize: 13),
+                                              ),
+                                            ),
+                                            CupertinoButton.filled(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 6),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              onPressed: saving
+                                                  ? null
+                                                  : widget.onEditSave,
+                                              child: saving
+                                                  ? const CupertinoActivityIndicator(
+                                                      color:
+                                                          CupertinoColors.white)
+                                                  : const Text('Save',
+                                                      style: TextStyle(
+                                                          fontSize: 13)),
+                                            ),
+                                          ],
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          entry['content'] ?? '',
+                                          maxLines: expanded ? null : 3,
+                                          overflow: expanded
+                                              ? TextOverflow.visible
+                                              : TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: JournalColors.textPrimary,
+                                            fontSize: 13,
+                                            height: 1.55,
+                                          ),
+                                        ),
+                                        if (photos.isNotEmpty ||
+                                            (analysis != null &&
+                                                analysis.isNotEmpty)) ...[
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (!expanded &&
+                                                  photos.isNotEmpty)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          right: 5),
+                                                  child: Text(
+                                                    '${photos.length} photo${photos.length == 1 ? '' : 's'}',
+                                                    style: const TextStyle(
+                                                        color: JournalColors
+                                                            .textMuted,
+                                                        fontSize: 10),
+                                                  ),
+                                                ),
+                                              Icon(
+                                                expanded
+                                                    ? CupertinoIcons.chevron_up
+                                                    : CupertinoIcons
+                                                        .chevron_down,
+                                                size: 11,
+                                                color: JournalColors.textMuted,
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                      if (expanded &&
+                                          (photos.isNotEmpty || uploading)) ...[
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          height: 0.5,
+                                          color: const Color(0x1AFFFFFF),
+                                          margin:
+                                              const EdgeInsets.only(bottom: 10),
+                                        ),
+                                        if (uploading)
+                                          const Padding(
+                                            padding: EdgeInsets.only(bottom: 8),
+                                            child: Row(
+                                              children: [
+                                                CupertinoActivityIndicator(
+                                                    radius: 7),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Uploading photos…',
+                                                  style: TextStyle(
+                                                      color: JournalColors
+                                                          .textMuted,
+                                                      fontSize: 11),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        if (photos.isNotEmpty)
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: photos.map<Widget>((p) {
+                                              final photoId =
+                                                  p['id'].toString();
+                                              final imageUrl =
+                                                  p['image_url'] as String? ??
+                                                      '';
+                                              final status =
+                                                  p['analysis_status']
+                                                          as String? ??
+                                                      'pending';
+                                              final photoAnalysis =
+                                                  p['ai_analysis'] as String?;
+                                              final filename =
+                                                  p['original_filename']
+                                                          as String? ??
+                                                      'Photo';
+                                              final statusColor = status ==
+                                                      'done'
+                                                  ? JournalColors.success
+                                                  : status == 'failed'
+                                                      ? JournalColors.danger
+                                                      : JournalColors.severity;
+                                              return Stack(
+                                                children: [
+                                                  GestureDetector(
+                                                    behavior:
+                                                        HitTestBehavior.opaque,
+                                                    onTap: () =>
+                                                        _showCasePhotoLightbox(
+                                                      context,
+                                                      imagePath: imageUrl,
+                                                      title: filename,
+                                                      analysis: photoAnalysis,
+                                                      analysisLabel:
+                                                          p['analysis_label']
+                                                              as String?,
+                                                    ),
+                                                    child: ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              12),
+                                                      child: SizedBox(
+                                                        width: 80,
+                                                        height: 80,
+                                                        child: _AuthImage(
+                                                            path: imageUrl),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Positioned(
+                                                    bottom: 4,
+                                                    left: 4,
+                                                    child: Container(
+                                                      width: 7,
+                                                      height: 7,
+                                                      decoration: BoxDecoration(
+                                                        color: statusColor,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(
+                                                            color: JournalColors
+                                                                .bgCard,
+                                                            width: 1),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Positioned(
+                                                    top: 3,
+                                                    right: 3,
+                                                    child: GestureDetector(
+                                                      onTap: () =>
+                                                          widget.onDeletePhoto(
+                                                              photoId),
+                                                      child: Container(
+                                                        width: 18,
+                                                        height: 18,
+                                                        decoration:
+                                                            const BoxDecoration(
+                                                          color:
+                                                              Color(0xCC000000),
+                                                          shape:
+                                                              BoxShape.circle,
+                                                        ),
+                                                        child: const Icon(
+                                                          CupertinoIcons.xmark,
+                                                          size: 10,
+                                                          color: CupertinoColors
+                                                              .white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            }).toList(),
+                                          ),
+                                        if (synthesizing) ...[
+                                          const SizedBox(height: 8),
+                                          const Row(
+                                            children: [
+                                              CupertinoActivityIndicator(
+                                                  radius: 7),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                'Analyzing photos together…',
+                                                style: TextStyle(
+                                                    color:
+                                                        JournalColors.textMuted,
+                                                    fontSize: 11),
+                                              ),
+                                            ],
+                                          ),
+                                        ] else if (photos.length > 1 &&
+                                            !uploading) ...[
+                                          const SizedBox(height: 8),
+                                          GestureDetector(
+                                            onTap: widget.onSynthesize,
+                                            child: Text(
+                                              analysis != null
+                                                  ? 'Re-run analysis'
+                                                  : 'Run combined analysis',
+                                              style: TextStyle(
+                                                color: _withAlpha(
+                                                    JournalColors.accent, 0.8),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        if (analysis != null &&
+                                            analysis.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: _withAlpha(
+                                                  JournalColors.accent, 0.05),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                  color: _withAlpha(
+                                                      JournalColors.accent,
+                                                      0.15)),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'COMBINED ANALYSIS',
+                                                  style: TextStyle(
+                                                    color: JournalColors.accent,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.8,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  analysis,
+                                                  style: const TextStyle(
+                                                    color: JournalColors
+                                                        .textSecondary,
+                                                    fontSize: 12,
+                                                    height: 1.55,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              CupertinoButton.filled(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                borderRadius: BorderRadius.circular(8),
-                                onPressed: saving ? null : onEditSave,
-                                child: saving
-                                    ? const CupertinoActivityIndicator(color: CupertinoColors.white)
-                                    : const Text('Save', style: TextStyle(fontSize: 13)),
                               ),
                             ],
                           ),
-                        ] else ...[
-                          Text(
-                            entry['content'] ?? '',
-                            maxLines: expanded ? null : 3,
-                            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: JournalColors.textPrimary,
-                              fontSize: 13,
-                              height: 1.55,
-                            ),
-                          ),
-                          if (photos.isNotEmpty || (analysis != null && analysis.isNotEmpty)) ...[
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (!expanded && photos.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 5),
-                                    child: Text(
-                                      '${photos.length} photo${photos.length == 1 ? '' : 's'}',
-                                      style: const TextStyle(color: JournalColors.textMuted, fontSize: 10),
-                                    ),
-                                  ),
-                                Icon(
-                                  expanded ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
-                                  size: 11,
-                                  color: JournalColors.textMuted,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                        if (expanded && (photos.isNotEmpty || uploading)) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            height: 0.5,
-                            color: const Color(0x1AFFFFFF),
-                            margin: const EdgeInsets.only(bottom: 10),
-                          ),
-                          if (uploading)
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                children: [
-                                  CupertinoActivityIndicator(radius: 7),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Uploading photos…',
-                                    style: TextStyle(color: JournalColors.textMuted, fontSize: 11),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (photos.isNotEmpty)
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: photos.map<Widget>((p) {
-                                final photoId = p['id'].toString();
-                                final imageUrl = p['image_url'] as String? ?? '';
-                                final status = p['analysis_status'] as String? ?? 'pending';
-                                final photoAnalysis = p['ai_analysis'] as String?;
-                                final filename = p['original_filename'] as String? ?? 'Photo';
-                                final statusColor = status == 'done'
-                                    ? JournalColors.success
-                                    : status == 'failed'
-                                        ? JournalColors.danger
-                                        : JournalColors.severity;
-                                return Stack(
-                                  children: [
-                                    GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () => _showCasePhotoLightbox(
-                                        context,
-                                        imagePath: imageUrl,
-                                        title: filename,
-                                        analysis: photoAnalysis,
-                                        analysisLabel: p['analysis_label'] as String?,
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: SizedBox(
-                                          width: 80,
-                                          height: 80,
-                                          child: _AuthImage(path: imageUrl),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      bottom: 4,
-                                      left: 4,
-                                      child: Container(
-                                        width: 7,
-                                        height: 7,
-                                        decoration: BoxDecoration(
-                                          color: statusColor,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: JournalColors.bgCard, width: 1),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 3,
-                                      right: 3,
-                                      child: GestureDetector(
-                                        onTap: () => onDeletePhoto(photoId),
-                                        child: Container(
-                                          width: 18,
-                                          height: 18,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xCC000000),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            CupertinoIcons.xmark,
-                                            size: 10,
-                                            color: CupertinoColors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
-                          if (synthesizing) ...[
-                            const SizedBox(height: 8),
-                            const Row(
-                              children: [
-                                CupertinoActivityIndicator(radius: 7),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Analyzing photos together…',
-                                  style: TextStyle(color: JournalColors.textMuted, fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          ] else if (photos.length > 1 && !uploading) ...[
-                            const SizedBox(height: 8),
-                            GestureDetector(
-                              onTap: onSynthesize,
-                              child: Text(
-                                analysis != null ? 'Re-run analysis' : 'Run combined analysis',
-                                style: TextStyle(
-                                  color: _withAlpha(JournalColors.accent, 0.8),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                          if (analysis != null && analysis.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: _withAlpha(JournalColors.accent, 0.05),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: _withAlpha(JournalColors.accent, 0.15)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'COMBINED ANALYSIS',
-                                    style: TextStyle(
-                                      color: JournalColors.accent,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    analysis,
-                                    style: const TextStyle(
-                                      color: JournalColors.textSecondary,
-                                      fontSize: 12,
-                                      height: 1.55,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1941,7 +2339,7 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
   static const _compressAt = 20;
 
   String get _greeting =>
-    'I have the current case context for "${widget.caseName}". Ask for a read on the timeline, a pattern check, or help reviewing the evidence.';
+      'I have the current case context for "${widget.caseName}". Ask for a read on the timeline, a pattern check, or help reviewing the evidence.';
 
   @override
   void initState() {
@@ -1978,21 +2376,30 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
           _sessionId = res['session_id'] as String?;
           if (saved.isNotEmpty) {
             final summary = saved.cast<Map>().firstWhere(
-              (m) => m['role'] == 'system-summary', orElse: () => <String, dynamic>{});
-            if (summary.isNotEmpty) _compressedSummary = summary['content'] as String?;
-            _messages = saved.map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m)).toList();
+                (m) => m['role'] == 'system-summary',
+                orElse: () => <String, dynamic>{});
+            if (summary.isNotEmpty)
+              _compressedSummary = summary['content'] as String?;
+            _messages = saved
+                .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+                .toList();
           } else {
-            _messages = [{'role': 'assistant', 'content': _greeting}];
+            _messages = [
+              {'role': 'assistant', 'content': _greeting}
+            ];
           }
           _loadingChat = false;
         });
         _scrollToBottom();
       }
     } catch (_) {
-      if (mounted) setState(() {
-        _messages = [{'role': 'assistant', 'content': _greeting}];
-        _loadingChat = false;
-      });
+      if (mounted)
+        setState(() {
+          _messages = [
+            {'role': 'assistant', 'content': _greeting}
+          ];
+          _loadingChat = false;
+        });
     }
   }
 
@@ -2002,12 +2409,16 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
     _ctrl.clear();
     final history = List<Map<String, dynamic>>.from(_messages);
     setState(() {
-      _messages = [..._messages, {'role': 'user', 'content': msg}];
+      _messages = [
+        ..._messages,
+        {'role': 'user', 'content': msg}
+      ];
       _loading = true;
     });
     _scrollToBottom();
     try {
-      final rawHistory = history.length > 8 ? history.sublist(history.length - 8) : history;
+      final rawHistory =
+          history.length > 8 ? history.sublist(history.length - 8) : history;
       final res = await _api.detectiveChatSend(
         widget.caseId,
         message: msg,
@@ -2016,7 +2427,10 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
       );
       final reply = res['response'] as String? ?? '';
       if (mounted) {
-        setState(() => _messages = [..._messages, {'role': 'assistant', 'content': reply}]);
+        setState(() => _messages = [
+              ..._messages,
+              {'role': 'assistant', 'content': reply}
+            ]);
         _scrollToBottom();
       }
       // Persist to DB
@@ -2028,27 +2442,38 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
       }
       // Auto-compress at threshold
       if (_messages.length >= _compressAt && _compressedSummary == null) {
-        final toCompress = _messages.length > 6 ? _messages.sublist(1, _messages.length - 5) : <Map<String, dynamic>>[];
+        final toCompress = _messages.length > 6
+            ? _messages.sublist(1, _messages.length - 5)
+            : <Map<String, dynamic>>[];
         if (toCompress.length >= 4) {
           _api.detectiveChatCompress(widget.caseId, toCompress).then((res) {
             final summary = res['summary'] as String? ?? '';
             final sentinel = {'role': 'system-summary', 'content': summary};
-            if (mounted) setState(() {
-              _compressedSummary = summary;
-              final tail = _messages.length > 6 ? _messages.sublist(_messages.length - 6) : _messages;
-              _messages = [_messages.first, sentinel, ...tail];
-            });
+            if (mounted)
+              setState(() {
+                _compressedSummary = summary;
+                final tail = _messages.length > 6
+                    ? _messages.sublist(_messages.length - 6)
+                    : _messages;
+                _messages = [_messages.first, sentinel, ...tail];
+              });
             if (_sessionId != null) {
-              _api.detectiveChatSaveMessages(widget.caseId, _sessionId!, [sentinel]).catchError((_) {});
+              _api.detectiveChatSaveMessages(
+                  widget.caseId, _sessionId!, [sentinel]).catchError((_) {});
             }
           }).catchError((_) {});
         }
       }
     } catch (_) {
-      if (mounted) setState(() => _messages = [
-        ..._messages,
-        {'role': 'assistant', 'content': 'Sorry, hit an error. Check your API key in Settings.'},
-      ]);
+      if (mounted)
+        setState(() => _messages = [
+              ..._messages,
+              {
+                'role': 'assistant',
+                'content':
+                    'Sorry, hit an error. Check your API key in Settings.'
+              },
+            ]);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -2063,19 +2488,26 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
           {'role': 'assistant', 'content': _greeting}
         ]).catchError((_) {});
       }
-      if (mounted) setState(() {
-        _sessionId = newId;
-        _compressedSummary = null;
-        _showCompressed = false;
-        _messages = [{'role': 'assistant', 'content': _greeting}];
-        _showWire = false;
-        _wireResult = null;
-      });
+      if (mounted)
+        setState(() {
+          _sessionId = newId;
+          _compressedSummary = null;
+          _showCompressed = false;
+          _messages = [
+            {'role': 'assistant', 'content': _greeting}
+          ];
+          _showWire = false;
+          _wireResult = null;
+        });
     } catch (_) {}
   }
 
   Future<void> _dropWire() async {
-    setState(() { _wiring = true; _showWire = true; _wireResult = null; });
+    setState(() {
+      _wiring = true;
+      _showWire = true;
+      _wireResult = null;
+    });
     _scrollToBottom();
     try {
       final res = await _api.detectiveDropWire(widget.caseId);
@@ -2095,21 +2527,23 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
       children: [
         Expanded(
           child: _loadingChat
-            ? const Center(child: CupertinoActivityIndicator())
-            : ListView.builder(
-                controller: _scrollCtrl,
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                itemCount: _messages.length + extraCount,
-                itemBuilder: (ctx, i) {
-                  if (i < _messages.length) return _buildMessage(_messages[i]);
-                  final extraIdx = i - _messages.length;
-                  if (_loading && extraIdx == 0) return _buildTypingIndicator();
-                  return _buildWireResult();
-                },
-              ),
+              ? const Center(child: CupertinoActivityIndicator())
+              : ListView.builder(
+                  controller: _scrollCtrl,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                  itemCount: _messages.length + extraCount,
+                  itemBuilder: (ctx, i) {
+                    if (i < _messages.length)
+                      return _buildMessage(_messages[i]);
+                    final extraIdx = i - _messages.length;
+                    if (_loading && extraIdx == 0)
+                      return _buildTypingIndicator();
+                    return _buildWireResult();
+                  },
+                ),
         ),
-
         Container(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(children: [
@@ -2120,7 +2554,8 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                   GestureDetector(
                     onTap: _wiring ? null : _dropWire,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: _withAlpha(JournalColors.accent, 0.12),
                         borderRadius: BorderRadius.circular(999),
@@ -2147,7 +2582,9 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                           Text(
                             _wiring ? 'Refreshing…' : 'Refresh briefing',
                             style: TextStyle(
-                              color: _wiring ? JournalColors.textMuted : JournalColors.accent,
+                              color: _wiring
+                                  ? JournalColors.textMuted
+                                  : JournalColors.accent,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
@@ -2158,7 +2595,8 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                   ),
                   const Spacer(),
                   CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
                     minimumSize: Size.zero,
                     onPressed: _newSession,
                     child: const Text(
@@ -2178,16 +2616,21 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                 Expanded(
                   child: CupertinoTextField(
                     controller: _ctrl,
-                    placeholder: 'Ask about the timeline, patterns, or next steps.',
-                    placeholderStyle: const TextStyle(color: JournalColors.textMuted, fontSize: 13),
-                    style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13),
-                    maxLines: null, minLines: 1,
+                    placeholder:
+                        'Ask about the timeline, patterns, or next steps.',
+                    placeholderStyle: const TextStyle(
+                        color: JournalColors.textMuted, fontSize: 13),
+                    style: const TextStyle(
+                        color: JournalColors.textPrimary, fontSize: 13),
+                    maxLines: null,
+                    minLines: 1,
                     decoration: BoxDecoration(
                       color: _withAlpha(JournalColors.bgSurface, 0.72),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: JournalColors.border),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     onSubmitted: (_) => _send(),
                   ),
                 ),
@@ -2232,21 +2675,26 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
             GestureDetector(
               onTap: () => setState(() => _showCompressed = !_showCompressed),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: JournalColors.accent.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: JournalColors.accent.withOpacity(0.2)),
+                  border:
+                      Border.all(color: JournalColors.accent.withOpacity(0.2)),
                 ),
                 child: Row(children: [
                   const Text('📋', style: TextStyle(fontSize: 11)),
                   const SizedBox(width: 8),
                   const Expanded(
-                    child: Text('Earlier conversation compressed',
-                      style: TextStyle(
-                        color: JournalColors.accent, fontSize: 10, fontWeight: FontWeight.w500))),
+                      child: Text('Earlier conversation compressed',
+                          style: TextStyle(
+                              color: JournalColors.accent,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500))),
                   Text(_showCompressed ? '▲ hide' : '▼ show',
-                    style: const TextStyle(color: JournalColors.textMuted, fontSize: 10)),
+                      style: const TextStyle(
+                          color: JournalColors.textMuted, fontSize: 10)),
                 ]),
               ),
             ),
@@ -2257,12 +2705,15 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                 decoration: BoxDecoration(
                   color: JournalColors.accent.withOpacity(0.04),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: JournalColors.accent.withOpacity(0.15)),
+                  border:
+                      Border.all(color: JournalColors.accent.withOpacity(0.15)),
                 ),
                 child: Text(content,
-                  style: const TextStyle(
-                    color: JournalColors.textSecondary, fontSize: 12,
-                    height: 1.6, fontStyle: FontStyle.italic)),
+                    style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.6,
+                        fontStyle: FontStyle.italic)),
               ),
           ],
         ),
@@ -2280,23 +2731,26 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
           children: [
             if (!isUser) ...[
               Container(
-                width: 28, height: 28,
+                width: 28,
+                height: 28,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
+                      colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
                   shape: BoxShape.circle,
                 ),
-                child: const Center(child: Text('🕵️', style: TextStyle(fontSize: 13))),
+                child: const Center(
+                    child: Text('🕵️', style: TextStyle(fontSize: 13))),
               ),
               const SizedBox(width: 8),
             ],
             Flexible(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isUser
-                    ? JournalColors.accent.withOpacity(0.18)
-                    : const Color(0x0DFFFFFF),
+                      ? JournalColors.accent.withOpacity(0.18)
+                      : const Color(0x0DFFFFFF),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(14),
                     topRight: const Radius.circular(14),
@@ -2304,13 +2758,15 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
                     bottomRight: Radius.circular(isUser ? 4 : 14),
                   ),
                   border: Border.all(
-                    color: isUser
-                      ? JournalColors.accent.withOpacity(0.3)
-                      : JournalColors.border),
+                      color: isUser
+                          ? JournalColors.accent.withOpacity(0.3)
+                          : JournalColors.border),
                 ),
                 child: Text(content,
-                  style: const TextStyle(
-                    color: JournalColors.textPrimary, fontSize: 13, height: 1.6)),
+                    style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.6)),
               ),
             ),
           ],
@@ -2326,12 +2782,15 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 28, height: 28,
+            width: 28,
+            height: 28,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
+              gradient: LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFFA855F7)]),
               shape: BoxShape.circle,
             ),
-            child: const Center(child: Text('🕵️', style: TextStyle(fontSize: 13))),
+            child: const Center(
+                child: Text('🕵️', style: TextStyle(fontSize: 13))),
           ),
           const SizedBox(width: 8),
           Container(
@@ -2339,8 +2798,10 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
             decoration: BoxDecoration(
               color: const Color(0x0DFFFFFF),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14), topRight: Radius.circular(14),
-                bottomRight: Radius.circular(14), bottomLeft: Radius.circular(4),
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
+                bottomRight: Radius.circular(14),
+                bottomLeft: Radius.circular(4),
               ),
               border: Border.all(color: JournalColors.border),
             ),
@@ -2367,21 +2828,25 @@ class _CasePartnerTabState extends State<_CasePartnerTab> {
             Text('📡', style: TextStyle(fontSize: 16)),
             SizedBox(width: 8),
             Text('WIRE DROPPED — Case Briefing',
-              style: TextStyle(
-                color: JournalColors.accent, fontSize: 12,
-                fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5)),
           ]),
           const SizedBox(height: 10),
           if (_wireResult == null)
             const Text('Compiling full case intelligence…',
-              style: TextStyle(color: JournalColors.textMuted, fontSize: 11))
+                style: TextStyle(color: JournalColors.textMuted, fontSize: 11))
           else if (_wireResult!['error'] == true)
             const Text('Wire failed. Check your API key in Settings.',
-              style: TextStyle(color: Color(0xFFEF4444), fontSize: 12))
+                style: TextStyle(color: Color(0xFFEF4444), fontSize: 12))
           else
             Text(_wireResult!['briefing'] as String? ?? '',
-              style: const TextStyle(
-                color: JournalColors.textPrimary, fontSize: 13, height: 1.7)),
+                style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 13,
+                    height: 1.7)),
         ],
       ),
     );
@@ -2397,17 +2862,19 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: color.withOpacity(0.3)),
-    ),
-    child: Text(label,
-      style: TextStyle(
-        color: color, fontSize: 10,
-        fontWeight: FontWeight.w600, letterSpacing: 0.3)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3)),
+      );
 }
 
 class _TabPlaceholder extends StatelessWidget {
@@ -2416,13 +2883,15 @@ class _TabPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(CupertinoIcons.hammer, color: JournalColors.textMuted, size: 36),
-      const SizedBox(height: 14),
-      Text('$tabName — Coming Soon',
-        style: const TextStyle(color: JournalColors.textSecondary, fontSize: 16)),
-    ]),
-  );
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(CupertinoIcons.hammer,
+              color: JournalColors.textMuted, size: 36),
+          const SizedBox(height: 14),
+          Text('$tabName — Coming Soon',
+              style: const TextStyle(
+                  color: JournalColors.textSecondary, fontSize: 16)),
+        ]),
+      );
 }
 // ── Photos Tab ──────────────────────────────────────────────────────────────
 
@@ -2461,7 +2930,9 @@ class _PhotosTabState extends State<_PhotosTab> {
     if (oldWidget.uploads.length != widget.uploads.length) {
       final total = widget.uploads.length;
       setState(() {
-        _shownCount = total <= _pageSize ? _pageSize : _shownCount.clamp(_pageSize, total);
+        _shownCount = total <= _pageSize
+            ? _pageSize
+            : _shownCount.clamp(_pageSize, total);
       });
     }
   }
@@ -2480,18 +2951,25 @@ class _PhotosTabState extends State<_PhotosTab> {
 
   String _statusLabel(String? status) {
     switch (status) {
-      case 'done':    return '✓ analyzed';
-      case 'failed':  return '✕ failed';
-      case 'pending': return '⏳ pending';
-      default:        return '… analyzing';
+      case 'done':
+        return '✓ analyzed';
+      case 'failed':
+        return '✕ failed';
+      case 'pending':
+        return '⏳ pending';
+      default:
+        return '… analyzing';
     }
   }
 
   Color _statusColor(String? status) {
     switch (status) {
-      case 'done':   return const Color(0xFF22C55E);
-      case 'failed': return const Color(0xFFEF4444);
-      default:       return const Color(0xFFF59E0B);
+      case 'done':
+        return const Color(0xFF22C55E);
+      case 'failed':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFFF59E0B);
     }
   }
 
@@ -2504,7 +2982,8 @@ class _PhotosTabState extends State<_PhotosTab> {
         SliverToBoxAdapter(
           child: Padding(
             padding: _kScreenPadding,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               GlassCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2536,38 +3015,47 @@ class _PhotosTabState extends State<_PhotosTab> {
                         decoration: BoxDecoration(
                           color: _withAlpha(JournalColors.bgSurface, 0.72),
                           borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: JournalColors.borderBright, width: 1.2),
+                          border: Border.all(
+                              color: JournalColors.borderBright, width: 1.2),
                         ),
                         child: _uploading
-                            ? const Column(mainAxisSize: MainAxisSize.min, children: [
-                                CupertinoActivityIndicator(radius: 12),
-                                SizedBox(height: 10),
-                                Text(
-                                  'Analyzing image…',
-                                  style: TextStyle(color: JournalColors.textMuted, fontSize: 12),
-                                ),
-                              ])
-                            : const Column(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(
-                                  CupertinoIcons.photo_on_rectangle,
-                                  color: JournalColors.textPrimary,
-                                  size: 26,
-                                ),
-                                SizedBox(height: 10),
-                                Text(
-                                  'Upload a case photo',
-                                  style: TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'JPEG, PNG, and WEBP supported.',
-                                  style: TextStyle(color: JournalColors.textSecondary, fontSize: 12),
-                                ),
-                              ]),
+                            ? const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                    CupertinoActivityIndicator(radius: 12),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      'Analyzing image…',
+                                      style: TextStyle(
+                                          color: JournalColors.textMuted,
+                                          fontSize: 12),
+                                    ),
+                                  ])
+                            : const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                    Icon(
+                                      CupertinoIcons.photo_on_rectangle,
+                                      color: JournalColors.textPrimary,
+                                      size: 26,
+                                    ),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      'Upload a case photo',
+                                      style: TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'JPEG, PNG, and WEBP supported.',
+                                      style: TextStyle(
+                                          color: JournalColors.textSecondary,
+                                          fontSize: 12),
+                                    ),
+                                  ]),
                       ),
                     ),
                   ],
@@ -2584,8 +3072,9 @@ class _PhotosTabState extends State<_PhotosTab> {
                       Text('🖼', style: TextStyle(fontSize: 36)),
                       SizedBox(height: 10),
                       Text('No photos yet',
-                        style: TextStyle(
-                          color: JournalColors.textSecondary, fontSize: 14)),
+                          style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 14)),
                     ]),
                   ),
                 ),
@@ -2612,49 +3101,56 @@ class _PhotosTabState extends State<_PhotosTab> {
                     child: Row(children: [
                       ClipRRect(
                         borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(10)),
+                            left: Radius.circular(10)),
                         child: SizedBox(
-                        width: 72, height: 72,
-                        child: imgPath.isNotEmpty
-                          ? _AuthImage(
-                              path: imgPath,
-                              cacheWidth: 144,
-                              cacheHeight: 144,
-                            )
-                          : const Icon(CupertinoIcons.photo,
-                              color: JournalColors.textMuted, size: 24),
+                          width: 72,
+                          height: 72,
+                          child: imgPath.isNotEmpty
+                              ? _AuthImage(
+                                  path: imgPath,
+                                  cacheWidth: 144,
+                                  cacheHeight: 144,
+                                )
+                              : const Icon(CupertinoIcons.photo,
+                                  color: JournalColors.textMuted, size: 24),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(child: Column(
+                      Expanded(
+                          child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(u['original_filename'] as String? ?? 'photo',
-                            style: const TextStyle(
-                              color: JournalColors.textPrimary,
-                              fontSize: 12, fontWeight: FontWeight.w600),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                              style: const TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 3),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: _statusColor(status).withOpacity(0.12),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(_statusLabel(status),
-                              style: TextStyle(
-                                color: _statusColor(status),
-                                fontSize: 9, fontFamily: 'monospace')),
+                                style: TextStyle(
+                                    color: _statusColor(status),
+                                    fontSize: 9,
+                                    fontFamily: 'monospace')),
                           ),
                           if (u['ai_analysis'] != null) ...[
                             const SizedBox(height: 5),
                             Text(u['ai_analysis'] as String,
-                              style: const TextStyle(
-                                color: JournalColors.textSecondary,
-                                fontSize: 11, height: 1.4),
-                              maxLines: 2, overflow: TextOverflow.ellipsis),
+                                style: const TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 11,
+                                    height: 1.4),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis),
                           ],
                         ],
                       )),
@@ -2668,20 +3164,20 @@ class _PhotosTabState extends State<_PhotosTab> {
                               content: const Text('Remove this photo?'),
                               actions: [
                                 CupertinoDialogAction(
-                                  isDestructiveAction: true,
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    widget.onDelete(u);
-                                  },
-                                  child: const Text('Delete')),
+                                    isDestructiveAction: true,
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      widget.onDelete(u);
+                                    },
+                                    child: const Text('Delete')),
                                 CupertinoDialogAction(
-                                  child: const Text('Cancel'),
-                                  onPressed: () => Navigator.pop(context)),
+                                    child: const Text('Cancel'),
+                                    onPressed: () => Navigator.pop(context)),
                               ],
                             ),
                           ),
                           child: const Icon(CupertinoIcons.xmark,
-                            color: Color(0xFFEF4444), size: 14),
+                              color: Color(0xFFEF4444), size: 14),
                         ),
                     ]),
                   );
@@ -2696,8 +3192,8 @@ class _PhotosTabState extends State<_PhotosTab> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
               child: GestureDetector(
                 onTap: () => setState(() {
-                  _shownCount =
-                      (_shownCount + _pageSize).clamp(_pageSize, widget.uploads.length);
+                  _shownCount = (_shownCount + _pageSize)
+                      .clamp(_pageSize, widget.uploads.length);
                 }),
                 child: GlassCard(
                   child: Center(
@@ -2753,7 +3249,9 @@ class _GalleryTabState extends State<_GalleryTab> {
     if (oldWidget.uploads.length != widget.uploads.length) {
       final total = widget.uploads.length;
       setState(() {
-        _shownCount = total <= _pageSize ? _pageSize : _shownCount.clamp(_pageSize, total);
+        _shownCount = total <= _pageSize
+            ? _pageSize
+            : _shownCount.clamp(_pageSize, total);
       });
     }
   }
@@ -2786,11 +3284,11 @@ class _GalleryTabState extends State<_GalleryTab> {
           Text('🖼', style: TextStyle(fontSize: 40)),
           SizedBox(height: 12),
           Text('No photos yet',
-            style: TextStyle(
-              color: JournalColors.textSecondary, fontSize: 14)),
+              style:
+                  TextStyle(color: JournalColors.textSecondary, fontSize: 14)),
           SizedBox(height: 4),
           Text('Upload some in the Photos tab',
-            style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
+              style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
         ]),
       );
     }
@@ -2816,17 +3314,25 @@ class _GalleryTabState extends State<_GalleryTab> {
 
                   Color statusColor() {
                     switch (status) {
-                      case 'done':   return const Color(0xFF22C55E);
-                      case 'failed': return const Color(0xFFEF4444);
-                      default:       return const Color(0xFFF59E0B);
+                      case 'done':
+                        return const Color(0xFF22C55E);
+                      case 'failed':
+                        return const Color(0xFFEF4444);
+                      default:
+                        return const Color(0xFFF59E0B);
                     }
                   }
+
                   String statusLabel() {
                     switch (status) {
-                      case 'done':    return '✓ analyzed';
-                      case 'failed':  return '✕ failed';
-                      case 'pending': return '⏳ pending';
-                      default:        return '… analyzing';
+                      case 'done':
+                        return '✓ analyzed';
+                      case 'failed':
+                        return '✕ failed';
+                      case 'pending':
+                        return '⏳ pending';
+                      default:
+                        return '… analyzing';
                     }
                   }
 
@@ -2845,33 +3351,36 @@ class _GalleryTabState extends State<_GalleryTab> {
                             child: Stack(children: [
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(10)),
+                                    top: Radius.circular(10)),
                                 child: SizedBox(
-                                width: double.infinity,
-                                child: imgPath.isNotEmpty
-                                    ? _AuthImage(
-                                        path: imgPath,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 320,
-                                        cacheHeight: 320,
-                                      )
-                                    : const Icon(CupertinoIcons.photo,
-                                        color: JournalColors.textMuted, size: 28),
+                                  width: double.infinity,
+                                  child: imgPath.isNotEmpty
+                                      ? _AuthImage(
+                                          path: imgPath,
+                                          fit: BoxFit.cover,
+                                          cacheWidth: 320,
+                                          cacheHeight: 320,
+                                        )
+                                      : const Icon(CupertinoIcons.photo,
+                                          color: JournalColors.textMuted,
+                                          size: 28),
                                 ),
                               ),
                               Positioned(
-                                top: 6, right: 6,
+                                top: 6,
+                                right: 6,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 5, vertical: 2),
+                                      horizontal: 5, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: const Color(0xCC000000),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(statusLabel(),
-                                    style: TextStyle(
-                                      color: statusColor(),
-                                      fontSize: 8, fontFamily: 'monospace')),
+                                      style: TextStyle(
+                                          color: statusColor(),
+                                          fontSize: 8,
+                                          fontFamily: 'monospace')),
                                 ),
                               ),
                             ]),
@@ -2881,11 +3390,14 @@ class _GalleryTabState extends State<_GalleryTab> {
                             child: Row(children: [
                               Expanded(
                                 child: Text(
-                                  u['original_filename'] as String? ?? 'photo',
-                                  style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 11, fontWeight: FontWeight.w600),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    u['original_filename'] as String? ??
+                                        'photo',
+                                    style: const TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
                               ),
                               if (!isEntry)
                                 GestureDetector(
@@ -2896,20 +3408,21 @@ class _GalleryTabState extends State<_GalleryTab> {
                                       content: const Text('Remove this photo?'),
                                       actions: [
                                         CupertinoDialogAction(
-                                          isDestructiveAction: true,
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                            widget.onDelete(u);
-                                          },
-                                          child: const Text('Delete')),
+                                            isDestructiveAction: true,
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                              widget.onDelete(u);
+                                            },
+                                            child: const Text('Delete')),
                                         CupertinoDialogAction(
-                                          child: const Text('Cancel'),
-                                          onPressed: () => Navigator.pop(context)),
+                                            child: const Text('Cancel'),
+                                            onPressed: () =>
+                                                Navigator.pop(context)),
                                       ],
                                     ),
                                   ),
                                   child: const Icon(CupertinoIcons.xmark,
-                                    color: Color(0xFFEF4444), size: 12),
+                                      color: Color(0xFFEF4444), size: 12),
                                 ),
                             ]),
                           ),
@@ -2917,10 +3430,12 @@ class _GalleryTabState extends State<_GalleryTab> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                               child: Text(u['ai_analysis'] as String,
-                                style: const TextStyle(
-                                  color: JournalColors.textMuted,
-                                  fontSize: 10, height: 1.4),
-                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  style: const TextStyle(
+                                      color: JournalColors.textMuted,
+                                      fontSize: 10,
+                                      height: 1.4),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
                             ),
                         ],
                       ),
@@ -2937,8 +3452,8 @@ class _GalleryTabState extends State<_GalleryTab> {
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
                 child: GestureDetector(
                   onTap: () => setState(() {
-                    _shownCount =
-                        (_shownCount + _pageSize).clamp(_pageSize, widget.uploads.length);
+                    _shownCount = (_shownCount + _pageSize)
+                        .clamp(_pageSize, widget.uploads.length);
                   }),
                   child: GlassCard(
                     child: Center(
@@ -2967,23 +3482,26 @@ class _GalleryTabState extends State<_GalleryTab> {
             child: SafeArea(
               child: Column(children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(children: [
                     Expanded(
                       child: Text(
-                        widget.uploads[_lightboxIndex!]['original_filename'] as String? ?? '',
-                        style: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                          widget.uploads[_lightboxIndex!]['original_filename']
+                                  as String? ??
+                              '',
+                          style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                     ),
                     CupertinoButton(
                       padding: EdgeInsets.zero,
                       onPressed: _closeLightbox,
-                      child: const Icon(
-                        CupertinoIcons.xmark_circle_fill,
-                        color: JournalColors.textMuted, size: 24),
+                      child: const Icon(CupertinoIcons.xmark_circle_fill,
+                          color: JournalColors.textMuted, size: 24),
                     ),
                   ]),
                 ),
@@ -3030,17 +3548,22 @@ class _GalleryTabState extends State<_GalleryTab> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '— ${visibleUploads[_lightboxIndex!]['analysis_label'] ?? 'AI Analysis'} —',
-                            style: TextStyle(
-                              color: JournalColors.accent,
-                              fontSize: 9, fontFamily: 'monospace',
-                              letterSpacing: 1.2)),
+                              '— ${visibleUploads[_lightboxIndex!]['analysis_label'] ?? 'AI Analysis'} —',
+                              style: TextStyle(
+                                  color: JournalColors.accent,
+                                  fontSize: 9,
+                                  fontFamily: 'monospace',
+                                  letterSpacing: 1.2)),
                           const SizedBox(height: 8),
-                          Text(visibleUploads[_lightboxIndex!]['ai_analysis'] as String,
-                            style: const TextStyle(
-                              color: JournalColors.textSecondary,
-                              fontSize: 12, height: 1.6),
-                            maxLines: 6, overflow: TextOverflow.ellipsis),
+                          Text(
+                              visibleUploads[_lightboxIndex!]['ai_analysis']
+                                  as String,
+                              style: const TextStyle(
+                                  color: JournalColors.textSecondary,
+                                  fontSize: 12,
+                                  height: 1.6),
+                              maxLines: 6,
+                              overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
@@ -3078,7 +3601,11 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
     setState(() => _loading = true);
     try {
       final r = await _api.detectiveGetIntelligence(widget.caseId);
-      if (mounted) setState(() { _intel = r; _loading = false; });
+      if (mounted)
+        setState(() {
+          _intel = r;
+          _loading = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -3096,24 +3623,27 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
   }
 
   void _showErr(String msg) => showCupertinoDialog(
-    context: context,
-    builder: (_) => CupertinoAlertDialog(
-      title: const Text('Error'),
-      content: Text(msg),
-      actions: [CupertinoDialogAction(
-        child: const Text('OK'),
-        onPressed: () => Navigator.pop(context))],
-    ),
-  );
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: const Text('Error'),
+          content: Text(msg),
+          actions: [
+            CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(context))
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      return const Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
         CupertinoActivityIndicator(),
         SizedBox(height: 10),
         Text('Loading intelligence brief…',
-          style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
+            style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
       ]));
     }
 
@@ -3126,43 +3656,47 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
             const Text('🧠', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 16),
             const Text('No Intelligence Brief Yet',
-              style: TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 16, fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             const Text(
-              'Drop a Wire to generate your first case intelligence brief. '
-              'This brief persists between sessions — your Case Partner reads '
-              'it instead of loading all raw entries every time.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: JournalColors.textMuted, fontSize: 13, height: 1.7)),
+                'Drop a Wire to generate your first case intelligence brief. '
+                'This brief persists between sessions — your Case Partner reads '
+                'it instead of loading all raw entries every time.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: JournalColors.textMuted, fontSize: 13, height: 1.7)),
             const SizedBox(height: 16),
             const Text(
-              'After each wire drop, the brief auto-updates and gets '
-              'injected into every Case Partner chat — saving 60–70% on AI tokens.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: JournalColors.textMuted, fontSize: 10,
-                fontFamily: 'monospace', height: 1.6)),
+                'After each wire drop, the brief auto-updates and gets '
+                'injected into every Case Partner chat — saving 60–70% on AI tokens.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    height: 1.6)),
           ]),
         ),
       );
     }
 
     final entryCount = _intel?['entry_count'] ?? 0;
-    final wireCount  = _intel?['wire_count'] ?? 0;
-    final rawDate    = _intel?['last_updated'] as String? ?? '';
-    final lastUp     = rawDate.length >= 16
-      ? rawDate.substring(0, 16).replaceAll('T', ' ')
-      : rawDate;
+    final wireCount = _intel?['wire_count'] ?? 0;
+    final rawDate = _intel?['last_updated'] as String? ?? '';
+    final lastUp = rawDate.length >= 16
+        ? rawDate.substring(0, 16).replaceAll('T', ' ')
+        : rawDate;
     final tokensSaved = (summary.length / 4).ceil();
 
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: Padding(
           padding: _kScreenPadding,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             GlassCard(
               child: Row(children: [
                 const Expanded(
@@ -3190,36 +3724,39 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
                     ],
                   ),
                 ),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: _refreshing ? null : _refresh,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _refreshing
-                      ? JournalColors.accent.withOpacity(0.1)
-                      : JournalColors.accent.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: JournalColors.accent.withOpacity(0.35)),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: _refreshing ? null : _refresh,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _refreshing
+                          ? JournalColors.accent.withOpacity(0.1)
+                          : JournalColors.accent.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: JournalColors.accent.withOpacity(0.35)),
+                    ),
+                    child: _refreshing
+                        ? const CupertinoActivityIndicator(radius: 7)
+                        : const Text('⟳ Refresh',
+                            style: TextStyle(
+                                color: JournalColors.accent,
+                                fontSize: 11,
+                                fontFamily: 'monospace')),
                   ),
-                  child: _refreshing
-                    ? const CupertinoActivityIndicator(radius: 7)
-                    : const Text('⟳ Refresh',
-                        style: TextStyle(
-                          color: JournalColors.accent,
-                          fontSize: 11, fontFamily: 'monospace')),
                 ),
-              ),
               ]),
             ),
             const SizedBox(height: 4),
             Text(
-              '$entryCount entries · $wireCount wire drop${wireCount != 1 ? 's' : ''}'
-              '${lastUp.isNotEmpty ? ' · last updated $lastUp' : ''}',
-              style: const TextStyle(
-                color: JournalColors.textMuted,
-                fontSize: 10, fontFamily: 'monospace')),
+                '$entryCount entries · $wireCount wire drop${wireCount != 1 ? 's' : ''}'
+                '${lastUp.isNotEmpty ? ' · last updated $lastUp' : ''}',
+                style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 10,
+                    fontFamily: 'monospace')),
             const SizedBox(height: 16),
 
             // Brief card
@@ -3227,75 +3764,84 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
               decoration: BoxDecoration(
                 color: JournalColors.accent.withOpacity(0.03),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: JournalColors.accent.withOpacity(0.2)),
+                border:
+                    Border.all(color: JournalColors.accent.withOpacity(0.2)),
               ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  height: 4,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(colors: [
-                      Color(0xFF6366F1), Color(0xFFA855F7), Color(0xFFEC4899)]),
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(12)),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(summary,
-                    style: const TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 13, height: 1.8)),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: Color(0x33000000),
-                    borderRadius: BorderRadius.vertical(
-                      bottom: Radius.circular(12)),
-                    border: Border(
-                      top: BorderSide(color: JournalColors.border)),
-                  ),
-                  child: Row(children: [
-                    const Expanded(
-                      child: Text(
-                        'PERSISTENT BRIEF — auto-updates on wire drop',
-                        style: TextStyle(
-                          color: JournalColors.textMuted,
-                          fontSize: 9, fontFamily: 'monospace')),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 4,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          Color(0xFF6366F1),
+                          Color(0xFFA855F7),
+                          Color(0xFFEC4899)
+                        ]),
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(12)),
+                      ),
                     ),
-                    Text('≈ $tokensSaved tokens saved per chat',
-                      style: TextStyle(
-                        color: JournalColors.accent.withOpacity(0.6),
-                        fontSize: 9, fontFamily: 'monospace')),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(summary,
+                          style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 13,
+                              height: 1.8)),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: const BoxDecoration(
+                        color: Color(0x33000000),
+                        borderRadius:
+                            BorderRadius.vertical(bottom: Radius.circular(12)),
+                        border: Border(
+                            top: BorderSide(color: JournalColors.border)),
+                      ),
+                      child: Row(children: [
+                        const Expanded(
+                          child: Text(
+                              'PERSISTENT BRIEF — auto-updates on wire drop',
+                              style: TextStyle(
+                                  color: JournalColors.textMuted,
+                                  fontSize: 9,
+                                  fontFamily: 'monospace')),
+                        ),
+                        Text('≈ $tokensSaved tokens saved per chat',
+                            style: TextStyle(
+                                color: JournalColors.accent.withOpacity(0.6),
+                                fontSize: 9,
+                                fontFamily: 'monospace')),
+                      ]),
+                    ),
                   ]),
-                ),
-              ]),
             ),
             const SizedBox(height: 12),
 
             // Token savings callout
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFF22C55E).withOpacity(0.05),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF22C55E).withOpacity(0.15)),
+                    color: const Color(0xFF22C55E).withOpacity(0.15)),
               ),
               child: Row(children: [
                 const Text('⚡', style: TextStyle(fontSize: 14)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Intelligence active — Case Partner reads this brief '
-                    'instead of loading all $entryCount raw entries.'
-                    '${entryCount > 10 ? ' Estimated ${(entryCount * 120 * 0.65).round()} tokens saved per conversation.' : ''}',
-                    style: const TextStyle(
-                      color: Color(0xCC22C55E),
-                      fontSize: 11, fontFamily: 'monospace', height: 1.5)),
+                      'Intelligence active — Case Partner reads this brief '
+                      'instead of loading all $entryCount raw entries.'
+                      '${entryCount > 10 ? ' Estimated ${(entryCount * 120 * 0.65).round()} tokens saved per conversation.' : ''}',
+                      style: const TextStyle(
+                          color: Color(0xCC22C55E),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          height: 1.5)),
                 ),
               ]),
             ),
@@ -3319,7 +3865,7 @@ class _WiresTabState extends State<_WiresTab> {
   final _api = ApiService();
   List<Map<String, dynamic>> _wires = [];
   bool _loading = true;
-  bool _wiring  = false;
+  bool _wiring = false;
   int? _expanded;
 
   @override
@@ -3332,10 +3878,11 @@ class _WiresTabState extends State<_WiresTab> {
     setState(() => _loading = true);
     try {
       final r = await _api.detectiveGetWireHistory(widget.caseId);
-      if (mounted) setState(() {
-        _wires = List<Map<String, dynamic>>.from(r);
-        _loading = false;
-      });
+      if (mounted)
+        setState(() {
+          _wires = List<Map<String, dynamic>>.from(r);
+          _loading = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -3351,19 +3898,25 @@ class _WiresTabState extends State<_WiresTab> {
           'briefing': r['briefing'],
           'created_at': DateTime.now().toIso8601String(),
         };
-        setState(() { _wires = [w, ..._wires]; _expanded = 0; });
+        setState(() {
+          _wires = [w, ..._wires];
+          _expanded = 0;
+        });
       }
     } catch (e) {
-      if (mounted) showCupertinoDialog(
-        context: context,
-        builder: (_) => CupertinoAlertDialog(
-          title: const Text('Wire Failed'),
-          content: Text(e.toString()),
-          actions: [CupertinoDialogAction(
-            child: const Text('OK'),
-            onPressed: () => Navigator.pop(context))],
-        ),
-      );
+      if (mounted)
+        showCupertinoDialog(
+          context: context,
+          builder: (_) => CupertinoAlertDialog(
+            title: const Text('Wire Failed'),
+            content: Text(e.toString()),
+            actions: [
+              CupertinoDialogAction(
+                  child: const Text('OK'),
+                  onPressed: () => Navigator.pop(context))
+            ],
+          ),
+        );
     }
     if (mounted) setState(() => _wiring = false);
   }
@@ -3379,40 +3932,43 @@ class _WiresTabState extends State<_WiresTab> {
           child: GlassCard(
             child: Row(children: [
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text(
-                    'WIRES',
-                    style: TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Saved case briefings',
-                    style: TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_wires.length} briefing${_wires.length != 1 ? 's' : ''} on file',
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'WIRES',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Saved case briefings',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_wires.length} briefing${_wires.length != 1 ? 's' : ''} on file',
+                        style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ]),
               ),
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 onPressed: _wiring ? null : _dropNew,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: _wiring
                         ? _withAlpha(JournalColors.accent, 0.1)
@@ -3436,7 +3992,6 @@ class _WiresTabState extends State<_WiresTab> {
           ),
         ),
       ),
-
       if (_wires.isEmpty)
         const SliverFillRemaining(
           child: Center(
@@ -3444,19 +3999,21 @@ class _WiresTabState extends State<_WiresTab> {
               Text('📡', style: TextStyle(fontSize: 40)),
               SizedBox(height: 14),
               Text('No Wires Dropped Yet',
-                style: TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 15, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
               SizedBox(height: 8),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 40),
                 child: Text(
-                  'Drop a Wire to get a full case briefing — your Case Partner '
-                  'reads everything and tells you exactly where things stand.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: JournalColors.textMuted,
-                    fontSize: 13, height: 1.6)),
+                    'Drop a Wire to get a full case briefing — your Case Partner '
+                    'reads everything and tells you exactly where things stand.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 13,
+                        height: 1.6)),
               ),
             ]),
           ),
@@ -3472,65 +4029,66 @@ class _WiresTabState extends State<_WiresTab> {
                 final briefing = w['briefing'] as String? ?? '';
                 final raw = w['created_at'] as String? ?? '';
                 final dateStr = raw.length >= 16
-                  ? raw.substring(0, 16).replaceAll('T', ' ')
-                  : raw;
+                    ? raw.substring(0, 16).replaceAll('T', ' ')
+                    : raw;
 
                 return GestureDetector(
-                  onTap: () => setState(
-                    () => _expanded = isOpen ? null : i),
+                  onTap: () => setState(() => _expanded = isOpen ? null : i),
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
                       color: JournalColors.bgSurface,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isOpen
-                          ? JournalColors.accent.withOpacity(0.3)
-                          : JournalColors.border),
+                          color: isOpen
+                              ? JournalColors.accent.withOpacity(0.3)
+                              : JournalColors.border),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                              horizontal: 14, vertical: 12),
                           child: Row(children: [
-                            const Text('📡',
-                              style: TextStyle(fontSize: 16)),
+                            const Text('📡', style: TextStyle(fontSize: 16)),
                             const SizedBox(width: 10),
-                            Expanded(child: Column(
+                            Expanded(
+                                child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Wire Drop #${_wires.length - i}',
-                                  style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
+                                    style: const TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600)),
                                 if (dateStr.isNotEmpty)
                                   Text(dateStr,
-                                    style: const TextStyle(
-                                      color: JournalColors.textMuted,
-                                      fontSize: 10,
-                                      fontFamily: 'monospace')),
+                                      style: const TextStyle(
+                                          color: JournalColors.textMuted,
+                                          fontSize: 10,
+                                          fontFamily: 'monospace')),
                               ],
                             )),
                             const SizedBox(width: 8),
                             Text(isOpen ? '▲' : '▼',
-                              style: const TextStyle(
-                                color: JournalColors.textMuted,
-                                fontSize: 12)),
+                                style: const TextStyle(
+                                    color: JournalColors.textMuted,
+                                    fontSize: 12)),
                           ]),
                         ),
                         if (isOpen) ...[
                           const Divider(
-                            height: 0.5, thickness: 0.5,
-                            color: JournalColors.border),
+                              height: 0.5,
+                              thickness: 0.5,
+                              color: JournalColors.border),
                           Padding(
                             padding: const EdgeInsets.all(14),
                             child: Text(briefing,
-                              style: const TextStyle(
-                                color: JournalColors.textPrimary,
-                                fontSize: 13, height: 1.8)),
+                                style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 13,
+                                    height: 1.8)),
                           ),
                         ],
                       ],
@@ -3555,7 +4113,8 @@ const _kExportTones = [
     label: 'Case File',
     tag: 'INVESTIGATIVE',
     tagColor: Color(0xFFEF4444),
-    desc: 'Full forensic report. Every entry, wire drop, photo, and AI analysis.',
+    desc:
+        'Full forensic report. Every entry, wire drop, photo, and AI analysis.',
     accentColor: Color(0xFF6366F1),
   ),
   (
@@ -3564,7 +4123,8 @@ const _kExportTones = [
     label: 'The Conversation',
     tag: 'PERSONAL',
     tagColor: Color(0xFFA855F7),
-    desc: 'Written as a personal statement — the pattern, the evidence, your decision.',
+    desc:
+        'Written as a personal statement — the pattern, the evidence, your decision.',
     accentColor: Color(0xFFA855F7),
   ),
   (
@@ -3573,7 +4133,8 @@ const _kExportTones = [
     label: 'Personal Record',
     tag: 'ARCHIVAL',
     tagColor: Color(0xFF38BDF8),
-    desc: 'Clean, readable account for therapy, legal consultation, or long-term archives.',
+    desc:
+        'Clean, readable account for therapy, legal consultation, or long-term archives.',
     accentColor: Color(0xFF38BDF8),
   ),
 ];
@@ -3601,23 +4162,24 @@ class _ExportTabState extends State<_ExportTab> {
     });
     try {
       final bytes = await _api.detectiveExport(widget.caseId, _tone);
-      final dir   = await getTemporaryDirectory();
-      final file  = File(
-        '${dir.path}/case_report_${widget.caseId}_$_tone.pdf');
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/case_report_${widget.caseId}_$_tone.pdf');
       await file.writeAsBytes(bytes);
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/pdf')],
         subject: 'Case Report — ${widget.caseName}',
       );
-      if (mounted) setState(() {
-        _statusMsg = 'PDF ready — use the share sheet to save or send.';
-        _isError = false;
-      });
+      if (mounted)
+        setState(() {
+          _statusMsg = 'PDF ready — use the share sheet to save or send.';
+          _isError = false;
+        });
     } catch (e) {
-      if (mounted) setState(() {
-        _statusMsg = e.toString();
-        _isError = true;
-      });
+      if (mounted)
+        setState(() {
+          _statusMsg = e.toString();
+          _isError = true;
+        });
     }
     if (mounted) setState(() => _exporting = false);
   }
@@ -3628,7 +4190,8 @@ class _ExportTabState extends State<_ExportTab> {
       SliverToBoxAdapter(
         child: Padding(
           padding: _kScreenPadding,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const GlassCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3655,7 +4218,6 @@ class _ExportTabState extends State<_ExportTab> {
               ),
             ),
             const SizedBox(height: 20),
-
             ..._kExportTones.map((t) {
               final selected = _tone == t.id;
               return GestureDetector(
@@ -3665,97 +4227,99 @@ class _ExportTabState extends State<_ExportTab> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: selected
-                      ? t.accentColor.withOpacity(0.08)
-                      : JournalColors.bgSurface,
+                        ? t.accentColor.withOpacity(0.08)
+                        : JournalColors.bgSurface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: selected
-                        ? t.accentColor.withOpacity(0.4)
-                        : JournalColors.border,
-                      width: selected ? 1.5 : 1),
+                        color: selected
+                            ? t.accentColor.withOpacity(0.4)
+                            : JournalColors.border,
+                        width: selected ? 1.5 : 1),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(t.icon, style: const TextStyle(fontSize: 22)),
                       const SizedBox(width: 12),
-                      Expanded(child: Column(
+                      Expanded(
+                          child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(children: [
                             Text(t.label,
-                              style: const TextStyle(
-                                color: JournalColors.textPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700)),
+                                style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700)),
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: t.tagColor.withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
-                                  color: t.tagColor.withOpacity(0.3)),
+                                    color: t.tagColor.withOpacity(0.3)),
                               ),
                               child: Text(t.tag,
-                                style: TextStyle(
-                                  color: t.tagColor,
-                                  fontSize: 9, fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w700)),
+                                  style: TextStyle(
+                                      color: t.tagColor,
+                                      fontSize: 9,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w700)),
                             ),
                           ]),
                           const SizedBox(height: 5),
                           Text(t.desc,
-                            style: const TextStyle(
-                              color: JournalColors.textMuted,
-                              fontSize: 12, height: 1.5)),
+                              style: const TextStyle(
+                                  color: JournalColors.textMuted,
+                                  fontSize: 12,
+                                  height: 1.5)),
                         ],
                       )),
                       if (selected)
                         Icon(CupertinoIcons.checkmark_circle_fill,
-                          color: t.accentColor, size: 18),
+                            color: t.accentColor, size: 18),
                     ],
                   ),
                 ),
               );
             }),
-
             const SizedBox(height: 16),
-
             if (_statusMsg != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: (_isError
-                    ? const Color(0xFFEF4444)
-                    : const Color(0xFF22C55E)).withOpacity(0.07),
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFF22C55E))
+                      .withOpacity(0.07),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: (_isError
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFF22C55E)).withOpacity(0.2)),
+                      color: (_isError
+                              ? const Color(0xFFEF4444)
+                              : const Color(0xFF22C55E))
+                          .withOpacity(0.2)),
                 ),
                 child: Row(children: [
                   Text(_isError ? '⚠' : '✓',
-                    style: TextStyle(
-                      color: _isError
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF22C55E),
-                      fontSize: 14)),
+                      style: TextStyle(
+                          color: _isError
+                              ? const Color(0xFFEF4444)
+                              : const Color(0xFF22C55E),
+                          fontSize: 14)),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(_statusMsg!,
-                      style: TextStyle(
-                        color: _isError
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF22C55E),
-                        fontSize: 12))),
+                      child: Text(_statusMsg!,
+                          style: TextStyle(
+                              color: _isError
+                                  ? const Color(0xFFEF4444)
+                                  : const Color(0xFF22C55E),
+                              fontSize: 12))),
                 ]),
               ),
-
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
@@ -3764,24 +4328,23 @@ class _ExportTabState extends State<_ExportTab> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 onPressed: _exporting ? null : _export,
                 child: _exporting
-                  ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                      CupertinoActivityIndicator(
-                        radius: 8, color: Colors.white),
-                      SizedBox(width: 10),
-                      Text('Generating PDF…',
+                    ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                        CupertinoActivityIndicator(
+                            radius: 8, color: Colors.white),
+                        SizedBox(width: 10),
+                        Text('Generating PDF…',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700)),
+                      ])
+                    : const Text('Generate PDF & Share',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700)),
-                    ])
-                  : const Text('Generate PDF & Share',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700)),
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
               ),
             ),
-
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
@@ -3791,11 +4354,13 @@ class _ExportTabState extends State<_ExportTab> {
                 border: Border.all(color: JournalColors.border),
               ),
               child: const Text(
-                'Requires weasyprint on the server.\n'
-                'If export fails: pip install weasyprint --break-system-packages',
-                style: TextStyle(
-                  color: JournalColors.textMuted,
-                  fontSize: 10, fontFamily: 'monospace', height: 1.6)),
+                  'Requires weasyprint on the server.\n'
+                  'If export fails: pip install weasyprint --break-system-packages',
+                  style: TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                      height: 1.6)),
             ),
           ]),
         ),
@@ -3829,28 +4394,32 @@ class _ResearchTabState extends State<_ResearchTab> {
     setState(() => _loading = true);
     try {
       final r = await _api.detectiveGetResearch(widget.caseId);
-      if (mounted) setState(() {
-        _reports = List<Map<String, dynamic>>.from(r);
-        _loading = false;
-      });
+      if (mounted)
+        setState(() {
+          _reports = List<Map<String, dynamic>>.from(r);
+          _loading = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   void _openModal() => showCupertinoModalPopup(
-    context: context,
-    builder: (ctx) => DefaultTextStyle.merge(
-      style: const TextStyle(decoration: TextDecoration.none),
-      child: _ResearchModal(
-        caseId: widget.caseId,
-        onCompleted: (report) {
-          if (mounted) setState(() =>
-            _reports = [Map<String, dynamic>.from(report), ..._reports]);
-        },
-      ),
-    ),
-  );
+        context: context,
+        builder: (ctx) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _ResearchModal(
+            caseId: widget.caseId,
+            onCompleted: (report) {
+              if (mounted)
+                setState(() => _reports = [
+                      Map<String, dynamic>.from(report),
+                      ..._reports
+                    ]);
+            },
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -3863,34 +4432,36 @@ class _ResearchTabState extends State<_ResearchTab> {
           child: Row(children: [
             const Expanded(
               child: GlassCard(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    'RESEARCH',
-                    style: TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Saved research reports',
-                    style: TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Results are saved back into the case log.',
-                    style: TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'RESEARCH',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Saved research reports',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Results are saved back into the case log.',
+                        style: TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ]),
               ),
             ),
             const SizedBox(width: 12),
@@ -3898,24 +4469,25 @@ class _ResearchTabState extends State<_ResearchTab> {
               padding: EdgeInsets.zero,
               onPressed: _openModal,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: JournalColors.accent.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: JournalColors.accent.withOpacity(0.35)),
+                  border:
+                      Border.all(color: JournalColors.accent.withOpacity(0.35)),
                 ),
                 child: const Text('🔍 Run Agent',
-                  style: TextStyle(
-                    color: JournalColors.accent, fontSize: 11,
-                    fontFamily: 'monospace', fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        color: JournalColors.accent,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700)),
               ),
             ),
           ]),
         ),
       ),
-
       if (_reports.isEmpty)
         const SliverFillRemaining(
           child: Center(
@@ -3923,19 +4495,21 @@ class _ResearchTabState extends State<_ResearchTab> {
               Text('🔍', style: TextStyle(fontSize: 40)),
               SizedBox(height: 12),
               Text('No Research Reports Yet',
-                style: TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 15, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
               SizedBox(height: 8),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 40),
                 child: Text(
-                  'Tap "Run Agent" to deploy the research agent.\n'
-                  'Reports are saved here and added to your case context.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: JournalColors.textMuted,
-                    fontSize: 13, height: 1.6)),
+                    'Tap "Run Agent" to deploy the research agent.\n'
+                    'Reports are saved here and added to your case context.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 13,
+                        height: 1.6)),
               ),
             ]),
           ),
@@ -3950,74 +4524,71 @@ class _ResearchTabState extends State<_ResearchTab> {
                 final isOpen = _expanded == i;
                 final content = r['content'] as String? ?? '';
                 final subjectMatch =
-                  RegExp(r'Subject:\s*(.+?)\n').firstMatch(content);
-                final subject =
-                  subjectMatch?.group(1) ?? 'Research Report';
+                    RegExp(r'Subject:\s*(.+?)\n').firstMatch(content);
+                final subject = subjectMatch?.group(1) ?? 'Research Report';
                 final raw = r['created_at'] as String? ?? '';
-                final dateStr = raw.length >= 10
-                  ? raw.substring(0, 10)
-                  : raw;
+                final dateStr = raw.length >= 10 ? raw.substring(0, 10) : raw;
 
                 return GestureDetector(
-                  onTap: () => setState(
-                    () => _expanded = isOpen ? null : i),
+                  onTap: () => setState(() => _expanded = isOpen ? null : i),
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
                       color: JournalColors.bgSurface,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: JournalColors.accent.withOpacity(0.2)),
+                          color: JournalColors.accent.withOpacity(0.2)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                              horizontal: 14, vertical: 12),
                           child: Row(children: [
-                            const Text('🔍',
-                              style: TextStyle(fontSize: 16)),
+                            const Text('🔍', style: TextStyle(fontSize: 16)),
                             const SizedBox(width: 10),
-                            Expanded(child: Column(
+                            Expanded(
+                                child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(subject,
-                                  style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700)),
+                                    style: const TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700)),
                                 if (!isOpen)
                                   Text(
-                                    content.length > 100
-                                      ? '${content.substring(0, 100)}…'
-                                      : content,
-                                    style: const TextStyle(
-                                      color: JournalColors.textMuted,
-                                      fontSize: 11),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
+                                      content.length > 100
+                                          ? '${content.substring(0, 100)}…'
+                                          : content,
+                                      style: const TextStyle(
+                                          color: JournalColors.textMuted,
+                                          fontSize: 11),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
                               ],
                             )),
                             if (dateStr.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: Text(dateStr,
-                                  style: const TextStyle(
-                                    color: JournalColors.textMuted,
-                                    fontSize: 10,
-                                    fontFamily: 'monospace')),
+                                    style: const TextStyle(
+                                        color: JournalColors.textMuted,
+                                        fontSize: 10,
+                                        fontFamily: 'monospace')),
                               ),
                             Text(isOpen ? '▲' : '▼',
-                              style: const TextStyle(
-                                color: JournalColors.textMuted,
-                                fontSize: 12)),
+                                style: const TextStyle(
+                                    color: JournalColors.textMuted,
+                                    fontSize: 12)),
                           ]),
                         ),
                         if (isOpen) ...[
                           const Divider(
-                            height: 0.5, thickness: 0.5,
-                            color: JournalColors.border),
+                              height: 0.5,
+                              thickness: 0.5,
+                              color: JournalColors.border),
                           Padding(
                             padding: const EdgeInsets.all(14),
                             child: Container(
@@ -4027,11 +4598,11 @@ class _ResearchTabState extends State<_ResearchTab> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(content,
-                                style: const TextStyle(
-                                  color: JournalColors.textSecondary,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  height: 1.8)),
+                                  style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 11,
+                                      fontFamily: 'monospace',
+                                      height: 1.8)),
                             ),
                           ),
                         ],
@@ -4059,13 +4630,13 @@ class _ResearchModal extends StatefulWidget {
 }
 
 class _ResearchModalState extends State<_ResearchModal> {
-  final _api          = ApiService();
-  final _subjectCtrl  = TextEditingController();
-  final _contextCtrl  = TextEditingController();
+  final _api = ApiService();
+  final _subjectCtrl = TextEditingController();
+  final _contextCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _employerCtrl = TextEditingController();
-  final _relCtrl      = TextEditingController();
-  final _ageCtrl      = TextEditingController();
+  final _relCtrl = TextEditingController();
+  final _ageCtrl = TextEditingController();
 
   bool _loading = false;
   String? _error;
@@ -4074,15 +4645,22 @@ class _ResearchModalState extends State<_ResearchModal> {
 
   @override
   void dispose() {
-    _subjectCtrl.dispose(); _contextCtrl.dispose();
-    _locationCtrl.dispose(); _employerCtrl.dispose();
-    _relCtrl.dispose(); _ageCtrl.dispose();
+    _subjectCtrl.dispose();
+    _contextCtrl.dispose();
+    _locationCtrl.dispose();
+    _employerCtrl.dispose();
+    _relCtrl.dispose();
+    _ageCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _run() async {
     if (_subjectCtrl.text.trim().isEmpty) return;
-    setState(() { _step = 'running'; _loading = true; _error = null; });
+    setState(() {
+      _step = 'running';
+      _loading = true;
+      _error = null;
+    });
     final idents = <String, dynamic>{};
     if (_locationCtrl.text.trim().isNotEmpty)
       idents['location'] = _locationCtrl.text.trim();
@@ -4100,9 +4678,17 @@ class _ResearchModalState extends State<_ResearchModal> {
         if (idents.isNotEmpty) 'identifiers': idents,
         'search_options': ['court', 'business', 'social', 'news', 'licenses'],
       });
-      if (mounted) setState(() { _result = r; _step = 'result'; });
+      if (mounted)
+        setState(() {
+          _result = r;
+          _step = 'result';
+        });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _step = 'form'; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _step = 'form';
+        });
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -4111,18 +4697,20 @@ class _ResearchModalState extends State<_ResearchModal> {
       {String ph = '', int lines = 1}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label.toUpperCase(),
-        style: const TextStyle(
-          color: JournalColors.textMuted, fontSize: 10,
-          fontFamily: 'monospace', letterSpacing: 0.8)),
+          style: const TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 10,
+              fontFamily: 'monospace',
+              letterSpacing: 0.8)),
       const SizedBox(height: 6),
       CupertinoTextField(
         controller: ctrl,
         placeholder: ph,
-        minLines: 1, maxLines: lines == 1 ? 1 : 5,
-        style: const TextStyle(
-          color: JournalColors.textPrimary, fontSize: 13),
-        placeholderStyle: const TextStyle(
-          color: JournalColors.textMuted, fontSize: 13),
+        minLines: 1,
+        maxLines: lines == 1 ? 1 : 5,
+        style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13),
+        placeholderStyle:
+            const TextStyle(color: JournalColors.textMuted, fontSize: 13),
         decoration: BoxDecoration(
           color: JournalColors.bgSurface,
           borderRadius: BorderRadius.circular(8),
@@ -4144,10 +4732,11 @@ class _ResearchModalState extends State<_ResearchModal> {
       child: Column(children: [
         Container(
           margin: const EdgeInsets.only(top: 10, bottom: 16),
-          width: 38, height: 4,
+          width: 38,
+          height: 4,
           decoration: BoxDecoration(
-            color: JournalColors.border,
-            borderRadius: BorderRadius.circular(2)),
+              color: JournalColors.border,
+              borderRadius: BorderRadius.circular(2)),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -4155,177 +4744,193 @@ class _ResearchModalState extends State<_ResearchModal> {
             const Text('🔍', style: TextStyle(fontSize: 20)),
             const SizedBox(width: 10),
             const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Research Agent',
-                  style: TextStyle(
-                    color: JournalColors.textPrimary,
-                    fontSize: 15, fontWeight: FontWeight.w800)),
-                Text('Searches public web sources',
-                  style: TextStyle(
-                    color: JournalColors.textMuted, fontSize: 11)),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Research Agent',
+                        style: TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800)),
+                    Text('Searches public web sources',
+                        style: TextStyle(
+                            color: JournalColors.textMuted, fontSize: 11)),
+                  ]),
             ),
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel',
-                style: TextStyle(
-                  color: JournalColors.textMuted, fontSize: 14)),
+                  style:
+                      TextStyle(color: JournalColors.textMuted, fontSize: 14)),
             ),
           ]),
         ),
         const SizedBox(height: 4),
         const Divider(height: 1, color: JournalColors.border),
-
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: _step == 'running'
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 60),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      CupertinoActivityIndicator(radius: 16),
-                      SizedBox(height: 16),
-                      Text('Running research agent…',
-                        style: TextStyle(
-                          color: JournalColors.textMuted, fontSize: 13)),
-                      SizedBox(height: 6),
-                      Text('This may take 30–60 seconds',
-                        style: TextStyle(
-                          color: JournalColors.textMuted, fontSize: 11)),
-                    ]),
-                  ),
-                )
-              : _step == 'result'
-                ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF22C55E).withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: const Color(0xFF22C55E).withOpacity(0.2)),
-                      ),
-                      child: const Text(
-                        '✓ Research complete — saved to your investigation log',
-                        style: TextStyle(
-                          color: Color(0xFF86EFAC), fontSize: 12)),
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 60),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        CupertinoActivityIndicator(radius: 16),
+                        SizedBox(height: 16),
+                        Text('Running research agent…',
+                            style: TextStyle(
+                                color: JournalColors.textMuted, fontSize: 13)),
+                        SizedBox(height: 6),
+                        Text('This may take 30–60 seconds',
+                            style: TextStyle(
+                                color: JournalColors.textMuted, fontSize: 11)),
+                      ]),
                     ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0x4D000000),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: JournalColors.border),
-                      ),
-                      child: Text(_result?['report'] as String? ?? '',
-                        style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 12, fontFamily: 'monospace', height: 1.8)),
-                    ),
-                  ])
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (_error != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: const Color(0xFFEF4444).withOpacity(0.3)),
-                        ),
-                        child: Text('⚠️ $_error',
-                          style: const TextStyle(
-                            color: Color(0xFFFCA5A5), fontSize: 12)),
-                      ),
-                    ],
-                    _tf('Subject Name *', _subjectCtrl,
-                      ph: 'e.g. John Smith'),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: JournalColors.accent.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: JournalColors.accent.withOpacity(0.2)),
-                      ),
-                      child: Column(
+                  )
+                : _step == 'result'
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('🎯 IDENTITY ANCHORS',
-                            style: TextStyle(
-                              color: JournalColors.accent, fontSize: 10,
-                              fontFamily: 'monospace')),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Helps find the RIGHT person, not just anyone with this name',
-                            style: TextStyle(
-                              color: JournalColors.textMuted, fontSize: 11)),
-                          const SizedBox(height: 14),
-                          _tf('City / Location', _locationCtrl,
-                            ph: 'e.g. Austin, TX'),
-                          const SizedBox(height: 10),
-                          _tf('Employer / Organization', _employerCtrl,
-                            ph: 'e.g. Acme Corp'),
-                          const SizedBox(height: 10),
-                          _tf('Relationship to You', _relCtrl,
-                            ph: 'e.g. ex-partner, coworker'),
-                          const SizedBox(height: 10),
-                          _tf('Approx. Age / Age Range', _ageCtrl,
-                            ph: 'e.g. mid-30s, born ~1990'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _tf('Additional Context (optional)', _contextCtrl,
-                      ph: 'e.g. claims to be a contractor, drives a blue truck',
-                      lines: 3),
-                  ]),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color:
+                                    const Color(0xFF22C55E).withOpacity(0.07),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: const Color(0xFF22C55E)
+                                        .withOpacity(0.2)),
+                              ),
+                              child: const Text(
+                                  '✓ Research complete — saved to your investigation log',
+                                  style: TextStyle(
+                                      color: Color(0xFF86EFAC), fontSize: 12)),
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0x4D000000),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: JournalColors.border),
+                              ),
+                              child: Text(_result?['report'] as String? ?? '',
+                                  style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 12,
+                                      fontFamily: 'monospace',
+                                      height: 1.8)),
+                            ),
+                          ])
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                            if (_error != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                margin: const EdgeInsets.only(bottom: 16),
+                                decoration: BoxDecoration(
+                                  color:
+                                      const Color(0xFFEF4444).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: const Color(0xFFEF4444)
+                                          .withOpacity(0.3)),
+                                ),
+                                child: Text('⚠️ $_error',
+                                    style: const TextStyle(
+                                        color: Color(0xFFFCA5A5),
+                                        fontSize: 12)),
+                              ),
+                            ],
+                            _tf('Subject Name *', _subjectCtrl,
+                                ph: 'e.g. John Smith'),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: JournalColors.accent.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color:
+                                        JournalColors.accent.withOpacity(0.2)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('🎯 IDENTITY ANCHORS',
+                                      style: TextStyle(
+                                          color: JournalColors.accent,
+                                          fontSize: 10,
+                                          fontFamily: 'monospace')),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                      'Helps find the RIGHT person, not just anyone with this name',
+                                      style: TextStyle(
+                                          color: JournalColors.textMuted,
+                                          fontSize: 11)),
+                                  const SizedBox(height: 14),
+                                  _tf('City / Location', _locationCtrl,
+                                      ph: 'e.g. Austin, TX'),
+                                  const SizedBox(height: 10),
+                                  _tf('Employer / Organization', _employerCtrl,
+                                      ph: 'e.g. Acme Corp'),
+                                  const SizedBox(height: 10),
+                                  _tf('Relationship to You', _relCtrl,
+                                      ph: 'e.g. ex-partner, coworker'),
+                                  const SizedBox(height: 10),
+                                  _tf('Approx. Age / Age Range', _ageCtrl,
+                                      ph: 'e.g. mid-30s, born ~1990'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _tf('Additional Context (optional)', _contextCtrl,
+                                ph: 'e.g. claims to be a contractor, drives a blue truck',
+                                lines: 3),
+                          ]),
           ),
         ),
-
         Container(
           padding: EdgeInsets.fromLTRB(
-            20, 12, 20,
-            12 + MediaQuery.of(context).padding.bottom),
+              20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
           decoration: const BoxDecoration(
-            border: Border(
-              top: BorderSide(color: JournalColors.border))),
+              border: Border(top: BorderSide(color: JournalColors.border))),
           child: _step == 'result'
-            ? SizedBox(
-                width: double.infinity,
-                child: CupertinoButton(
-                  color: JournalColors.accent,
-                  borderRadius: BorderRadius.circular(10),
-                  onPressed: () {
-                    if (_result != null) widget.onCompleted(_result!);
-                    Navigator.pop(context);
-                  },
-                  child: const Text('✓ Done',
-                    style: TextStyle(
-                      color: Colors.white, fontSize: 14,
-                      fontWeight: FontWeight.w700)),
+              ? SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: JournalColors.accent,
+                    borderRadius: BorderRadius.circular(10),
+                    onPressed: () {
+                      if (_result != null) widget.onCompleted(_result!);
+                      Navigator.pop(context);
+                    },
+                    child: const Text('✓ Done',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                )
+              : SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: _subjectCtrl.text.trim().isNotEmpty
+                        ? JournalColors.accent
+                        : JournalColors.accent.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                    onPressed: (_subjectCtrl.text.trim().isEmpty || _loading)
+                        ? null
+                        : _run,
+                    child: const Text('🔍 Run Agent',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
+                  ),
                 ),
-              )
-            : SizedBox(
-                width: double.infinity,
-                child: CupertinoButton(
-                  color: _subjectCtrl.text.trim().isNotEmpty
-                    ? JournalColors.accent
-                    : JournalColors.accent.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(10),
-                  onPressed: (_subjectCtrl.text.trim().isEmpty || _loading)
-                    ? null : _run,
-                  child: const Text('🔍 Run Agent',
-                    style: TextStyle(
-                      color: Colors.white, fontSize: 14,
-                      fontWeight: FontWeight.w700)),
-                ),
-              ),
         ),
       ]),
     );
@@ -4341,13 +4946,13 @@ class _SettingsTab extends StatefulWidget {
 }
 
 class _SettingsTabState extends State<_SettingsTab> {
-  final _api          = ApiService();
-  final _nameCtrl     = TextEditingController();
+  final _api = ApiService();
+  final _nameCtrl = TextEditingController();
   final _pronounsCtrl = TextEditingController();
-  final _contextCtrl  = TextEditingController();
+  final _contextCtrl = TextEditingController();
   bool _loading = true;
-  bool _saving  = false;
-  bool _saved   = false;
+  bool _saving = false;
+  bool _saved = false;
 
   @override
   void initState() {
@@ -4367,9 +4972,9 @@ class _SettingsTabState extends State<_SettingsTab> {
     try {
       final r = await _api.detectiveGetSettings();
       if (mounted) {
-        _nameCtrl.text     = r['investigator_name']     as String? ?? '';
+        _nameCtrl.text = r['investigator_name'] as String? ?? '';
         _pronounsCtrl.text = r['investigator_pronouns'] as String? ?? '';
-        _contextCtrl.text  = r['background_context']   as String? ?? '';
+        _contextCtrl.text = r['background_context'] as String? ?? '';
         setState(() => _loading = false);
       }
     } catch (_) {
@@ -4378,15 +4983,21 @@ class _SettingsTabState extends State<_SettingsTab> {
   }
 
   Future<void> _save() async {
-    setState(() { _saving = true; _saved = false; });
+    setState(() {
+      _saving = true;
+      _saved = false;
+    });
     try {
       await _api.detectiveSaveSettings({
-        'investigator_name':     _nameCtrl.text.trim(),
+        'investigator_name': _nameCtrl.text.trim(),
         'investigator_pronouns': _pronounsCtrl.text.trim(),
-        'background_context':    _contextCtrl.text.trim(),
+        'background_context': _contextCtrl.text.trim(),
       });
       if (mounted) {
-        setState(() { _saved = true; _saving = false; });
+        setState(() {
+          _saved = true;
+          _saving = false;
+        });
         await Future.delayed(const Duration(milliseconds: 2500));
         if (mounted) setState(() => _saved = false);
       }
@@ -4398,9 +5009,11 @@ class _SettingsTabState extends State<_SettingsTab> {
           builder: (_) => CupertinoAlertDialog(
             title: const Text('Save Failed'),
             content: Text(e.toString()),
-            actions: [CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.pop(context))],
+            actions: [
+              CupertinoDialogAction(
+                  child: const Text('OK'),
+                  onPressed: () => Navigator.pop(context))
+            ],
           ),
         );
       }
@@ -4408,30 +5021,31 @@ class _SettingsTabState extends State<_SettingsTab> {
   }
 
   Widget _label(String t) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text(t.toUpperCase(),
-      style: const TextStyle(
-        color: JournalColors.textMuted, fontSize: 10,
-        fontFamily: 'monospace', letterSpacing: 0.8)),
-  );
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(t.toUpperCase(),
+            style: const TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 10,
+                fontFamily: 'monospace',
+                letterSpacing: 0.8)),
+      );
 
-  Widget _tf(TextEditingController c,
-      {String ph = '', int maxLines = 1}) =>
-    CupertinoTextField(
-      controller: c,
-      placeholder: ph,
-      minLines: 1, maxLines: maxLines,
-      style: const TextStyle(
-        color: JournalColors.textPrimary, fontSize: 13),
-      placeholderStyle: const TextStyle(
-        color: JournalColors.textMuted, fontSize: 13),
-      decoration: BoxDecoration(
-        color: JournalColors.bgSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: JournalColors.border),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    );
+  Widget _tf(TextEditingController c, {String ph = '', int maxLines = 1}) =>
+      CupertinoTextField(
+        controller: c,
+        placeholder: ph,
+        minLines: 1,
+        maxLines: maxLines,
+        style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13),
+        placeholderStyle:
+            const TextStyle(color: JournalColors.textMuted, fontSize: 13),
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: JournalColors.border),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -4441,7 +5055,8 @@ class _SettingsTabState extends State<_SettingsTab> {
       SliverToBoxAdapter(
         child: Padding(
           padding: _kScreenPadding,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const GlassCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4477,85 +5092,80 @@ class _SettingsTabState extends State<_SettingsTab> {
               ),
             ),
             const SizedBox(height: 28),
-
             _label('Your Real Name'),
             _tf(_nameCtrl, ph: 'e.g. Alex'),
             const SizedBox(height: 4),
             const Text(
-              'Used in photo analysis so the AI knows you are never a participant '
-              'in screenshots unless explicitly mentioned.',
-              style: TextStyle(
-                color: JournalColors.textMuted, fontSize: 11, height: 1.6)),
-
+                'Used in photo analysis so the AI knows you are never a participant '
+                'in screenshots unless explicitly mentioned.',
+                style: TextStyle(
+                    color: JournalColors.textMuted, fontSize: 11, height: 1.6)),
             const SizedBox(height: 20),
             _label('Your Pronouns (optional)'),
-            SizedBox(
-              width: 200,
-              child: _tf(_pronounsCtrl, ph: 'e.g. he/him')),
-
+            SizedBox(width: 200, child: _tf(_pronounsCtrl, ph: 'e.g. he/him')),
             const SizedBox(height: 20),
             _label('Background Context (optional)'),
             _tf(_contextCtrl,
-              ph: 'e.g. I am documenting an abusive relationship. '
-                  'The subject has a history of manipulation.',
-              maxLines: 4),
+                ph: 'e.g. I am documenting an abusive relationship. '
+                    'The subject has a history of manipulation.',
+                maxLines: 4),
             const SizedBox(height: 4),
             const Text(
-              'Injected into photo analysis and AI chat. Keep it concise.',
-              style: TextStyle(
-                color: JournalColors.textMuted, fontSize: 11, height: 1.6)),
-
+                'Injected into photo analysis and AI chat. Keep it concise.',
+                style: TextStyle(
+                    color: JournalColors.textMuted, fontSize: 11, height: 1.6)),
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
                 color: _saved
-                  ? const Color(0x4D10B981)
-                  : _saving
-                    ? JournalColors.accent.withOpacity(0.4)
-                    : JournalColors.accent,
+                    ? const Color(0x4D10B981)
+                    : _saving
+                        ? JournalColors.accent.withOpacity(0.4)
+                        : JournalColors.accent,
                 borderRadius: BorderRadius.circular(10),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 onPressed: _saving ? null : _save,
                 child: _saving
-                  ? const CupertinoActivityIndicator(
-                      radius: 8, color: Colors.white)
-                  : Text(_saved ? '✓ Saved' : 'Save Settings',
-                      style: const TextStyle(
-                        color: Colors.white, fontSize: 14,
-                        fontWeight: FontWeight.w700)),
+                    ? const CupertinoActivityIndicator(
+                        radius: 8, color: Colors.white)
+                    : Text(_saved ? '✓ Saved' : 'Save Settings',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
               ),
             ),
-
             const SizedBox(height: 28),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: JournalColors.accent.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: JournalColors.accent.withOpacity(0.15)),
+                border:
+                    Border.all(color: JournalColors.accent.withOpacity(0.15)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('How this works',
-                    style: TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 12, fontWeight: FontWeight.w700)),
+                      style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
                   SizedBox(height: 8),
                   Text(
-                    'When you attach photos to a log entry and run Combined Analysis, '
-                    'the AI is told exactly who you are and who the case subject is. '
-                    'Instead of "the gray bubble sender," it will say your real name '
-                    '— using the names you\'ve configured here.',
-                    style: TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 12, height: 1.7)),
+                      'When you attach photos to a log entry and run Combined Analysis, '
+                      'the AI is told exactly who you are and who the case subject is. '
+                      'Instead of "the gray bubble sender," it will say your real name '
+                      '— using the names you\'ve configured here.',
+                      style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 12,
+                          height: 1.7)),
                 ],
               ),
             ),
-
             const SizedBox(height: 40),
           ]),
         ),
