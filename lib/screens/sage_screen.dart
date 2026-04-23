@@ -31,15 +31,42 @@ import 'write_screen.dart';
 
 const _kSageSystemPrompt = '''
 You are Sage — the user's personal assistant and best friend who lives inside
-their journal. You have full context on their life: their entries, their
-emotional patterns, their open cases, their plans, their money situation, and
-everything they've ever written. You speak like a close friend who's sharp,
-honest, and actually pays attention. Never be sycophantic. Never be clinical.
-You can swear if it fits the moment. You remember what they're dealing with.
-When they ask for budget help, reference their actual budget data. When they
-mention a person, reference how that person shows up in their journal. When they
-need to think something through, be a real thinking partner, not a FAQ bot.
-Be warm, direct, and actually useful.
+their journal. You are a journal intelligence copilot: part best friend, part
+pattern reader, part strategist, part evidence-aware thinking partner. You have
+access to the context sections provided below: journal summaries, emotional
+patterns, memory profile, people intelligence, budget data, fairness ledger,
+mental health signals, proof vault summaries, detective cases, exit plan,
+resources, alerts, settings, and current conversation history when those
+sections are present.
+
+You speak like a close friend who's sharp, honest, and actually pays attention.
+Never be sycophantic. Never be clinical. You can swear if it fits the moment.
+You remember what they're dealing with. Be warm, direct, grounded, protective,
+and actually useful.
+
+Use the user's real data when it is present in context. If a section is missing,
+stale, empty, or only gives a high-level summary, say that plainly instead of
+pretending you can see details. Never fabricate numbers, dates, events, legal
+facts, medical facts, budget rows, or app state. When confidence is limited,
+name the limit and give the best next step.
+
+When they ask for budget help, use actual budget fields from the Sage expanded
+context if present. If those fields are not present, say you cannot see the
+budget breakdown and ask for it or suggest opening Budget Planner. Do not use a
+journal anecdote as a substitute for actual budget data.
+
+When they mention a person, connect it to people intelligence, journal patterns,
+fairness data, evidence, and detective cases when those sources are present.
+When they need to think something through, synthesize across sources and give a
+clear read, a practical next move, and any important caveat.
+
+Do not keep repeating the same concrete life event, detail, or category of
+detail just because it appears in context. Bring up a specific detail only when
+it is necessary to answer the user's current message, changes the advice, or the
+user brings that detail up again. After referencing a concrete event, avoid
+mentioning that same event or renamed versions of it in the next few replies
+unless it is clearly necessary. Prefer responding to the user's present wording
+with a fresh angle.
 ''';
 
 const _kSageKnowledgeChips = <({String label, String prompt})>[
@@ -109,6 +136,7 @@ class _SageScreenState extends State<SageScreen> {
   List<SageMemoryItem> _memoryItems = const [];
   SageSettings _settings = SageSettings.defaults;
   String? _contextString;
+  String? _expandedContextString;
   String? _contextError;
   String? _replyError;
   bool _contextLoading = true;
@@ -116,7 +144,11 @@ class _SageScreenState extends State<SageScreen> {
   bool _profileLoading = true;
   String? _speakingMessageId;
   String? _ttsLoadingMessageId;
+  String? _ttsErrorMessageId;
+  String? _ttsErrorText;
   int _messageCounter = 0;
+  int _ttsRequestCounter = 0;
+  bool _ttsSequenceActive = false;
 
   bool get _canSend =>
       !_replyLoading &&
@@ -128,8 +160,11 @@ class _SageScreenState extends State<SageScreen> {
     super.initState();
     _composerCtrl.addListener(_handleComposerChanged);
     _audioPlayer.onPlayerComplete.listen((_) {
-      if (mounted) {
-        setState(() => _speakingMessageId = null);
+      if (mounted && !_ttsSequenceActive) {
+        setState(() {
+          _speakingMessageId = null;
+          _ttsLoadingMessageId = null;
+        });
       }
     });
     _loadSageProfile();
@@ -194,8 +229,11 @@ class _SageScreenState extends State<SageScreen> {
 
   String _buildContextPayload(String contextString) {
     final memoryContext = _profile.buildMemoryContext(_memoryItems);
+    final expandedContext = _expandedContextString?.trim() ?? '';
     return '''
 $contextString
+
+$expandedContext
 
 $memoryContext
 
@@ -214,14 +252,21 @@ ${_settings.toPromptInstruction()}
       _messages = const [];
       _speakingMessageId = null;
       _ttsLoadingMessageId = null;
+      _ttsErrorMessageId = null;
+      _ttsErrorText = null;
     });
 
     try {
-      final contextString =
-          await _api.getFloatchatContext(forceRefresh: forceRefresh);
+      final results = await Future.wait([
+        _api.getFloatchatContext(forceRefresh: forceRefresh),
+        _loadExpandedSageContext(),
+      ]);
+      final contextString = results[0];
+      final expandedContextString = results[1];
       if (!mounted) return;
       setState(() {
         _contextString = contextString;
+        _expandedContextString = expandedContextString;
         _contextLoading = false;
       });
       if (_settings.autoGreeting) {
@@ -234,6 +279,282 @@ ${_settings.toPromptInstruction()}
         _contextError = 'Couldn’t reach the server. Check your connection.';
       });
     }
+  }
+
+  Future<String> _loadExpandedSageContext() async {
+    final sections = await Future.wait<String?>([
+      _safeDataSection(
+        'TODAY BRIEF',
+        _api.getTodayBrief,
+        maxChars: 3200,
+      ),
+      _safeDataSection('BUDGET PLAN AND COMPARISONS', _loadBudgetContext,
+          maxChars: 5200),
+      _safeDataSection(
+        'MENTAL HEALTH DASHBOARD',
+        _api.getMentalHealthData,
+        maxChars: 3200,
+      ),
+      _safeDataSection(
+        'PEOPLE INTELLIGENCE',
+        _api.getPeopleIntelligence,
+        maxChars: 3600,
+      ),
+      _loadFairnessContext(),
+      _safeDataSection(
+        'MEMORY PROFILE',
+        _api.getMemory,
+        maxChars: 3600,
+      ),
+      _safeDataSection(
+        'PERSONALIZED RESOURCES',
+        _api.getResources,
+        maxChars: 3200,
+      ),
+      _loadVaultContext(),
+      _loadDetectiveContext(),
+      _safeDataSection(
+        'EXIT PLAN',
+        _api.exitPlanGet,
+        maxChars: 4200,
+      ),
+      _safeDataSection(
+        'EXIT PLAN NOTES',
+        _api.exitPlanGetNotes,
+        maxChars: 2600,
+      ),
+      _safeDataSection(
+        'EARLY WARNING STATUS',
+        _api.getEarlyWarningStatus,
+        maxChars: 2600,
+      ),
+      _safeDataSection(
+        'TIMELINE INSIGHT',
+        _api.getTherapistInsightStatus,
+        maxChars: 2800,
+      ),
+      _safeDataSection(
+        'RECENT TIMELINE ENTRIES',
+        () => _api.getTimeline(page: 1, limit: 12),
+        maxChars: 5200,
+      ),
+      _safeDataSection(
+        'USER SETTINGS',
+        _api.getUserSettings,
+        maxChars: 2200,
+      ),
+      _safeDataSection(
+        'MY STORY',
+        _loadMyStoryContext,
+        maxChars: 3600,
+      ),
+    ]);
+
+    final available = sections.whereType<String>().toList();
+    if (available.isEmpty) return '';
+    return '''
+[SAGE EXPANDED APP CONTEXT]
+These read-only app data sections were loaded from existing Journal Intelligence
+endpoints for this Sage session. Treat absent sections as unavailable, not as
+empty facts.
+
+${available.join('\n\n')}
+''';
+  }
+
+  Future<Map<String, dynamic>> _loadBudgetContext() async {
+    final results = await Future.wait<dynamic>([
+      _api.getBudgetPlan(),
+      _api.getBudgetComparisons(),
+    ]).timeout(const Duration(seconds: 8));
+    return {
+      'plan': results[0],
+      'comparisons': results[1],
+    };
+  }
+
+  Future<String?> _loadFairnessContext() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        _api.getFairnessConfig(),
+        _api.getFairnessTasks(),
+        _api.getFairnessSummary(),
+        _api.getFairnessLogs(limit: 30),
+        _api.getFairnessContributions(limit: 30),
+      ]).timeout(const Duration(seconds: 8));
+      return _dataSection(
+          'FAIRNESS LEDGER',
+          {
+            'config': results[0],
+            'tasks': results[1],
+            'summary': results[2],
+            'recent_logs': results[3],
+            'recent_contributions': results[4],
+          },
+          maxChars: 5200);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _loadVaultContext() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        _api.vaultGetCachedSummary(),
+        _api.vaultGetFolders(),
+      ]).timeout(const Duration(seconds: 8));
+      final folders =
+          (results[1] as List).whereType<Map>().map((item) => Map.from(item));
+      final folderItems = <Map<String, dynamic>>[];
+
+      for (final folder in folders.take(8)) {
+        final id = folder['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        try {
+          final items = await _api
+              .vaultGetFolderItems(id)
+              .timeout(const Duration(seconds: 4));
+          folderItems.add({
+            'folder_id': id,
+            'folder_name': folder['name'],
+            'items': items,
+          });
+        } catch (_) {}
+      }
+
+      return _dataSection(
+          'PROOF VAULT',
+          {
+            'summary': results[0],
+            'folders': results[1],
+            if (folderItems.isNotEmpty) 'folder_items': folderItems,
+          },
+          maxChars: 6400);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _loadDetectiveContext() async {
+    try {
+      final cases =
+          await _api.detectiveGetCases().timeout(const Duration(seconds: 8));
+      final caseMaps =
+          cases.whereType<Map>().map((item) => Map.from(item)).toList();
+      final intelligence = <Map<String, dynamic>>[];
+      final entries = <Map<String, dynamic>>[];
+      final research = <Map<String, dynamic>>[];
+
+      for (final item in caseMaps.take(3)) {
+        final id = item['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        try {
+          final intel = await _api
+              .detectiveGetIntelligence(id)
+              .timeout(const Duration(seconds: 4));
+          intelligence.add({
+            'case_id': id,
+            'title': item['title'],
+            'intelligence': intel,
+          });
+        } catch (_) {}
+        try {
+          final caseEntries = await _api
+              .detectiveGetEntries(id)
+              .timeout(const Duration(seconds: 4));
+          entries.add({
+            'case_id': id,
+            'title': item['title'],
+            'entries': caseEntries,
+          });
+        } catch (_) {}
+        try {
+          final caseResearch = await _api
+              .detectiveGetResearch(id)
+              .timeout(const Duration(seconds: 4));
+          research.add({
+            'case_id': id,
+            'title': item['title'],
+            'research': caseResearch,
+          });
+        } catch (_) {}
+      }
+
+      return _dataSection(
+          'DETECTIVE CASES',
+          {
+            'cases': caseMaps,
+            if (intelligence.isNotEmpty) 'case_intelligence': intelligence,
+            if (entries.isNotEmpty) 'case_entries': entries,
+            if (research.isNotEmpty) 'case_research': research,
+          },
+          maxChars: 6200);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> _loadMyStoryContext() async {
+    final results = await Future.wait<dynamic>([
+      _api.myStoryGetCases(),
+      _api.myStoryGetDrafts(),
+    ]).timeout(const Duration(seconds: 8));
+    return {
+      'cases': results[0],
+      'drafts': results[1],
+    };
+  }
+
+  Future<String?> _safeDataSection(
+    String title,
+    Future<dynamic> Function() load, {
+    int maxChars = 3000,
+  }) async {
+    try {
+      final data = await load().timeout(const Duration(seconds: 8));
+      return _dataSection(title, data, maxChars: maxChars);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _dataSection(
+    String title,
+    dynamic data, {
+    required int maxChars,
+  }) {
+    if (!_hasUsefulData(data)) return null;
+    return '=== $title ===\n${_jsonForSage(data, maxChars: maxChars)}';
+  }
+
+  bool _hasUsefulData(dynamic data) {
+    if (data == null) return false;
+    if (data is String) return data.trim().isNotEmpty;
+    if (data is Iterable) return data.isNotEmpty;
+    if (data is Map) {
+      if (data.isEmpty) return false;
+      return data.values.any(_hasUsefulData);
+    }
+    return true;
+  }
+
+  String _jsonForSage(dynamic data, {required int maxChars}) {
+    final normalized = _normalizeForSage(data);
+    final encoded = const JsonEncoder.withIndent('  ').convert(normalized);
+    if (encoded.length <= maxChars) return encoded;
+    return '${encoded.substring(0, maxChars)}\n... [truncated for Sage context]';
+  }
+
+  dynamic _normalizeForSage(dynamic value) {
+    if (value is Map) {
+      return value.map(
+        (key, item) => MapEntry(key.toString(), _normalizeForSage(item)),
+      );
+    }
+    if (value is Iterable) {
+      return value.map(_normalizeForSage).toList();
+    }
+    return value;
   }
 
   String _nextMessageId() {
@@ -326,6 +647,8 @@ Only keep facts that are likely to matter in future conversations:
 - recurring goals or constraints
 
 Ignore one-off planning details, generic feelings, and anything already obvious from the current message alone.
+Only extract facts explicitly stated by the user in this exchange. Do not save facts that appear only in the assistant reply or background context.
+Do not save transient logistics like apartment callbacks, prices, dates, traffic, or short-term plans unless the user explicitly asks you to remember them.
 
 Return strict JSON only:
 {"facts":[{"text":"...", "confidence":0.0}]}
@@ -347,9 +670,11 @@ $assistantReply
             'content': extractionPrompt,
           }
         ],
-        contextString: '${_buildContextPayload(_contextString!)}\n'
-            '[MEMORY EXTRACTION MODE]\n'
-            'Return JSON only.',
+        contextString: '''
+[SYSTEM INSTRUCTION]
+You are a memory extraction utility for Sage.
+Return JSON only.
+''',
       );
       final reply = response['reply']?.toString() ?? '';
       final parsed = _extractFacts(reply);
@@ -391,6 +716,8 @@ $assistantReply
       setState(() {
         _speakingMessageId = null;
         _ttsLoadingMessageId = null;
+        _ttsErrorMessageId = null;
+        _ttsErrorText = null;
       });
     }
     await _loadContextAndStart();
@@ -424,44 +751,215 @@ $assistantReply
   Future<void> _toggleSpeak(_SageMessage message) async {
     if (message.role != 'assistant' || message.text.trim().isEmpty) return;
 
-    if (_speakingMessageId == message.id ||
-        _ttsLoadingMessageId == message.id) {
+    if (_ttsLoadingMessageId == message.id) return;
+
+    if (_speakingMessageId == message.id) {
+      _ttsRequestCounter += 1;
       await _audioPlayer.stop();
       if (!mounted) return;
       setState(() {
         _speakingMessageId = null;
         _ttsLoadingMessageId = null;
+        _ttsSequenceActive = false;
       });
       return;
     }
 
+    final requestId = ++_ttsRequestCounter;
     setState(() {
       _ttsLoadingMessageId = message.id;
       _speakingMessageId = null;
+      _ttsErrorMessageId = null;
+      _ttsErrorText = null;
     });
 
     try {
       await _audioPlayer.stop();
-      final bytes = await _api.voiceSpeak(
-        text: message.text,
-        voiceId: _settings.voiceId,
-      );
-      if (!mounted) return;
-      await _audioPlayer.play(
-        BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
-      );
+      final voiceSettings = await _api.getVoiceSettings();
+      final hasVoiceKey = voiceSettings['has_voice_key'] == true;
+      final usingOpenAi = voiceSettings['using_openai'] == true;
+      if (!hasVoiceKey && !usingOpenAi) {
+        throw Exception(
+          'Voice requires an OpenAI API key. Add one in Settings → Voice, or switch AI provider to OpenAI.',
+        );
+      }
+      final chunks = _speechChunks(message.text);
+      if (chunks.isEmpty) throw Exception('No text to speak.');
+
       if (!mounted) return;
       setState(() {
         _ttsLoadingMessageId = null;
         _speakingMessageId = message.id;
       });
-    } catch (_) {
+      _ttsSequenceActive = true;
+
+      for (final chunk in chunks) {
+        if (requestId != _ttsRequestCounter) return;
+        if (!mounted) return;
+        setState(() => _ttsLoadingMessageId = message.id);
+        final bytes = await _api.voiceSpeak(
+          text: chunk,
+          voiceId: _settings.voiceId,
+        );
+        if (bytes.isEmpty) {
+          throw Exception('No audio returned.');
+        }
+        if (requestId != _ttsRequestCounter) return;
+        if (!mounted) return;
+        setState(() => _ttsLoadingMessageId = null);
+        await _audioPlayer.play(
+          BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
+        );
+        await _waitForAudioToFinish();
+      }
+
+      if (requestId != _ttsRequestCounter) return;
+      _ttsSequenceActive = false;
+      if (!mounted) return;
+      setState(() {
+        _speakingMessageId = null;
+        _ttsLoadingMessageId = null;
+      });
+    } catch (e) {
+      if (requestId != _ttsRequestCounter) return;
+      _ttsSequenceActive = false;
       if (!mounted) return;
       setState(() {
         _ttsLoadingMessageId = null;
         _speakingMessageId = null;
+        _ttsErrorMessageId = message.id;
+        _ttsErrorText = _parseTtsError(e);
       });
     }
+  }
+
+  Future<void> _waitForAudioToFinish() {
+    final completer = Completer<void>();
+    StreamSubscription<void>? completeSub;
+    StreamSubscription<PlayerState>? stateSub;
+
+    void finish() {
+      if (completer.isCompleted) return;
+      completeSub?.cancel();
+      stateSub?.cancel();
+      completer.complete();
+    }
+
+    completeSub = _audioPlayer.onPlayerComplete.listen((_) => finish());
+    stateSub = _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (state == PlayerState.stopped || state == PlayerState.disposed) {
+        finish();
+      }
+    });
+
+    return completer.future.timeout(
+      const Duration(minutes: 3),
+      onTimeout: () {
+        finish();
+      },
+    );
+  }
+
+  List<String> _speechChunks(String raw) {
+    final withoutActions = raw.split('---ACTIONS---').first;
+    final cleaned = withoutActions
+        .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+        .replaceAll(RegExp(r'[*_`>#~-]+'), ' ')
+        .replaceAll(RegExp(r'\[[^\]]+\]\([^)]+\)'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) return const [];
+
+    const maxChunkChars = 2800;
+    const maxChunkBytes = 3500;
+    final chunks = <String>[];
+    var remaining = cleaned;
+
+    while (remaining.isNotEmpty) {
+      if (remaining.length <= maxChunkChars &&
+          utf8.encode(remaining).length <= maxChunkBytes) {
+        chunks.add(remaining);
+        break;
+      }
+
+      var hardLimit = 0;
+      var bytes = 0;
+      for (var i = 0; i < remaining.length; i++) {
+        bytes += utf8.encode(remaining[i]).length;
+        if (i >= maxChunkChars || bytes >= maxChunkBytes) break;
+        hardLimit = i + 1;
+      }
+
+      if (hardLimit <= 0) hardLimit = remaining.length.clamp(0, maxChunkChars);
+
+      var splitAt = remaining.lastIndexOf(RegExp(r'[.!?]\s'), hardLimit);
+      if (splitAt < hardLimit * 0.45) {
+        splitAt = remaining.lastIndexOf(RegExp(r'[,;:]\s'), hardLimit);
+      }
+      if (splitAt < hardLimit * 0.45) {
+        splitAt = remaining.lastIndexOf(' ', hardLimit);
+      }
+      if (splitAt < hardLimit * 0.45) splitAt = hardLimit;
+
+      chunks.add(remaining.substring(0, splitAt).trim());
+      remaining = remaining.substring(splitAt).trim();
+    }
+
+    return chunks.where((chunk) => chunk.isNotEmpty).toList();
+  }
+
+  String _parseTtsError(dynamic e) {
+    if (e is Exception) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      if (message.isNotEmpty) {
+        return 'Couldn’t generate audio: $message';
+      }
+    }
+    if (e is DioException) {
+      final data = e.response?.data;
+      final decoded = _decodeTtsErrorData(data);
+      if (decoded != null && decoded.isNotEmpty) {
+        return 'Couldn’t generate audio: $decoded';
+      }
+      final status = e.response?.statusCode;
+      if (status == 400) {
+        return 'Couldn’t generate audio. Check Settings → Voice.';
+      }
+      if (status == 502 || status == 504) {
+        return 'Couldn’t generate audio. The voice service timed out or failed upstream.';
+      }
+    }
+    final parsed = _parseError(e);
+    if (parsed != 'Something went wrong.') {
+      return 'Couldn’t generate audio: $parsed';
+    }
+    return 'Couldn’t generate audio. Try again, or shorten the reply.';
+  }
+
+  String? _decodeTtsErrorData(dynamic data) {
+    dynamic decoded = data;
+    if (data is List<int>) {
+      try {
+        decoded = utf8.decode(data);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (decoded is String) {
+      final trimmed = decoded.trim();
+      if (trimmed.isEmpty) return null;
+      try {
+        final json = jsonDecode(trimmed);
+        if (json is Map && json['detail'] != null) {
+          return json['detail'].toString();
+        }
+      } catch (_) {}
+      return trimmed;
+    }
+    if (decoded is Map && decoded['detail'] != null) {
+      return decoded['detail'].toString();
+    }
+    return null;
   }
 
   Future<void> _openAction(Map<String, dynamic> action) async {
@@ -496,7 +994,10 @@ $assistantReply
     if (fields.contains('war room') || fields.contains('war_room')) {
       return const WarRoomScreen();
     }
-    if (fields.contains('proof vault') || fields.contains('proof_vault')) {
+    if (fields.contains('proof vault') ||
+        fields.contains('proof_vault') ||
+        fields.contains('/evidence') ||
+        fields.contains('evidence vault')) {
       return const ProofVaultScreen();
     }
     if (fields.contains('budget')) {
@@ -511,7 +1012,10 @@ $assistantReply
     if (fields.contains('fairness')) {
       return const FairnessLedgerScreen();
     }
-    if (fields.contains('mental health') || fields.contains('mental_health')) {
+    if (fields.contains('mental health') ||
+        fields.contains('mental_health') ||
+        fields.contains('/nervous') ||
+        fields.contains('nervous system')) {
       return const MentalHealthScreen();
     }
     if (fields.contains('ask my journal') ||
@@ -528,8 +1032,15 @@ $assistantReply
     if (fields.contains('write')) {
       return const WriteScreen();
     }
-    if (fields.contains('early warning') || fields.contains('early_warning')) {
+    if (fields.contains('early warning') ||
+        fields.contains('early_warning') ||
+        fields.contains('/patterns') ||
+        fields.contains('/contradictions')) {
       return const EarlyWarningScreen();
+    }
+    if (fields.contains('people-intel') ||
+        fields.contains('people intelligence')) {
+      return const DetectiveScreen();
     }
     if (fields.contains('settings')) {
       return const SettingsScreen();
@@ -581,6 +1092,8 @@ $assistantReply
                   onToggleSpeak: _toggleSpeak,
                   speakingMessageId: _speakingMessageId,
                   ttsLoadingMessageId: _ttsLoadingMessageId,
+                  ttsErrorMessageId: _ttsErrorMessageId,
+                  ttsErrorText: _ttsErrorText,
                   settings: _settings,
                   profileLoading: _profileLoading,
                   memoryCount: _memoryItems.length,
@@ -838,6 +1351,8 @@ class _SageThread extends StatelessWidget {
     required this.onToggleSpeak,
     required this.speakingMessageId,
     required this.ttsLoadingMessageId,
+    required this.ttsErrorMessageId,
+    required this.ttsErrorText,
     required this.settings,
     required this.profileLoading,
     required this.memoryCount,
@@ -856,6 +1371,8 @@ class _SageThread extends StatelessWidget {
   final Future<void> Function(_SageMessage) onToggleSpeak;
   final String? speakingMessageId;
   final String? ttsLoadingMessageId;
+  final String? ttsErrorMessageId;
+  final String? ttsErrorText;
   final SageSettings settings;
   final bool profileLoading;
   final int memoryCount;
@@ -955,6 +1472,8 @@ class _SageThread extends StatelessWidget {
                       onToggleSpeak: onToggleSpeak,
                       speaking: speakingMessageId == message.id,
                       ttsLoading: ttsLoadingMessageId == message.id,
+                      ttsError:
+                          ttsErrorMessageId == message.id ? ttsErrorText : null,
                     ),
                   ),
                 ),
@@ -1120,6 +1639,7 @@ class _MessageBubble extends StatelessWidget {
     required this.onToggleSpeak,
     required this.speaking,
     required this.ttsLoading,
+    required this.ttsError,
   });
 
   final _SageMessage message;
@@ -1128,6 +1648,7 @@ class _MessageBubble extends StatelessWidget {
   final Future<void> Function(_SageMessage) onToggleSpeak;
   final bool speaking;
   final bool ttsLoading;
+  final String? ttsError;
 
   bool get _isUser => message.role == 'user';
 
@@ -1292,6 +1813,20 @@ class _MessageBubble extends StatelessWidget {
                   }),
                 ],
               ),
+              if (ttsError != null) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    ttsError!,
+                    style: const TextStyle(
+                      color: JournalColors.danger,
+                      fontSize: 11,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

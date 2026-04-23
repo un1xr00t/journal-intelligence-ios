@@ -307,6 +307,18 @@ class ApiService {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
+  Future<List<dynamic>> getBudgetComparisons() async {
+    final res = await _authedGet('/api/budget/comparisons');
+    final data = res.data;
+    if (data is List) return List<dynamic>.from(data);
+    if (data is Map) {
+      return List<dynamic>.from(
+        data['comparisons'] ?? data['items'] ?? const <dynamic>[],
+      );
+    }
+    return const [];
+  }
+
   // ── Sage / Floating Chat ────────────────────────────────────
 
   Future<String> getFloatchatContext({bool forceRefresh = false}) async {
@@ -342,11 +354,19 @@ class ApiService {
       '/api/voice/speak',
       data: {
         'text': text,
-        if (voiceId != null && voiceId.isNotEmpty) 'voice': voiceId,
+        if (voiceId != null && voiceId.isNotEmpty) 'voice_id': voiceId,
       },
-      options: Options(responseType: ResponseType.bytes),
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 90),
+      ),
     );
     return List<int>.from(res.data ?? const <int>[]);
+  }
+
+  Future<Map<String, dynamic>> getVoiceSettings() async {
+    final res = await _authedGet('/api/voice/settings');
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   // ── Entries / Timeline ────────────────────────────────────────
@@ -429,6 +449,11 @@ class ApiService {
     final res =
         await _authedPost('/api/journal/ask', data: {'query': question});
     return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getPeopleIntelligence() async {
+    final res = await _authedGet('/api/people/intelligence');
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   // ── Therapist Insight (used as "Living Summary" on Timeline) ────
