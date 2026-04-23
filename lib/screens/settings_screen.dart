@@ -14,6 +14,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'resources_screen.dart';
+import 'sage_settings_screen.dart';
 
 // ── Option constants ──────────────────────────────────────────────────────────
 
@@ -370,6 +371,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: CupertinoIcons.chat_bubble_fill,
                     label: 'Reflection Tone',
                     subtitle: 'Voice used for insights & summaries',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                GlassCard(
+                  onTap: () => _push(const SageSettingsScreen()),
+                  child: _NavRow(
+                    icon: CupertinoIcons.sparkles,
+                    label: 'Sage Settings',
+                    subtitle: 'Voice, memory, playback, and personality',
                   ),
                 ),
                 if (_reflectLoaded) ...[

@@ -17,6 +17,7 @@ import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
 import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
+import 'sage_screen.dart';
 import 'settings_screen.dart';
 import 'war_room_screen.dart';
 
@@ -56,6 +57,14 @@ class MoreScreen extends StatelessWidget {
   List<_Section> _sections() => [
         _Section('Featured', 'Frequently used tools and analysis views.',
             JournalColors.accent, [
+          _Item(
+            label: 'Sage',
+            subtitle: 'Best friend assistant with full journal context',
+            icon: CupertinoIcons.sparkles,
+            iconColor: JournalColors.accent,
+            badge: 'New',
+            builder: (_) => const SageScreen(),
+          ),
           _Item(
             label: 'Ask My Journal',
             subtitle: 'AI-powered RAG search over your entries',
@@ -293,7 +302,7 @@ class MoreScreen extends StatelessWidget {
                         const _HeroMetric(
                           value: '1',
                           label: 'New',
-                          highlight: 'Proof Vault',
+                          highlight: 'Sage',
                         ),
                       ],
                     ),
@@ -309,18 +318,17 @@ class MoreScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _FeatureBanner(
-                      title: 'Proof Vault',
-                      subtitle:
-                          'Organize proof by folder with photos and summaries.',
-                      color: const Color(0xFF10B981),
-                      icon: CupertinoIcons.lock_shield,
+                      title: 'Sage',
+                      subtitle: 'Your personal assistant',
+                      color: JournalColors.accent,
+                      icon: CupertinoIcons.sparkles,
                       onTap: () => Navigator.push(
                         context,
                         CupertinoPageRoute(
                           builder: (ctx) => DefaultTextStyle.merge(
                             style: const TextStyle(
                                 decoration: TextDecoration.none),
-                            child: const ProofVaultScreen(),
+                            child: const SageScreen(),
                           ),
                         ),
                       ),

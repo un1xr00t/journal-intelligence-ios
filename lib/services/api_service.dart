@@ -42,6 +42,7 @@ class ApiService {
 
   String? _accessToken;
   String? _inviteAccessToken;
+  String? _floatchatContextString;
 
   ApiService._internal() {
     _cookieJar = CookieJar();
@@ -78,6 +79,7 @@ class ApiService {
 
   Future<void> clearTokens() async {
     _accessToken = null;
+    _floatchatContextString = null;
     await _cookieJar.deleteAll();
     await _storage.delete(key: 'username');
   }
@@ -303,6 +305,48 @@ class ApiService {
       'max_tokens': maxTokens,
     });
     return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  // ── Sage / Floating Chat ────────────────────────────────────
+
+  Future<String> getFloatchatContext({bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _floatchatContextString != null &&
+        _floatchatContextString!.trim().isNotEmpty) {
+      return _floatchatContextString!;
+    }
+
+    final res = await _authedGet('/api/floatchat/context');
+    final data = Map<String, dynamic>.from(res.data as Map);
+    final contextString = data['context_string']?.toString().trim() ?? '';
+    _floatchatContextString = contextString;
+    return contextString;
+  }
+
+  Future<Map<String, dynamic>> sendFloatchatMessage({
+    required List<Map<String, String>> messages,
+    required String contextString,
+  }) async {
+    final res = await _authedPost('/api/floatchat/message', data: {
+      'messages': messages,
+      'context_string': contextString,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<List<int>> voiceSpeak({
+    required String text,
+    String? voiceId,
+  }) async {
+    final res = await _dio.post<List<int>>(
+      '/api/voice/speak',
+      data: {
+        'text': text,
+        if (voiceId != null && voiceId.isNotEmpty) 'voice': voiceId,
+      },
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return List<int>.from(res.data ?? const <int>[]);
   }
 
   // ── Entries / Timeline ────────────────────────────────────────
