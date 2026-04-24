@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -85,6 +87,13 @@ give a real, specific answer using the search results.
 If web search is DISABLED, rely only on in-app data and your own knowledge.
 Tell the user when something would benefit from a live search and suggest they
 enable it in Sage Settings.
+
+FILE REVIEW (when files are attached):
+If the user attaches files, you may receive extracted file text in the prompt.
+Treat that text as part of the current question. Quote or summarize it when
+helpful, but say plainly if the file looked incomplete, truncated, or hard to
+parse. Never pretend you saw content that was not included in the extracted
+text.
 ''';
 
 const _kSageKnowledgeChips = <({String label, String prompt})>[
@@ -135,6 +144,61 @@ const _kSageKnowledgeChips = <({String label, String prompt})>[
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
+const _kSupportedSageFileExtensions = <String>{
+  'txt',
+  'md',
+  'markdown',
+  'json',
+  'csv',
+  'tsv',
+  'log',
+  'yaml',
+  'yml',
+  'xml',
+  'html',
+  'htm',
+  'rtf',
+  'sql',
+};
+
+const _kMaxSageFileChars = 12000;
+
+String _extensionForName(String filename) {
+  final dot = filename.lastIndexOf('.');
+  if (dot <= 0 || dot == filename.length - 1) return '';
+  return filename.substring(dot + 1).toLowerCase();
+}
+
+Future<String?> _readTextFile(String path) async {
+  try {
+    final file = File(path);
+    if (!await file.exists()) return null;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+
+    String text;
+    try {
+      text = utf8.decode(bytes, allowMalformed: true);
+    } catch (_) {
+      text = latin1.decode(bytes, allowInvalid: true);
+    }
+
+    final cleaned = text
+        .replaceAll('\u0000', '')
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .trim();
+    if (cleaned.isEmpty) return null;
+
+    final truncated = cleaned.length > _kMaxSageFileChars
+        ? '${cleaned.substring(0, _kMaxSageFileChars)}\n... [truncated]'
+        : cleaned;
+    return truncated;
+  } catch (_) {
+    return null;
+  }
+}
+
 class SageScreen extends StatefulWidget {
   const SageScreen({super.key});
 
@@ -152,6 +216,7 @@ class _SageScreenState extends State<SageScreen> {
 
   List<_SageMessage> _messages = const [];
   List<SageMemoryItem> _memoryItems = const [];
+  List<_SageFileDraft> _pendingAttachments = const [];
   SageSettings _settings = SageSettings.defaults;
   String? _contextString;
   String? _expandedContextString;
@@ -160,6 +225,7 @@ class _SageScreenState extends State<SageScreen> {
   bool _contextLoading = true;
   bool _replyLoading = false;
   bool _profileLoading = true;
+  bool _pickingAttachments = false;
   bool _savingConversation = false;
   String? _speakingMessageId;
   String? _ttsLoadingMessageId;
@@ -173,7 +239,7 @@ class _SageScreenState extends State<SageScreen> {
   bool get _canSend =>
       !_replyLoading &&
       !_contextLoading &&
-      _composerCtrl.text.trim().isNotEmpty;
+      (_composerCtrl.text.trim().isNotEmpty || _pendingAttachments.isNotEmpty);
 
   @override
   void initState() {
@@ -223,7 +289,7 @@ class _SageScreenState extends State<SageScreen> {
       if (data is String && data.trim().isNotEmpty) return data.trim();
       final status = e.response?.statusCode;
       if (status != null) {
-        return 'Server error ($status). Check the Sage vision request.';
+        return 'Server error ($status). Check the Sage file review request.';
       }
     }
     final str = e.toString();
@@ -233,8 +299,12 @@ class _SageScreenState extends State<SageScreen> {
 
   Future<void> _loadSageProfile() async {
     try {
-      final settings = await _profile.loadSettings();
-      final memory = await _profile.loadMemoryItems();
+      final results = await Future.wait<dynamic>([
+        _profile.loadSettings(),
+        _profile.loadMemoryItems(),
+      ]);
+      final settings = results[0] as SageSettings;
+      final memory = results[1] as List<SageMemoryItem>;
       if (!mounted) return;
       setState(() {
         _settings = settings;
@@ -245,6 +315,74 @@ class _SageScreenState extends State<SageScreen> {
       if (!mounted) return;
       setState(() => _profileLoading = false);
     }
+  }
+
+  Future<void> _pickAttachments() async {
+    if (_replyLoading || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        type: FileType.any,
+      );
+      if (result == null || result.files.isEmpty) {
+        if (!mounted) return;
+        setState(() => _pickingAttachments = false);
+        return;
+      }
+
+      final next = List<_SageFileDraft>.from(_pendingAttachments);
+      final unsupported = <String>[];
+      for (final file in result.files) {
+        final draft = await _SageFileDraft.fromPlatformFile(file);
+        if (draft != null) {
+          next.add(draft);
+        } else {
+          unsupported.add(file.name);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pendingAttachments = next;
+        _pickingAttachments = false;
+      });
+      if (unsupported.isNotEmpty) {
+        await _showUnsupportedFilesDialog(unsupported);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _showUnsupportedFilesDialog(List<String> filenames) {
+    final shown = filenames.take(3).join(', ');
+    final extra =
+        filenames.length > 3 ? ' and ${filenames.length - 3} more' : '';
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Some Files Skipped'),
+        content: Text(
+          'Sage can currently read text-based files like TXT, Markdown, JSON, CSV, logs, YAML, XML, HTML, RTF, and SQL.\n\nSkipped: $shown$extra',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _removeAttachment(int index) {
+    setState(() {
+      _pendingAttachments = List<_SageFileDraft>.from(_pendingAttachments)
+        ..removeAt(index);
+    });
   }
 
   String _buildContextPayload(String contextString) {
@@ -273,6 +411,7 @@ ${_settings.toPromptInstruction()}
       _contextError = null;
       _replyError = null;
       _messages = const [];
+      _pendingAttachments = const [];
       _savedConversationId = null;
       _speakingMessageId = null;
       _ttsLoadingMessageId = null;
@@ -590,10 +729,24 @@ ${available.join('\n\n')}
     String? text,
     bool hiddenUserMessage = false,
   }) async {
-    final prompt = (text ?? _composerCtrl.text).trim();
+    final typedPrompt = (text ?? _composerCtrl.text).trim();
+    final outgoingAttachments =
+        hiddenUserMessage ? const <_SageFileDraft>[] : _pendingAttachments;
+    final prompt = typedPrompt.isNotEmpty
+        ? typedPrompt
+        : outgoingAttachments.isNotEmpty
+            ? 'Please review these attached files.'
+            : '';
     if (prompt.isEmpty || _replyLoading || _contextString == null) return;
 
-    final outgoing = _SageMessage.user(_nextMessageId(), prompt);
+    final outgoing = _SageMessage.user(
+      _nextMessageId(),
+      prompt,
+      attachments: outgoingAttachments
+          .map((item) => item.toMessageAttachment())
+          .toList(),
+    );
+    final priorMessages = _messages;
     final visibleMessages =
         hiddenUserMessage ? _messages : [..._messages, outgoing];
 
@@ -605,11 +758,12 @@ ${available.join('\n\n')}
       _messages = visibleMessages;
       _replyLoading = true;
       _replyError = null;
+      _pendingAttachments = const [];
     });
     _scrollDown();
 
     final requestMessages = [
-      ..._messages.map((message) => message.toApiMessage()),
+      ...priorMessages.map((message) => message.toApiMessage()),
       outgoing.toApiMessage(),
     ];
 
@@ -1261,6 +1415,12 @@ Return JSON only.
                 focusNode: _focusNode,
                 canSend: _canSend,
                 loading: _replyLoading,
+                pickingAttachments: _pickingAttachments,
+                attachments: _pendingAttachments
+                    .map((item) => item.toMessageAttachment())
+                    .toList(),
+                onPickAttachment: _pickAttachments,
+                onRemoveAttachment: _removeAttachment,
                 onSend: () => _send(),
                 onSuggestionTap: (prompt) => _send(text: prompt),
               ),
@@ -1278,13 +1438,18 @@ class _SageMessage {
     required this.role,
     required this.text,
     this.actions = const [],
+    this.attachments = const [],
   });
 
-  const _SageMessage.user(String id, String text)
-      : this(
+  const _SageMessage.user(
+    String id,
+    String text, {
+    List<_SageMessageAttachment> attachments = const [],
+  }) : this(
           id: id,
           role: 'user',
           text: text,
+          attachments: attachments,
         );
 
   const _SageMessage.assistant(
@@ -1302,6 +1467,7 @@ class _SageMessage {
   final String role;
   final String text;
   final List<Map<String, dynamic>> actions;
+  final List<_SageMessageAttachment> attachments;
 
   factory _SageMessage.fromSavedMessage(SavedFloatchatMessage message) {
     return _SageMessage(
@@ -1309,18 +1475,117 @@ class _SageMessage {
       role: message.role,
       text: message.content,
       actions: message.actions,
+      attachments: message.attachments
+          .map(_SageMessageAttachment.fromSavedPayload)
+          .toList(),
     );
   }
 
-  Map<String, String> toApiMessage() => {
-        'role': role,
-        'content': text,
-      };
+  Map<String, dynamic> toApiMessage() {
+    final fileBlocks = attachments
+        .map((attachment) => attachment.toPromptBlock())
+        .where((block) => block.trim().isNotEmpty)
+        .toList();
+    final content = [
+      text.trim(),
+      if (fileBlocks.isNotEmpty) '[ATTACHED FILES]\n${fileBlocks.join('\n\n')}',
+    ].where((part) => part.isNotEmpty).join('\n\n');
+
+    return <String, dynamic>{
+      'role': role,
+      'content': content,
+    };
+  }
 
   Map<String, dynamic> toSavedPayload() => {
         'role': role,
         'content': text,
         if (actions.isNotEmpty) 'actions': actions,
+        if (attachments.isNotEmpty)
+          'attachments': attachments
+              .map((attachment) => attachment.toSavedPayload())
+              .toList(),
+      };
+}
+
+class _SageFileDraft {
+  const _SageFileDraft({
+    required this.name,
+    required this.path,
+    required this.extension,
+    required this.extractedText,
+  });
+
+  static Future<_SageFileDraft?> fromPlatformFile(PlatformFile file) async {
+    final path = file.path;
+    if (path == null || path.trim().isEmpty) return null;
+    final ext = _extensionForName(file.name);
+    if (!_kSupportedSageFileExtensions.contains(ext)) return null;
+
+    final extractedText = await _readTextFile(path);
+    if (extractedText == null || extractedText.trim().isEmpty) return null;
+
+    return _SageFileDraft(
+      name: file.name,
+      path: path,
+      extension: ext,
+      extractedText: extractedText,
+    );
+  }
+
+  final String name;
+  final String path;
+  final String extension;
+  final String extractedText;
+
+  _SageMessageAttachment toMessageAttachment() {
+    return _SageMessageAttachment(
+      name: name,
+      path: path,
+      extension: extension,
+      extractedText: extractedText,
+    );
+  }
+}
+
+class _SageMessageAttachment {
+  const _SageMessageAttachment({
+    required this.name,
+    required this.path,
+    required this.extension,
+    required this.extractedText,
+  });
+
+  factory _SageMessageAttachment.fromSavedPayload(Map<String, dynamic> json) {
+    final name = json['name']?.toString().trim();
+    final path = json['path']?.toString().trim();
+    return _SageMessageAttachment(
+      name: (name != null && name.isNotEmpty) ? name : 'file',
+      path: path ?? '',
+      extension: json['extension']?.toString() ?? '',
+      extractedText: json['extracted_text']?.toString() ?? '',
+    );
+  }
+
+  final String name;
+  final String path;
+  final String extension;
+  final String extractedText;
+
+  String get fileKindLabel =>
+      extension.isNotEmpty ? extension.toUpperCase() : 'FILE';
+
+  String toPromptBlock() {
+    final trimmed = extractedText.trim();
+    if (trimmed.isEmpty) return '';
+    return 'File: $name\nType: $fileKindLabel\nContent:\n$trimmed';
+  }
+
+  Map<String, dynamic> toSavedPayload() => {
+        'name': name,
+        'path': path,
+        'extension': extension,
+        'extracted_text': extractedText,
       };
 }
 
@@ -1943,37 +2208,55 @@ class _MessageBubble extends StatelessWidget {
                       ]
                     : null,
               ),
-              child: _isUser
-                  ? Text(
-                      message.text,
-                      style: const TextStyle(
-                        color: JournalColors.textPrimary,
-                        fontSize: 15,
-                        height: 1.45,
-                      ),
-                    )
-                  : MarkdownBody(
-                      data: message.text,
-                      selectable: false,
-                      softLineBreak: true,
-                      styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                        strong: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        listBullet: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 15,
-                        ),
-                        blockSpacing: 8,
-                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (message.attachments.isNotEmpty) ...[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: message.attachments
+                          .map((attachment) => _SageMessageAttachmentTile(
+                              attachment: attachment))
+                          .toList(),
                     ),
+                    if (message.text.trim().isNotEmpty)
+                      const SizedBox(height: 10),
+                  ],
+                  if (message.text.trim().isNotEmpty)
+                    _isUser
+                        ? Text(
+                            message.text,
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 15,
+                              height: 1.45,
+                            ),
+                          )
+                        : MarkdownBody(
+                            data: message.text,
+                            selectable: false,
+                            softLineBreak: true,
+                            styleSheet: MarkdownStyleSheet(
+                              p: const TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 15,
+                                height: 1.5,
+                              ),
+                              strong: const TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              listBullet: const TextStyle(
+                                color: JournalColors.textSecondary,
+                                fontSize: 15,
+                              ),
+                              blockSpacing: 8,
+                            ),
+                          ),
+                ],
+              ),
             ),
             if (!_isUser) ...[
               const SizedBox(height: 8),
@@ -2092,6 +2375,73 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+class _SageMessageAttachmentTile extends StatelessWidget {
+  const _SageMessageAttachmentTile({required this.attachment});
+
+  final _SageMessageAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 92,
+      height: 92,
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.92),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.accent, 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: const Icon(
+                  CupertinoIcons.doc_text,
+                  color: JournalColors.textPrimary,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                attachment.fileKindLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: JournalColors.accent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                attachment.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 10,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThinkingBubble extends StatelessWidget {
   const _ThinkingBubble();
 
@@ -2118,6 +2468,10 @@ class _SageInputBar extends StatelessWidget {
     required this.focusNode,
     required this.canSend,
     required this.loading,
+    required this.pickingAttachments,
+    required this.attachments,
+    required this.onPickAttachment,
+    required this.onRemoveAttachment,
     required this.onSend,
     required this.onSuggestionTap,
   });
@@ -2126,6 +2480,10 @@ class _SageInputBar extends StatelessWidget {
   final FocusNode focusNode;
   final bool canSend;
   final bool loading;
+  final bool pickingAttachments;
+  final List<_SageMessageAttachment> attachments;
+  final VoidCallback onPickAttachment;
+  final ValueChanged<int> onRemoveAttachment;
   final VoidCallback onSend;
   final ValueChanged<String> onSuggestionTap;
 
@@ -2152,6 +2510,105 @@ class _SageInputBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (attachments.isNotEmpty) ...[
+            SizedBox(
+              height: 86,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: attachments.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (_, index) {
+                  final attachment = attachments[index];
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 86,
+                        decoration: BoxDecoration(
+                          color: _withAlpha(JournalColors.bgCardAlt, 0.94),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: JournalColors.borderBright),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(17),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _withAlpha(JournalColors.accent, 0.16),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: JournalColors.borderBright),
+                                  ),
+                                  child: const Icon(
+                                    CupertinoIcons.doc_text,
+                                    color: JournalColors.textPrimary,
+                                    size: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  attachment.fileKindLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: JournalColors.accent,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  attachment.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 10,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: () => onRemoveAttachment(index),
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: _withAlpha(JournalColors.bgBase, 0.92),
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: JournalColors.borderBright),
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.xmark,
+                              size: 12,
+                              color: JournalColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: focusNode.requestFocus,
@@ -2195,6 +2652,69 @@ class _SageInputBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   GestureDetector(
+                    onTap: loading ? null : onPickAttachment,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: attachments.isNotEmpty
+                            ? _withAlpha(JournalColors.accent, 0.18)
+                            : _withAlpha(JournalColors.bgSurface, 0.92),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: attachments.isNotEmpty
+                              ? JournalColors.borderBright
+                              : JournalColors.border,
+                        ),
+                      ),
+                      child: pickingAttachments
+                          ? const CupertinoActivityIndicator(
+                              color: JournalColors.accent,
+                            )
+                          : Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.paperclip,
+                                  color: attachments.isNotEmpty
+                                      ? JournalColors.accent
+                                      : JournalColors.textSecondary,
+                                  size: 17,
+                                ),
+                                if (attachments.isNotEmpty)
+                                  Positioned(
+                                    top: 5,
+                                    right: 4,
+                                    child: Container(
+                                      constraints:
+                                          const BoxConstraints(minWidth: 15),
+                                      height: 15,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: JournalColors.accent,
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${attachments.length}',
+                                          style: const TextStyle(
+                                            color: JournalColors.textPrimary,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
                     onTap: canSend ? onSend : null,
                     child: Container(
                       width: 38,
@@ -2224,6 +2744,18 @@ class _SageInputBar extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'Attach text-based files and Sage will read their contents inside the chat.',
+              style: TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 11,
+                height: 1.35,
               ),
             ),
           ),

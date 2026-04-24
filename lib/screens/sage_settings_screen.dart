@@ -446,6 +446,39 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.info, 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _withAlpha(JournalColors.info, 0.24),
+                      ),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          CupertinoIcons.paperclip,
+                          color: JournalColors.info,
+                          size: 18,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Sage can review supported text-based files right inside chat now. '
+                            'Live image vision and true web-search tooling still need additional backend support, so keep this focused on documents and text for now.',
+                            style: TextStyle(
+                              color: JournalColors.info,
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   const _SectionLabel('SAGE MEMORY'),
                   const SizedBox(height: 8),

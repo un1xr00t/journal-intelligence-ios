@@ -21,54 +21,107 @@ import 'sage_settings_screen.dart';
 typedef _StrOpt = ({String id, String label});
 
 const _kSituations = <_StrOpt>[
-  (id: 'relationship',  label: 'Relationship'),
-  (id: 'custody',       label: 'Custody/Parenting'),
-  (id: 'workplace',     label: 'Workplace'),
-  (id: 'housing',       label: 'Housing'),
-  (id: 'legal',         label: 'Legal Matter'),
+  (id: 'relationship', label: 'Relationship'),
+  (id: 'custody', label: 'Custody/Parenting'),
+  (id: 'workplace', label: 'Workplace'),
+  (id: 'housing', label: 'Housing'),
+  (id: 'legal', label: 'Legal Matter'),
   (id: 'mental_health', label: 'Mental Health'),
-  (id: 'growth',        label: 'Personal Growth'),
-  (id: 'other',         label: 'Something Else'),
+  (id: 'growth', label: 'Personal Growth'),
+  (id: 'other', label: 'Something Else'),
 ];
 
 const _kTopics = <String>[
-  'Anxiety', 'Sleep', 'Health', 'Work', 'Relationships', 'Family',
-  'Money', 'Safety', 'Legal', 'Housing', 'Trauma', 'Boundaries',
-  'Self-worth', 'Healing', 'Documentation', 'Growth', 'Addiction',
-  'Children', 'Isolation', 'Identity',
+  'Anxiety',
+  'Sleep',
+  'Health',
+  'Work',
+  'Relationships',
+  'Family',
+  'Money',
+  'Safety',
+  'Legal',
+  'Housing',
+  'Trauma',
+  'Boundaries',
+  'Self-worth',
+  'Healing',
+  'Documentation',
+  'Growth',
+  'Addiction',
+  'Children',
+  'Isolation',
+  'Identity',
 ];
 
 const _kGoals = <_StrOpt>[
-  (id: 'document',  label: 'Document my experience'),
-  (id: 'patterns',  label: "Find patterns I'm missing"),
+  (id: 'document', label: 'Document my experience'),
+  (id: 'patterns', label: "Find patterns I'm missing"),
   (id: 'case_file', label: 'Build a case file'),
-  (id: 'mental',    label: 'Track my mental health'),
-  (id: 'exit',      label: 'Plan a major life change'),
-  (id: 'process',   label: 'Process my feelings'),
-  (id: 'evidence',  label: 'Gather legal evidence'),
-  (id: 'heal',      label: 'Grow and heal'),
+  (id: 'mental', label: 'Track my mental health'),
+  (id: 'exit', label: 'Plan a major life change'),
+  (id: 'process', label: 'Process my feelings'),
+  (id: 'evidence', label: 'Gather legal evidence'),
+  (id: 'heal', label: 'Grow and heal'),
 ];
 
-const _kPronounOpts = <String>['she/her', 'he/him', 'they/them', 'prefer not to say'];
+const _kPronounOpts = <String>[
+  'she/her',
+  'he/him',
+  'they/them',
+  'prefer not to say'
+];
 
 typedef _ToneOpt = ({String id, String label, String desc});
 
 const _kTones = <_ToneOpt>[
-  (id: 'therapist',    label: 'Therapist',    desc: 'Clinical, reflective, structured'),
-  (id: 'best_friend',  label: 'Best Friend',  desc: 'Warm, casual, validating'),
-  (id: 'coach',        label: 'Coach',        desc: 'Goal-focused, motivational'),
-  (id: 'mentor',       label: 'Mentor',       desc: 'Wise, long-view perspective'),
-  (id: 'inner_critic', label: 'Inner Critic', desc: 'Challenging, honest, unfiltered'),
-  (id: 'chaos_agent',  label: 'Chaos Agent',  desc: 'Unconventional, pattern-breaking'),
+  (
+    id: 'therapist',
+    label: 'Therapist',
+    desc: 'Clinical, reflective, structured'
+  ),
+  (id: 'best_friend', label: 'Best Friend', desc: 'Warm, casual, validating'),
+  (id: 'coach', label: 'Coach', desc: 'Goal-focused, motivational'),
+  (id: 'mentor', label: 'Mentor', desc: 'Wise, long-view perspective'),
+  (
+    id: 'inner_critic',
+    label: 'Inner Critic',
+    desc: 'Challenging, honest, unfiltered'
+  ),
+  (
+    id: 'chaos_agent',
+    label: 'Chaos Agent',
+    desc: 'Unconventional, pattern-breaking'
+  ),
 ];
 
 typedef _ProviderOpt = ({String id, String label, String desc, bool needsUrl});
 
 const _kProviders = <_ProviderOpt>[
-  (id: 'anthropic',     label: 'Anthropic Claude',  desc: 'Sonnet / Opus / Haiku',  needsUrl: false),
-  (id: 'openai',        label: 'OpenAI',             desc: 'GPT-4o, GPT-4o-mini…',  needsUrl: false),
-  (id: 'openai_compat', label: 'OpenAI-compatible',  desc: 'OpenRouter, Groq…',      needsUrl: true),
-  (id: 'local',         label: 'Local Model',        desc: 'Ollama, LM Studio…',     needsUrl: true),
+  (
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    desc: 'Sonnet / Opus / Haiku',
+    needsUrl: false
+  ),
+  (
+    id: 'openai',
+    label: 'OpenAI',
+    desc: 'GPT-4o, GPT-4o-mini…',
+    needsUrl: false
+  ),
+  (
+    id: 'openai_compat',
+    label: 'OpenAI-compatible',
+    desc: 'OpenRouter, Groq…',
+    needsUrl: true
+  ),
+  (
+    id: 'local',
+    label: 'Local Model',
+    desc: 'Ollama, LM Studio…',
+    needsUrl: true
+  ),
 ];
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
@@ -81,18 +134,18 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _storage   = const FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage();
   final _localAuth = LocalAuthentication();
-  final _api       = ApiService();
+  final _api = ApiService();
 
-  bool _biometricEnabled   = false;
+  bool _biometricEnabled = false;
   bool _biometricAvailable = false;
-  bool _autoReflect        = true;
-  bool _reflectLoaded      = false;
+  bool _autoReflect = true;
+  bool _reflectLoaded = false;
 
   bool _hasRecoveryQuestions = false;
-  bool _twoFAEnabled         = false;
-  bool _securityLoaded       = false;
+  bool _twoFAEnabled = false;
+  bool _securityLoaded = false;
 
   @override
   void initState() {
@@ -104,13 +157,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _checkBiometricStatus() async {
     try {
-      final canCheck    = await _localAuth.canCheckBiometrics;
+      final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
-      final storedUser  = await _storage.read(key: 'biometric_username');
-      if (mounted) setState(() {
-        _biometricAvailable = canCheck && isSupported;
-        _biometricEnabled   = storedUser != null;
-      });
+      final storedUser = await _storage.read(key: 'biometric_username');
+      if (mounted)
+        setState(() {
+          _biometricAvailable = canCheck && isSupported;
+          _biometricEnabled = storedUser != null;
+        });
     } catch (_) {}
   }
 
@@ -120,11 +174,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _api.hasSecurityQuestions(),
         _api.get2FAStatus(),
       ]);
-      if (mounted) setState(() {
-        _hasRecoveryQuestions = results[0] as bool;
-        _twoFAEnabled = ((results[1] as Map<String, dynamic>)['enabled'] as bool?) ?? false;
-        _securityLoaded = true;
-      });
+      if (mounted)
+        setState(() {
+          _hasRecoveryQuestions = results[0] as bool;
+          _twoFAEnabled =
+              ((results[1] as Map<String, dynamic>)['enabled'] as bool?) ??
+                  false;
+          _securityLoaded = true;
+        });
     } catch (_) {
       if (mounted) setState(() => _securityLoaded = true);
     }
@@ -133,10 +190,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadReflectMode() async {
     try {
       final data = await _api.getReflectMode();
-      if (mounted) setState(() {
-        _autoReflect   = data['auto_reflect'] as bool? ?? true;
-        _reflectLoaded = true;
-      });
+      if (mounted)
+        setState(() {
+          _autoReflect = data['auto_reflect'] as bool? ?? true;
+          _reflectLoaded = true;
+        });
     } catch (_) {
       if (mounted) setState(() => _reflectLoaded = true);
     }
@@ -206,7 +264,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Disable Face ID?'),
-        content: const Text('You\'ll need to sign in with your password next time.'),
+        content:
+            const Text('You\'ll need to sign in with your password next time.'),
         actions: [
           CupertinoDialogAction(
               isDestructiveAction: true,
@@ -274,25 +333,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 bottom: BorderSide(color: JournalColors.border, width: 0.5)),
           ),
           SliverPadding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-
                 // ── Account card ─────────────────────────────────────
                 if (user != null) ...[
                   GlassCard(
                     child: Row(children: [
                       Container(
-                        width: 52, height: 52,
+                        width: 52,
+                        height: 52,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                              colors: [JournalColors.accent, JournalColors.accent2]),
+                          gradient: const LinearGradient(colors: [
+                            JournalColors.accent,
+                            JournalColors.accent2
+                          ]),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Center(
                           child: Text(
-                            (user['username'] as String? ?? '?')[0].toUpperCase(),
+                            (user['username'] as String? ?? '?')[0]
+                                .toUpperCase(),
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 22,
@@ -386,7 +447,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 8),
                   GlassCard(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 4),
                       child: Row(children: [
                         const Icon(CupertinoIcons.bolt_fill,
                             color: JournalColors.accent, size: 18),
@@ -424,7 +486,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (_biometricAvailable) ...[
                   GlassCard(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 4),
                       child: Row(children: [
                         const Icon(CupertinoIcons.person_crop_circle,
                             color: JournalColors.accent, size: 18),
@@ -470,8 +533,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         else
                           GestureDetector(
                             onTap: () => _enableBiometrics(
-                                context,
-                                user?['username'] as String? ?? ''),
+                                context, user?['username'] as String? ?? ''),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6),
@@ -479,7 +541,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: JournalColors.accent.withOpacity(0.10),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                    color: JournalColors.accent.withOpacity(0.30)),
+                                    color:
+                                        JournalColors.accent.withOpacity(0.30)),
                               ),
                               child: const Text('Enable',
                                   style: TextStyle(
@@ -526,8 +589,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         color: JournalColors.textPrimary,
                                         fontSize: 15)),
                                 SizedBox(height: 2),
-                                Text(
-                                    'Reset your password without email access',
+                                Text('Reset your password without email access',
                                     style: TextStyle(
                                         color: JournalColors.textMuted,
                                         fontSize: 12)),
@@ -538,8 +600,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10b981)
-                                      .withOpacity(0.12),
+                                  color:
+                                      const Color(0xFF10b981).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
                                       color: const Color(0xFF10b981)
@@ -556,8 +618,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFf59e0b)
-                                      .withOpacity(0.12),
+                                  color:
+                                      const Color(0xFFf59e0b).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
                                       color: const Color(0xFFf59e0b)
@@ -608,8 +670,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10b981)
-                                      .withOpacity(0.12),
+                                  color:
+                                      const Color(0xFF10b981).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
                                       color: const Color(0xFF10b981)
@@ -707,8 +769,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Center(
                   child: Text(
                     'Journal Intelligence · iOS App',
-                    style: TextStyle(
-                        color: JournalColors.textMuted, fontSize: 12),
+                    style:
+                        TextStyle(color: JournalColors.textMuted, fontSize: 12),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -735,13 +797,13 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
 
   Map<String, dynamic>? _form;
   bool _saving = false;
-  bool _saved  = false;
+  bool _saved = false;
   String _error = '';
 
-  final _prefNameCtrl    = TextEditingController();
-  final _storyCtrl       = TextEditingController();
-  final _addNameCtrl     = TextEditingController();
-  final _addRoleCtrl     = TextEditingController();
+  final _prefNameCtrl = TextEditingController();
+  final _storyCtrl = TextEditingController();
+  final _addNameCtrl = TextEditingController();
+  final _addRoleCtrl = TextEditingController();
   final _customTopicCtrl = TextEditingController();
 
   @override
@@ -767,7 +829,7 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
           (data['memory'] ?? data) as Map<String, dynamic>);
       if (mounted) {
         _prefNameCtrl.text = m['preferred_name'] as String? ?? '';
-        _storyCtrl.text    = m['situation_story'] as String? ?? '';
+        _storyCtrl.text = m['situation_story'] as String? ?? '';
         setState(() => _form = m);
       }
     } catch (_) {
@@ -776,7 +838,10 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
   }
 
   void _updField(String key, dynamic val) {
-    setState(() { _form![key] = val; _saved = false; });
+    setState(() {
+      _form![key] = val;
+      _saved = false;
+    });
   }
 
   void _toggleList(String key, String item) {
@@ -786,18 +851,29 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
   }
 
   Future<void> _save() async {
-    setState(() { _saving = true; _error = ''; });
-    _form!['preferred_name']  = _prefNameCtrl.text;
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
+    _form!['preferred_name'] = _prefNameCtrl.text;
     _form!['situation_story'] = _storyCtrl.text;
     try {
       final body = Map<String, dynamic>.from(_form!)..remove('preferred_tone');
       await _api.updateMemory(body);
-      if (mounted) setState(() { _saving = false; _saved = true; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _saved = true;
+        });
       await Future.delayed(const Duration(seconds: 3));
       if (mounted) setState(() => _saved = false);
     } catch (e, s) {
       debugPrint('⚠️ MemoryProfile save error: $e\n$s');
-      if (mounted) setState(() { _saving = false; _error = 'Failed to save: $e'; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _error = 'Failed to save: $e';
+        });
     }
   }
 
@@ -819,7 +895,6 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-
                   // Name + Pronouns
                   GlassCard(
                     child: Column(
@@ -831,18 +906,19 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                             placeholder: 'What should AI call you?',
                             style: const TextStyle(
                                 color: JournalColors.textPrimary),
-                            placeholderStyle: const TextStyle(
-                                color: JournalColors.textMuted),
+                            placeholderStyle:
+                                const TextStyle(color: JournalColors.textMuted),
                             autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                            enableSuggestions: false,
+                            decoration: _fieldDeco(),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 10),
                           ),
                           const SizedBox(height: 16),
                           const _FieldLabel('PRONOUNS'),
                           Wrap(
-                            spacing: 6, runSpacing: 6,
+                            spacing: 6,
+                            runSpacing: 6,
                             children: _kPronounOpts
                                 .map((p) => _Pill(
                                       label: p,
@@ -863,12 +939,12 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                         children: [
                           const _FieldLabel('SITUATION TYPE'),
                           Wrap(
-                            spacing: 6, runSpacing: 6,
+                            spacing: 6,
+                            runSpacing: 6,
                             children: _kSituations
                                 .map((s) => _Pill(
                                       label: s.label,
-                                      active:
-                                          _form!['situation_type'] == s.id,
+                                      active: _form!['situation_type'] == s.id,
                                       onTap: () =>
                                           _updField('situation_type', s.id),
                                     ))
@@ -883,11 +959,11 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                             maxLines: 4,
                             style: const TextStyle(
                                 color: JournalColors.textPrimary),
-                            placeholderStyle: const TextStyle(
-                                color: JournalColors.textMuted),
+                            placeholderStyle:
+                                const TextStyle(color: JournalColors.textMuted),
                             autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                            enableSuggestions: false,
+                            decoration: _fieldDeco(),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 10),
                           ),
@@ -903,7 +979,8 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                         children: [
                           const _FieldLabel('FOCUS TOPICS'),
                           Wrap(
-                            spacing: 6, runSpacing: 6,
+                            spacing: 6,
+                            runSpacing: 6,
                             children: [
                               ..._kTopics.map((t) => _Pill(
                                     label: t,
@@ -917,8 +994,7 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                   .map((t) => _Pill(
                                         label: t,
                                         active: true,
-                                        onTap: () =>
-                                            _toggleList('topics', t),
+                                        onTap: () => _toggleList('topics', t),
                                       )),
                             ],
                           ),
@@ -935,8 +1011,8 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                     color: JournalColors.textMuted,
                                     fontSize: 13),
                                 autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                                enableSuggestions: false,
+                                decoration: _fieldDeco(),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 8),
                                 onSubmitted: (v) {
@@ -957,10 +1033,10 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                 }
                               },
                               child: Container(
-                                width: 36, height: 36,
+                                width: 36,
+                                height: 36,
                                 decoration: BoxDecoration(
-                                  color:
-                                      JournalColors.accent.withOpacity(0.15),
+                                  color: JournalColors.accent.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                       color: JournalColors.accent
@@ -983,15 +1059,14 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                         children: [
                           const _FieldLabel('GOALS'),
                           Wrap(
-                            spacing: 6, runSpacing: 6,
+                            spacing: 6,
+                            runSpacing: 6,
                             children: _kGoals
                                 .map((g) => _Pill(
                                       label: g.label,
-                                      active: ((_form!['goals'] as List?) ??
-                                              [])
+                                      active: ((_form!['goals'] as List?) ?? [])
                                           .contains(g.id),
-                                      onTap: () =>
-                                          _toggleList('goals', g.id),
+                                      onTap: () => _toggleList('goals', g.id),
                                     ))
                                 .toList(),
                           ),
@@ -1020,8 +1095,7 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                         horizontal: 12, vertical: 8),
                                     decoration: BoxDecoration(
                                       color: JournalColors.bgSurface,
-                                      borderRadius:
-                                          BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                           color: JournalColors.border),
                                     ),
@@ -1067,8 +1141,8 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                     color: JournalColors.textMuted,
                                     fontSize: 13),
                                 autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                                enableSuggestions: false,
+                                decoration: _fieldDeco(),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 8),
                               ),
@@ -1085,8 +1159,8 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                     color: JournalColors.textMuted,
                                     fontSize: 13),
                                 autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                                enableSuggestions: false,
+                                decoration: _fieldDeco(),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 8),
                               ),
@@ -1106,10 +1180,10 @@ class _MemoryProfileScreenState extends State<_MemoryProfileScreen> {
                                 _addRoleCtrl.clear();
                               },
                               child: Container(
-                                width: 36, height: 36,
+                                width: 36,
+                                height: 36,
                                 decoration: BoxDecoration(
-                                  color:
-                                      JournalColors.accent.withOpacity(0.15),
+                                  color: JournalColors.accent.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                       color: JournalColors.accent
@@ -1158,12 +1232,12 @@ class _ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
-  final _api      = ApiService();
-  final _curCtrl  = TextEditingController();
-  final _newCtrl  = TextEditingController();
+  final _api = ApiService();
+  final _curCtrl = TextEditingController();
+  final _newCtrl = TextEditingController();
   final _confCtrl = TextEditingController();
-  bool _saving    = false;
-  String _error   = '';
+  bool _saving = false;
+  String _error = '';
   String _success = '';
 
   @override
@@ -1183,12 +1257,16 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
       setState(() => _error = 'Password must be at least 8 characters');
       return;
     }
-    setState(() { _saving = true; _error = ''; _success = ''; });
+    setState(() {
+      _saving = true;
+      _error = '';
+      _success = '';
+    });
     try {
       await _api.changePassword(_curCtrl.text, _newCtrl.text);
       if (mounted) {
         setState(() {
-          _saving  = false;
+          _saving = false;
           _success = 'Password changed successfully';
         });
         _curCtrl.clear();
@@ -1197,7 +1275,10 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
       }
     } catch (_) {
       if (mounted)
-        setState(() { _saving = false; _error = 'Failed to change password'; });
+        setState(() {
+          _saving = false;
+          _error = 'Failed to change password';
+        });
     }
   }
 
@@ -1226,8 +1307,8 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
                       placeholderStyle:
                           const TextStyle(color: JournalColors.textMuted),
                       autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                      enableSuggestions: false,
+                      decoration: _fieldDeco(),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                     ),
@@ -1241,8 +1322,8 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
                       placeholderStyle:
                           const TextStyle(color: JournalColors.textMuted),
                       autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                      enableSuggestions: false,
+                      decoration: _fieldDeco(),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                     ),
@@ -1256,15 +1337,16 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
                       placeholderStyle:
                           const TextStyle(color: JournalColors.textMuted),
                       autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                      enableSuggestions: false,
+                      decoration: _fieldDeco(),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                     ),
                   ]),
             ),
             const SizedBox(height: 12),
-            if (_error.isNotEmpty) _StatusBanner(type: 'error', message: _error),
+            if (_error.isNotEmpty)
+              _StatusBanner(type: 'error', message: _error),
             if (_success.isNotEmpty)
               _StatusBanner(type: 'success', message: _success),
             const SizedBox(height: 12),
@@ -1291,14 +1373,14 @@ class _ApiKeyScreen extends StatefulWidget {
 }
 
 class _ApiKeyScreenState extends State<_ApiKeyScreen> {
-  final _api      = ApiService();
+  final _api = ApiService();
   Map<String, dynamic>? _info;
-  bool _loading      = true;
+  bool _loading = true;
   bool _regenerating = false;
   bool _confirmRegen = false;
   String? _newKey;
-  bool _copied    = false;
-  String _status  = '';
+  bool _copied = false;
+  String _status = '';
   bool _statusErr = false;
 
   @override
@@ -1310,10 +1392,17 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
   Future<void> _load() async {
     try {
       final data = await _api.getApiKey();
-      if (mounted) setState(() { _info = data; _loading = false; });
+      if (mounted)
+        setState(() {
+          _info = data;
+          _loading = false;
+        });
     } catch (_) {
       if (mounted)
-        setState(() { _info = {'has_key': false}; _loading = false; });
+        setState(() {
+          _info = {'has_key': false};
+          _loading = false;
+        });
     }
   }
 
@@ -1322,22 +1411,28 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
       setState(() => _confirmRegen = true);
       return;
     }
-    setState(() { _regenerating = true; _confirmRegen = false; _status = ''; });
+    setState(() {
+      _regenerating = true;
+      _confirmRegen = false;
+      _status = '';
+    });
     try {
       final data = await _api.regenerateApiKey();
-      if (mounted) setState(() {
-        _regenerating = false;
-        _newKey  = data['api_key'] as String?;
-        _info    = {'has_key': true, 'prefix': data['prefix']};
-        _status  = "New key generated. Copy it now — it won't be shown again.";
-        _statusErr = false;
-      });
+      if (mounted)
+        setState(() {
+          _regenerating = false;
+          _newKey = data['api_key'] as String?;
+          _info = {'has_key': true, 'prefix': data['prefix']};
+          _status = "New key generated. Copy it now — it won't be shown again.";
+          _statusErr = false;
+        });
     } catch (_) {
-      if (mounted) setState(() {
-        _regenerating = false;
-        _status    = 'Failed to regenerate key';
-        _statusErr = true;
-      });
+      if (mounted)
+        setState(() {
+          _regenerating = false;
+          _status = 'Failed to regenerate key';
+          _statusErr = true;
+        });
     }
   }
 
@@ -1378,12 +1473,11 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color:
-                                    JournalColors.accent.withOpacity(0.05),
+                                color: JournalColors.accent.withOpacity(0.05),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                    color: JournalColors.accent
-                                        .withOpacity(0.25)),
+                                    color:
+                                        JournalColors.accent.withOpacity(0.25)),
                               ),
                               child: SelectableText(
                                 _newKey!,
@@ -1417,8 +1511,7 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
                               decoration: BoxDecoration(
                                 color: JournalColors.bgSurface,
                                 borderRadius: BorderRadius.circular(8),
-                                border:
-                                    Border.all(color: JournalColors.border),
+                                border: Border.all(color: JournalColors.border),
                               ),
                               child: Text(
                                 _info?['has_key'] == true
@@ -1453,20 +1546,18 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 10),
-                                    margin:
-                                        const EdgeInsets.only(right: 8),
+                                    margin: const EdgeInsets.only(right: 8),
                                     decoration: BoxDecoration(
                                       color: JournalColors.bgSurface,
-                                      borderRadius:
-                                          BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                           color: JournalColors.border),
                                     ),
                                     child: const Center(
                                       child: Text('Cancel',
                                           style: TextStyle(
-                                              color: JournalColors
-                                                  .textSecondary,
+                                              color:
+                                                  JournalColors.textSecondary,
                                               fontSize: 13)),
                                     ),
                                   ),
@@ -1477,13 +1568,12 @@ class _ApiKeyScreenState extends State<_ApiKeyScreen> {
                               child: GestureDetector(
                                 onTap: _regenerating ? null : _regenerate,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 10),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
                                   decoration: BoxDecoration(
                                     color: _confirmRegen
                                         ? Colors.red.withOpacity(0.1)
-                                        : JournalColors.accent
-                                            .withOpacity(0.1),
+                                        : JournalColors.accent.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                       color: _confirmRegen
@@ -1540,18 +1630,18 @@ class _AIProviderScreen extends StatefulWidget {
 }
 
 class _AIProviderScreenState extends State<_AIProviderScreen> {
-  final _api       = ApiService();
+  final _api = ApiService();
   Map<String, dynamic>? _settings;
-  bool _loading  = true;
-  bool _editing  = false;
+  bool _loading = true;
+  bool _editing = false;
   String _provider = 'anthropic';
 
-  final _keyCtrl   = TextEditingController();
-  final _urlCtrl   = TextEditingController();
+  final _keyCtrl = TextEditingController();
+  final _urlCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
 
-  bool _saving    = false;
-  String _status  = '';
+  bool _saving = false;
+  String _status = '';
   bool _statusErr = false;
 
   @override
@@ -1571,25 +1661,30 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
   Future<void> _load() async {
     try {
       final data = await _api.getAiProvider();
-      if (mounted) setState(() {
-        _settings   = data;
-        _provider   = data['provider'] as String? ?? 'anthropic';
-        _urlCtrl.text   = data['base_url'] as String? ?? '';
-        _modelCtrl.text = data['model'] as String? ?? '';
-        _editing  = data['has_key'] != true;
-        _loading  = false;
-      });
+      if (mounted)
+        setState(() {
+          _settings = data;
+          _provider = data['provider'] as String? ?? 'anthropic';
+          _urlCtrl.text = data['base_url'] as String? ?? '';
+          _modelCtrl.text = data['model'] as String? ?? '';
+          _editing = data['has_key'] != true;
+          _loading = false;
+        });
     } catch (_) {
-      if (mounted) setState(() {
-        _settings = {'provider': 'anthropic', 'has_key': false};
-        _editing  = true;
-        _loading  = false;
-      });
+      if (mounted)
+        setState(() {
+          _settings = {'provider': 'anthropic', 'has_key': false};
+          _editing = true;
+          _loading = false;
+        });
     }
   }
 
   Future<void> _save() async {
-    setState(() { _saving = true; _status = ''; });
+    setState(() {
+      _saving = true;
+      _status = '';
+    });
     try {
       await _api.updateAiProvider({
         'provider': _provider,
@@ -1599,18 +1694,28 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
       });
       _keyCtrl.clear();
       if (mounted) {
-        setState(() { _saving = false; _status = 'Settings saved.'; _statusErr = false; _editing = false; });
+        setState(() {
+          _saving = false;
+          _status = 'Settings saved.';
+          _statusErr = false;
+          _editing = false;
+        });
         await _load();
       }
     } catch (e, s) {
       debugPrint('⚠️ AIProvider save error: $e\n$s');
-      if (mounted) setState(() { _saving = false; _status = 'Error: $e'; _statusErr = true; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _status = 'Error: $e';
+          _statusErr = true;
+        });
     }
   }
 
-  bool get _needsUrl =>
-      _kProviders.firstWhere((p) => p.id == _provider,
-          orElse: () => _kProviders.first).needsUrl;
+  bool get _needsUrl => _kProviders
+      .firstWhere((p) => p.id == _provider, orElse: () => _kProviders.first)
+      .needsUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1640,9 +1745,11 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _kProviders.firstWhere(
-                                            (p) => p.id == _provider,
-                                            orElse: () => _kProviders.first).label,
+                                        _kProviders
+                                            .firstWhere(
+                                                (p) => p.id == _provider,
+                                                orElse: () => _kProviders.first)
+                                            .label,
                                         style: const TextStyle(
                                             color: JournalColors.textPrimary,
                                             fontSize: 15,
@@ -1650,13 +1757,15 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        _settings?['preview'] as String? ?? '••••',
+                                        _settings?['preview'] as String? ??
+                                            '••••',
                                         style: const TextStyle(
                                             color: JournalColors.textMuted,
                                             fontSize: 12,
                                             fontFamily: 'Courier'),
                                       ),
-                                      if ((_settings?['model'] as String? ?? '').isNotEmpty)
+                                      if ((_settings?['model'] as String? ?? '')
+                                          .isNotEmpty)
                                         Text(
                                           'Model: ${_settings!['model']}',
                                           style: const TextStyle(
@@ -1667,14 +1776,13 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                               ),
                               const SizedBox(width: 8),
                               GestureDetector(
-                                onTap: () =>
-                                    setState(() => _editing = true),
+                                onTap: () => setState(() => _editing = true),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: JournalColors.accent
-                                        .withOpacity(0.1),
+                                    color:
+                                        JournalColors.accent.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                         color: JournalColors.accent
@@ -1698,11 +1806,9 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                             const _FieldLabel('PROVIDER'),
                             const SizedBox(height: 8),
                             ..._kProviders.map((p) => GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _provider = p.id),
+                                  onTap: () => setState(() => _provider = p.id),
                                   child: Container(
-                                    margin:
-                                        const EdgeInsets.only(bottom: 8),
+                                    margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
@@ -1710,8 +1816,7 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                           ? JournalColors.accent
                                               .withOpacity(0.1)
                                           : JournalColors.bgSurface,
-                                      borderRadius:
-                                          BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                           color: _provider == p.id
                                               ? JournalColors.accent
@@ -1728,8 +1833,10 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                                 p.label,
                                                 style: TextStyle(
                                                   color: _provider == p.id
-                                                      ? JournalColors.textPrimary
-                                                      : JournalColors.textSecondary,
+                                                      ? JournalColors
+                                                          .textPrimary
+                                                      : JournalColors
+                                                          .textSecondary,
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w600,
                                                 ),
@@ -1742,8 +1849,7 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                             ]),
                                       ),
                                       if (_provider == p.id)
-                                        const Icon(
-                                            CupertinoIcons.checkmark_alt,
+                                        const Icon(CupertinoIcons.checkmark_alt,
                                             color: JournalColors.accent,
                                             size: 16),
                                     ]),
@@ -1784,8 +1890,8 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                                 placeholderStyle: const TextStyle(
                                     color: JournalColors.textMuted),
                                 autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: _fieldDeco(),
+                                enableSuggestions: false,
+                                decoration: _fieldDeco(),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 10),
                               ),
@@ -1824,6 +1930,36 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                         type: _statusErr ? 'error' : 'success',
                         message: _status),
                   ],
+                  const SizedBox(height: 12),
+                  GlassCard(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          _provider == 'anthropic'
+                              ? CupertinoIcons.check_mark_circled_solid
+                              : CupertinoIcons.info_circle_fill,
+                          color: _provider == 'anthropic'
+                              ? JournalColors.success
+                              : JournalColors.info,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _provider == 'anthropic'
+                                ? 'Anthropic Claude is still the premium provider path for Sage, but the feature that is live today is text-based file review inside chat.'
+                                : 'Sage can review text-based files by injecting their contents into chat. Richer live tools still depend on backend support, regardless of provider.',
+                            style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -1845,8 +1981,8 @@ class _ToneScreenState extends State<_ToneScreen> {
   final _api = ApiService();
   String? _tone;
   bool _loading = true;
-  bool _saving  = false;
-  bool _saved   = false;
+  bool _saving = false;
+  bool _saved = false;
   String _error = '';
 
   @override
@@ -1858,27 +1994,42 @@ class _ToneScreenState extends State<_ToneScreen> {
   Future<void> _load() async {
     try {
       final data = await _api.getMemory();
-      final m    = (data['memory'] ?? data) as Map<String, dynamic>;
-      if (mounted) setState(() {
-        _tone    = m['preferred_tone'] as String? ?? 'therapist';
-        _loading = false;
-      });
+      final m = (data['memory'] ?? data) as Map<String, dynamic>;
+      if (mounted)
+        setState(() {
+          _tone = m['preferred_tone'] as String? ?? 'therapist';
+          _loading = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _tone = 'therapist'; _loading = false; });
+      if (mounted)
+        setState(() {
+          _tone = 'therapist';
+          _loading = false;
+        });
     }
   }
 
   Future<void> _save() async {
-    setState(() { _saving = true; _error = ''; });
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
     try {
       await _api.updateMemory({'preferred_tone': _tone});
-      if (mounted) setState(() { _saving = false; _saved = true; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _saved = true;
+        });
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _saved = false);
     } catch (e, s) {
       debugPrint('⚠️ Tone save error: $e\n$s');
       if (mounted)
-        setState(() { _saving = false; _error = 'Error: $e'; });
+        setState(() {
+          _saving = false;
+          _error = 'Error: $e';
+        });
     }
   }
 
@@ -1963,7 +2114,11 @@ class _ToneScreenState extends State<_ToneScreen> {
                   AdaptiveButton(
                     style: AdaptiveButtonStyle.prominentGlass,
                     onPressed: _saving ? null : _save,
-                    label: _saving ? 'Saving…' : _saved ? '✓ Saved' : 'Save',
+                    label: _saving
+                        ? 'Saving…'
+                        : _saved
+                            ? '✓ Saved'
+                            : 'Save',
                   ),
                   const SizedBox(height: 40),
                 ],
@@ -1985,9 +2140,9 @@ class _SessionsScreen extends StatefulWidget {
 class _SessionsScreenState extends State<_SessionsScreen> {
   final _api = ApiService();
   List<dynamic> _sessions = [];
-  bool _loading      = true;
+  bool _loading = true;
   String? _revoking;
-  bool _revokingAll  = false;
+  bool _revokingAll = false;
 
   @override
   void initState() {
@@ -1999,9 +2154,17 @@ class _SessionsScreenState extends State<_SessionsScreen> {
     setState(() => _loading = true);
     try {
       final data = await _api.getSessions();
-      if (mounted) setState(() { _sessions = data; _loading = false; });
+      if (mounted)
+        setState(() {
+          _sessions = data;
+          _loading = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _sessions = []; _loading = false; });
+      if (mounted)
+        setState(() {
+          _sessions = [];
+          _loading = false;
+        });
     }
   }
 
@@ -2009,10 +2172,11 @@ class _SessionsScreenState extends State<_SessionsScreen> {
     setState(() => _revoking = id.toString());
     try {
       await _api.revokeSession(id);
-      if (mounted) setState(() {
-        _sessions = _sessions.where((s) => s['id'] != id).toList();
-        _revoking = null;
-      });
+      if (mounted)
+        setState(() {
+          _sessions = _sessions.where((s) => s['id'] != id).toList();
+          _revoking = null;
+        });
     } catch (_) {
       if (mounted) setState(() => _revoking = null);
     }
@@ -2095,8 +2259,7 @@ class _SessionsScreenState extends State<_SessionsScreen> {
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       s['device_hint'] as String? ??
@@ -2161,17 +2324,17 @@ class _SmsScreen extends StatefulWidget {
 }
 
 class _SmsScreenState extends State<_SmsScreen> {
-  final _api       = ApiService();
+  final _api = ApiService();
   final _phoneCtrl = TextEditingController();
-  final _codeCtrl  = TextEditingController();
+  final _codeCtrl = TextEditingController();
 
   Map<String, dynamic>? _status;
-  bool _loading   = true;
-  String _phase   = 'idle'; // idle | enter | verify
-  bool _sending   = false;
+  bool _loading = true;
+  String _phase = 'idle'; // idle | enter | verify
+  bool _sending = false;
   bool _verifying = false;
-  String _error   = '';
-  String _msg     = '';
+  String _error = '';
+  String _msg = '';
 
   @override
   void initState() {
@@ -2190,33 +2353,53 @@ class _SmsScreenState extends State<_SmsScreen> {
     setState(() => _loading = true);
     try {
       final data = await _api.getSmsStatus();
-      if (mounted) setState(() { _status = data; _loading = false; });
+      if (mounted)
+        setState(() {
+          _status = data;
+          _loading = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _status = null; _loading = false; });
+      if (mounted)
+        setState(() {
+          _status = null;
+          _loading = false;
+        });
     }
   }
 
   Future<void> _sendCode() async {
-    setState(() { _sending = true; _error = ''; });
+    setState(() {
+      _sending = true;
+      _error = '';
+    });
     try {
       await _api.requestSmsVerification(_phoneCtrl.text.trim());
-      if (mounted) setState(() { _sending = false; _phase = 'verify'; });
+      if (mounted)
+        setState(() {
+          _sending = false;
+          _phase = 'verify';
+        });
     } catch (_) {
       if (mounted)
-        setState(() { _sending = false; _error = 'Failed to send code'; });
+        setState(() {
+          _sending = false;
+          _error = 'Failed to send code';
+        });
     }
   }
 
   Future<void> _verify() async {
-    setState(() { _verifying = true; _error = ''; });
+    setState(() {
+      _verifying = true;
+      _error = '';
+    });
     try {
-      await _api.verifySmsCode(
-          _phoneCtrl.text.trim(), _codeCtrl.text.trim());
+      await _api.verifySmsCode(_phoneCtrl.text.trim(), _codeCtrl.text.trim());
       if (mounted) {
         setState(() {
           _verifying = false;
-          _phase     = 'idle';
-          _msg       = 'Phone verified! You can now text journal entries.';
+          _phase = 'idle';
+          _msg = 'Phone verified! You can now text journal entries.';
         });
         _phoneCtrl.clear();
         _codeCtrl.clear();
@@ -2224,7 +2407,10 @@ class _SmsScreenState extends State<_SmsScreen> {
       }
     } catch (_) {
       if (mounted)
-        setState(() { _verifying = false; _error = 'Invalid or expired code'; });
+        setState(() {
+          _verifying = false;
+          _error = 'Invalid or expired code';
+        });
     }
   }
 
@@ -2233,8 +2419,8 @@ class _SmsScreenState extends State<_SmsScreen> {
       context: context,
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Remove Phone Number?'),
-        content: const Text(
-            'You will no longer be able to text journal entries.'),
+        content:
+            const Text('You will no longer be able to text journal entries.'),
         actions: [
           CupertinoDialogAction(
               isDestructiveAction: true,
@@ -2297,8 +2483,7 @@ class _SmsScreenState extends State<_SmsScreen> {
                             Text(
                               'Verified · Active since ${(_status?['created_at'] as String? ?? '').length >= 10 ? (_status!['created_at'] as String).substring(0, 10) : '—'}',
                               style: const TextStyle(
-                                  color: JournalColors.textMuted,
-                                  fontSize: 11),
+                                  color: JournalColors.textMuted, fontSize: 11),
                             ),
                             const SizedBox(height: 14),
                             Row(children: [
@@ -2307,16 +2492,15 @@ class _SmsScreenState extends State<_SmsScreen> {
                                   onTap: () => setState(() {
                                     _phase = 'enter';
                                     _error = '';
-                                    _msg   = '';
+                                    _msg = '';
                                   }),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: JournalColors.accent
-                                          .withOpacity(0.1),
-                                      borderRadius:
-                                          BorderRadius.circular(8),
+                                      color:
+                                          JournalColors.accent.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                           color: JournalColors.accent
                                               .withOpacity(0.3)),
@@ -2340,11 +2524,9 @@ class _SmsScreenState extends State<_SmsScreen> {
                                         vertical: 10),
                                     decoration: BoxDecoration(
                                       color: Colors.red.withOpacity(0.08),
-                                      borderRadius:
-                                          BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                          color:
-                                              Colors.red.withOpacity(0.2)),
+                                          color: Colors.red.withOpacity(0.2)),
                                     ),
                                     child: const Center(
                                       child: Text('Remove',
@@ -2372,8 +2554,7 @@ class _SmsScreenState extends State<_SmsScreen> {
                             const Text(
                               'Link a verified mobile number to text journal entries anytime — no app needed. Only your registered number can submit entries.',
                               style: TextStyle(
-                                  color: JournalColors.textMuted,
-                                  fontSize: 13),
+                                  color: JournalColors.textMuted, fontSize: 13),
                             ),
                             const SizedBox(height: 14),
                             AdaptiveButton(
@@ -2381,7 +2562,7 @@ class _SmsScreenState extends State<_SmsScreen> {
                               onPressed: () => setState(() {
                                 _phase = 'enter';
                                 _error = '';
-                                _msg   = '';
+                                _msg = '';
                               }),
                               label: '+ Add Phone Number',
                             ),
@@ -2434,10 +2615,9 @@ class _SmsScreenState extends State<_SmsScreen> {
                                       horizontal: 16, vertical: 10),
                                   decoration: BoxDecoration(
                                     color: JournalColors.bgSurface,
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                    border: Border.all(
-                                        color: JournalColors.border),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: JournalColors.border),
                                   ),
                                   child: const Text('Cancel',
                                       style: TextStyle(
@@ -2484,8 +2664,7 @@ class _SmsScreenState extends State<_SmsScreen> {
                                   letterSpacing: 10,
                                   fontWeight: FontWeight.w700),
                               placeholderStyle: const TextStyle(
-                                  color: JournalColors.textMuted,
-                                  fontSize: 26),
+                                  color: JournalColors.textMuted, fontSize: 26),
                               autocorrect: false,
                               enableSuggestions: false,
                               decoration: _fieldDeco(),
@@ -2509,10 +2688,9 @@ class _SmsScreenState extends State<_SmsScreen> {
                                       horizontal: 16, vertical: 10),
                                   decoration: BoxDecoration(
                                     color: JournalColors.bgSurface,
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                    border: Border.all(
-                                        color: JournalColors.border),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: JournalColors.border),
                                   ),
                                   child: const Text('Resend',
                                       style: TextStyle(
@@ -2584,7 +2762,7 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
   final _pwCtrl = TextEditingController();
 
   bool _verifying = false;
-  bool _saving    = false;
+  bool _saving = false;
   String? _err;
 
   @override
@@ -2598,24 +2776,31 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
 
   Future<void> _verifyPassword() async {
     if (_pwCtrl.text.trim().isEmpty) return;
-    setState(() { _verifying = true; _err = null; });
+    setState(() {
+      _verifying = true;
+      _err = null;
+    });
     try {
       await _api.verifyPassword(_pwCtrl.text.trim());
-      if (mounted) setState(() {
-        _phase = 'form';
-        _verifying = false;
-        _pwCtrl.clear();
-      });
+      if (mounted)
+        setState(() {
+          _phase = 'form';
+          _verifying = false;
+          _pwCtrl.clear();
+        });
     } catch (e) {
-      if (mounted) setState(() {
-        _verifying = false;
-        _err = 'Incorrect password.';
-      });
+      if (mounted)
+        setState(() {
+          _verifying = false;
+          _err = 'Incorrect password.';
+        });
     }
   }
 
   Future<void> _save() async {
-    if (_a1.text.trim().isEmpty || _a2.text.trim().isEmpty || _a3.text.trim().isEmpty) {
+    if (_a1.text.trim().isEmpty ||
+        _a2.text.trim().isEmpty ||
+        _a3.text.trim().isEmpty) {
       setState(() => _err = 'Please answer all three questions.');
       return;
     }
@@ -2623,20 +2808,33 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
       setState(() => _err = 'Please choose three different questions.');
       return;
     }
-    setState(() { _saving = true; _err = null; });
+    setState(() {
+      _saving = true;
+      _err = null;
+    });
     try {
       await _api.setupSecurityQuestions(
-        q1: _q1, a1: _a1.text.trim(),
-        q2: _q2, a2: _a2.text.trim(),
-        q3: _q3, a3: _a3.text.trim(),
+        q1: _q1,
+        a1: _a1.text.trim(),
+        q2: _q2,
+        a2: _a2.text.trim(),
+        q3: _q3,
+        a3: _a3.text.trim(),
       );
       if (mounted) {
-        setState(() { _saving = false; _phase = 'saved'; });
+        setState(() {
+          _saving = false;
+          _phase = 'saved';
+        });
         await Future.delayed(const Duration(seconds: 3));
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) setState(() { _saving = false; _err = 'Failed to save. Please try again.'; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _err = 'Failed to save. Please try again.';
+        });
     }
   }
 
@@ -2662,21 +2860,27 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
           Expanded(
             child: CupertinoPicker(
               scrollController: FixedExtentScrollController(
-                  initialItem: opts.isEmpty ? 0 : opts.indexOf(current).clamp(0, opts.length - 1)),
+                  initialItem: opts.isEmpty
+                      ? 0
+                      : opts.indexOf(current).clamp(0, opts.length - 1)),
               itemExtent: 40,
               onSelectedItemChanged: (i) {
-                if (mounted) setState(() {
-                  if (idx == 1) _q1 = opts[i];
-                  if (idx == 2) _q2 = opts[i];
-                  if (idx == 3) _q3 = opts[i];
-                });
+                if (mounted)
+                  setState(() {
+                    if (idx == 1) _q1 = opts[i];
+                    if (idx == 2) _q2 = opts[i];
+                    if (idx == 3) _q3 = opts[i];
+                  });
               },
-              children: opts.map((q) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(q,
-                    style: const TextStyle(
-                        color: JournalColors.textPrimary, fontSize: 13)),
-              )).toList(),
+              children: opts
+                  .map((q) => Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(q,
+                            style: const TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 13)),
+                      ))
+                  .toList(),
             ),
           ),
         ]),
@@ -2697,9 +2901,12 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
             border: Border.all(color: JournalColors.border),
           ),
           child: Row(children: [
-            Expanded(child: Text(q,
-                style: const TextStyle(
-                    color: JournalColors.textSecondary, fontSize: 13, height: 1.4))),
+            Expanded(
+                child: Text(q,
+                    style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.4))),
             const Icon(CupertinoIcons.chevron_down,
                 color: JournalColors.textMuted, size: 14),
           ]),
@@ -2732,7 +2939,10 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
         leading: _phase == 'form'
             ? CupertinoButton(
                 padding: EdgeInsets.zero,
-                onPressed: () => setState(() { _phase = 'idle'; _err = null; }),
+                onPressed: () => setState(() {
+                  _phase = 'idle';
+                  _err = null;
+                }),
                 child: const Text('Cancel',
                     style: TextStyle(color: JournalColors.accent)),
               )
@@ -2753,7 +2963,8 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
                             fontSize: 18,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
-                    const Text('Your account can now be recovered without email access.',
+                    const Text(
+                        'Your account can now be recovered without email access.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: JournalColors.textSecondary, fontSize: 14)),
@@ -2761,127 +2972,138 @@ class _RecoveryQuestionsScreenState extends State<_RecoveryQuestionsScreen> {
                 ),
               )
             : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-
-                  // ── Info banner ──
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: JournalColors.bgSurface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: JournalColors.border),
-                    ),
-                    child: Text(
-                      widget.hasExisting
-                          ? 'Offline recovery is active. You can update your questions below.'
-                          : 'Set up security questions so you can recover your account without email access.',
-                      style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 13,
-                          height: 1.5),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── Gate phase: password confirm ──
-                  if (_phase == 'idle') ...[
-                    AdaptiveButton(
-                      style: AdaptiveButtonStyle.prominentGlass,
-                      onPressed: () => setState(() { _phase = 'gate'; _err = null; _pwCtrl.clear(); }),
-                      label: widget.hasExisting ? '↻ Update Questions' : 'Set Up Recovery Questions',
-                    ),
-                  ],
-
-                  if (_phase == 'gate') ...[
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFf59e0b).withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: const Color(0xFFf59e0b).withOpacity(0.20)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Info banner ──
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: JournalColors.bgSurface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: JournalColors.border),
+                        ),
+                        child: Text(
+                          widget.hasExisting
+                              ? 'Offline recovery is active. You can update your questions below.'
+                              : 'Set up security questions so you can recover your account without email access.',
+                          style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 13,
+                              height: 1.5),
+                        ),
                       ),
-                      child: const Text(
-                        'Enter your current password to continue.',
-                        style: TextStyle(
-                            color: Color(0xFFf59e0b), fontSize: 13, height: 1.5),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _FieldLabel('CURRENT PASSWORD'),
-                    CupertinoTextField(
-                      controller: _pwCtrl,
-                      placeholder: 'Your current password',
-                      placeholderStyle:
-                          const TextStyle(color: JournalColors.textMuted),
-                      style:
-                          const TextStyle(color: JournalColors.textPrimary),
-                      obscureText: true,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: _fieldDeco(),
-                      onSubmitted: (_) => _verifyPassword(),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_err != null) ...[
-                      _StatusBanner(type: 'error', message: _err!),
-                      const SizedBox(height: 12),
-                    ],
-                    Row(children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() {
-                            _phase = 'idle';
+                      const SizedBox(height: 24),
+
+                      // ── Gate phase: password confirm ──
+                      if (_phase == 'idle') ...[
+                        AdaptiveButton(
+                          style: AdaptiveButtonStyle.prominentGlass,
+                          onPressed: () => setState(() {
+                            _phase = 'gate';
                             _err = null;
                             _pwCtrl.clear();
                           }),
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: JournalColors.bgSurface,
-                              borderRadius: BorderRadius.circular(12),
-                              border:
-                                  Border.all(color: JournalColors.border),
-                            ),
-                            child: const Text('Cancel',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    color: JournalColors.textSecondary,
-                                    fontSize: 15)),
+                          label: widget.hasExisting
+                              ? '↻ Update Questions'
+                              : 'Set Up Recovery Questions',
+                        ),
+                      ],
+
+                      if (_phase == 'gate') ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFf59e0b).withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color:
+                                    const Color(0xFFf59e0b).withOpacity(0.20)),
+                          ),
+                          child: const Text(
+                            'Enter your current password to continue.',
+                            style: TextStyle(
+                                color: Color(0xFFf59e0b),
+                                fontSize: 13,
+                                height: 1.5),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: AdaptiveButton(
-                          style: AdaptiveButtonStyle.prominentGlass,
-                          onPressed: _verifying ? null : _verifyPassword,
-                          label: _verifying ? 'Verifying…' : 'Confirm →',
+                        const SizedBox(height: 16),
+                        _FieldLabel('CURRENT PASSWORD'),
+                        CupertinoTextField(
+                          controller: _pwCtrl,
+                          placeholder: 'Your current password',
+                          placeholderStyle:
+                              const TextStyle(color: JournalColors.textMuted),
+                          style:
+                              const TextStyle(color: JournalColors.textPrimary),
+                          obscureText: true,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: _fieldDeco(),
+                          onSubmitted: (_) => _verifyPassword(),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        if (_err != null) ...[
+                          _StatusBanner(type: 'error', message: _err!),
+                          const SizedBox(height: 12),
+                        ],
+                        Row(children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                _phase = 'idle';
+                                _err = null;
+                                _pwCtrl.clear();
+                              }),
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: JournalColors.bgSurface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border:
+                                      Border.all(color: JournalColors.border),
+                                ),
+                                child: const Text('Cancel',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        color: JournalColors.textSecondary,
+                                        fontSize: 15)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: AdaptiveButton(
+                              style: AdaptiveButtonStyle.prominentGlass,
+                              onPressed: _verifying ? null : _verifyPassword,
+                              label: _verifying ? 'Verifying…' : 'Confirm →',
+                            ),
+                          ),
+                        ]),
+                      ],
+
+                      // ── Form phase: question setup ──
+                      if (_phase == 'form') ...[
+                        _questionBlock(1, _q1, _a1),
+                        _questionBlock(2, _q2, _a2),
+                        _questionBlock(3, _q3, _a3),
+                        if (_err != null) ...[
+                          _StatusBanner(type: 'error', message: _err!),
+                          const SizedBox(height: 12),
+                        ],
+                        AdaptiveButton(
+                          style: AdaptiveButtonStyle.prominentGlass,
+                          onPressed: _saving ? null : _save,
+                          label: _saving ? 'Saving…' : 'Save Questions',
+                        ),
+                      ],
+
+                      const SizedBox(height: 32),
                     ]),
-                  ],
-
-                  // ── Form phase: question setup ──
-                  if (_phase == 'form') ...[
-                    _questionBlock(1, _q1, _a1),
-                    _questionBlock(2, _q2, _a2),
-                    _questionBlock(3, _q3, _a3),
-                    if (_err != null) ...[
-                      _StatusBanner(type: 'error', message: _err!),
-                      const SizedBox(height: 12),
-                    ],
-                    AdaptiveButton(
-                      style: AdaptiveButtonStyle.prominentGlass,
-                      onPressed: _saving ? null : _save,
-                      label: _saving ? 'Saving…' : 'Save Questions',
-                    ),
-                  ],
-
-                  const SizedBox(height: 32),
-                ]),
               ),
       ),
     );
@@ -2908,10 +3130,10 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
   List<String> _backupCodes = [];
 
   final _codeCtrl = TextEditingController();
-  final _pwCtrl   = TextEditingController();
+  final _pwCtrl = TextEditingController();
 
-  bool _busy  = false;
-  bool _done  = false;
+  bool _busy = false;
+  bool _done = false;
   String? _err;
 
   late bool _enabled;
@@ -2931,57 +3153,84 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
   }
 
   Future<void> _startSetup() async {
-    setState(() { _busy = true; _err = null; });
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
     try {
       final data = await _api.setup2FA();
-      if (mounted) setState(() {
-        _setupData = data;
-        _phase = 'setup';
-        _busy = false;
-      });
+      if (mounted)
+        setState(() {
+          _setupData = data;
+          _phase = 'setup';
+          _busy = false;
+        });
     } catch (e) {
-      if (mounted) setState(() { _busy = false; _err = 'Failed to start setup. Try again.'; });
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _err = 'Failed to start setup. Try again.';
+        });
     }
   }
 
   Future<void> _verifyAndEnable() async {
     final code = _codeCtrl.text.trim().replaceAll(' ', '');
     if (code.length != 6) {
-      setState(() => _err = 'Enter the 6-digit code from your authenticator app.');
+      setState(
+          () => _err = 'Enter the 6-digit code from your authenticator app.');
       return;
     }
-    setState(() { _busy = true; _err = null; });
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
     try {
       await _api.enable2FA(code);
-      final codes = (_setupData?['backup_codes'] as List?)?.cast<String>() ?? [];
-      if (mounted) setState(() {
-        _enabled = true;
-        _backupCodes = codes;
-        _phase = 'backup_codes';
-        _busy = false;
-      });
+      final codes =
+          (_setupData?['backup_codes'] as List?)?.cast<String>() ?? [];
+      if (mounted)
+        setState(() {
+          _enabled = true;
+          _backupCodes = codes;
+          _phase = 'backup_codes';
+          _busy = false;
+        });
     } catch (e) {
-      if (mounted) setState(() { _busy = false; _err = 'Invalid code. Try again.'; });
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _err = 'Invalid code. Try again.';
+        });
     }
   }
 
   Future<void> _disable() async {
     final code = _pwCtrl.text.trim().replaceAll(' ', '');
     if (code.length != 6) {
-      setState(() => _err = 'Enter the 6-digit code from your authenticator app.');
+      setState(
+          () => _err = 'Enter the 6-digit code from your authenticator app.');
       return;
     }
-    setState(() { _busy = true; _err = null; });
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
     try {
       await _api.disable2FA(code);
-      if (mounted) setState(() {
-        _enabled = false;
-        _phase = 'idle';
-        _busy = false;
-        _done = true;
-      });
+      if (mounted)
+        setState(() {
+          _enabled = false;
+          _phase = 'idle';
+          _busy = false;
+          _done = true;
+        });
     } catch (e) {
-      if (mounted) setState(() { _busy = false; _err = 'Invalid code. Try again.'; });
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _err = 'Invalid code. Try again.';
+        });
     }
   }
 
@@ -3009,7 +3258,8 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF10b981).withOpacity(0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF10b981).withOpacity(0.25)),
+            border:
+                Border.all(color: const Color(0xFF10b981).withOpacity(0.25)),
           ),
           child: const Row(children: [
             Icon(CupertinoIcons.shield_lefthalf_fill,
@@ -3026,7 +3276,11 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
         ),
         const SizedBox(height: 16),
         GestureDetector(
-          onTap: () => setState(() { _phase = 'disable'; _err = null; _pwCtrl.clear(); }),
+          onTap: () => setState(() {
+            _phase = 'disable';
+            _err = null;
+            _pwCtrl.clear();
+          }),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
@@ -3065,14 +3319,13 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
 
   Widget _setupView() {
     final secret = _setupData?['secret'] as String? ?? '';
-    final qrRaw  = _setupData?['qr_base64'] as String? ?? '';
+    final qrRaw = _setupData?['qr_base64'] as String? ?? '';
 
     Uint8List? qrBytes;
     if (qrRaw.isNotEmpty) {
       try {
-        final b64 = qrRaw.startsWith('data:image')
-            ? qrRaw.split(',').last
-            : qrRaw;
+        final b64 =
+            qrRaw.startsWith('data:image') ? qrRaw.split(',').last : qrRaw;
         qrBytes = base64Decode(b64);
       } catch (_) {}
     }
@@ -3108,7 +3361,8 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: JournalColors.border),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Manual entry key:',
                 style: TextStyle(
                     color: JournalColors.textMuted,
@@ -3192,8 +3446,7 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
         ),
         child: _backupCodes.isEmpty
             ? const Text('No backup codes provided.',
-                style: TextStyle(
-                    color: JournalColors.textMuted, fontSize: 13))
+                style: TextStyle(color: JournalColors.textMuted, fontSize: 13))
             : Wrap(
                 spacing: 12,
                 runSpacing: 8,
@@ -3276,7 +3529,10 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
       Row(children: [
         Expanded(
           child: GestureDetector(
-            onTap: () => setState(() { _phase = 'idle'; _err = null; }),
+            onTap: () => setState(() {
+              _phase = 'idle';
+              _err = null;
+            }),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
@@ -3338,7 +3594,10 @@ class _TwoFAScreenState extends State<_TwoFAScreen> {
                 padding: EdgeInsets.zero,
                 onPressed: () {
                   if (_phase == 'setup' || _phase == 'disable') {
-                    setState(() { _phase = 'idle'; _err = null; });
+                    setState(() {
+                      _phase = 'idle';
+                      _err = null;
+                    });
                   } else {
                     Navigator.pop(context);
                   }
@@ -3441,19 +3700,18 @@ class _NavRow extends StatelessWidget {
           Icon(icon, color: JournalColors.accent, size: 18),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: const TextStyle(
-                          color: JournalColors.textPrimary, fontSize: 15)),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle!,
-                        style: const TextStyle(
-                            color: JournalColors.textMuted, fontSize: 12)),
-                  ],
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: JournalColors.textPrimary, fontSize: 15)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle!,
+                    style: const TextStyle(
+                        color: JournalColors.textMuted, fontSize: 12)),
+              ],
+            ]),
           ),
           const Icon(CupertinoIcons.chevron_right,
               color: JournalColors.textMuted, size: 14),
@@ -3473,8 +3731,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding:
-            const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
         child: Row(children: [
           Icon(icon, color: JournalColors.accent, size: 18),
           const SizedBox(width: 14),
@@ -3504,8 +3761,7 @@ class _Pill extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: active
                 ? JournalColors.accent.withOpacity(0.18)
@@ -3520,12 +3776,10 @@ class _Pill extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: active
-                  ? JournalColors.accent
-                  : JournalColors.textSecondary,
+              color:
+                  active ? JournalColors.accent : JournalColors.textSecondary,
               fontSize: 12,
-              fontWeight:
-                  active ? FontWeight.w600 : FontWeight.normal,
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
         ),
@@ -3540,18 +3794,16 @@ class _StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isError = type == 'error';
-    final color   = isError ? Colors.red : JournalColors.accent;
+    final color = isError ? Colors.red : JournalColors.accent;
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.25)),
       ),
       child: Text(message,
-          style: TextStyle(
-              color: color.withOpacity(0.9), fontSize: 12)),
+          style: TextStyle(color: color.withOpacity(0.9), fontSize: 12)),
     );
   }
 }

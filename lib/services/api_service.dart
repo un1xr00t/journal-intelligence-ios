@@ -36,17 +36,24 @@ class SavedFloatchatMessage {
     required this.role,
     required this.content,
     this.actions = const [],
+    this.attachments = const [],
   });
 
   final String role;
   final String content;
   final List<Map<String, dynamic>> actions;
+  final List<Map<String, dynamic>> attachments;
 
   factory SavedFloatchatMessage.fromJson(Map<String, dynamic> json) {
     return SavedFloatchatMessage(
       role: json['role']?.toString() ?? 'assistant',
       content: json['content']?.toString() ?? '',
       actions: (json['actions'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          const <Map<String, dynamic>>[],
+      attachments: (json['attachments'] as List?)
               ?.whereType<Map>()
               .map((item) => Map<String, dynamic>.from(item))
               .toList() ??
@@ -58,6 +65,7 @@ class SavedFloatchatMessage {
         'role': role,
         'content': content,
         if (actions.isNotEmpty) 'actions': actions,
+        if (attachments.isNotEmpty) 'attachments': attachments,
       };
 }
 
@@ -566,14 +574,17 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> sendFloatchatMessage({
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required String contextString,
     bool webSearchEnabled = false,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
     final res = await _authedPost('/api/floatchat/message', data: {
       'messages': messages,
       'context_string': contextString,
       if (webSearchEnabled) 'enable_web_search': true,
+      if (attachments.isNotEmpty) 'attachments': attachments,
+      if (attachments.isNotEmpty) 'images': attachments,
     });
     return Map<String, dynamic>.from(res.data as Map);
   }
