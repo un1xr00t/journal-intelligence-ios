@@ -1560,6 +1560,9 @@ class _SageThread extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showIntroAtTop =
+        messages.isEmpty && !replyLoading && replyError == null;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (contextLoading) {
@@ -1634,7 +1637,9 @@ class _SageThread extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight - 30),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: showIntroAtTop
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.end,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _SageIntroCard(
