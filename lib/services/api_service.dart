@@ -338,10 +338,12 @@ class ApiService {
   Future<Map<String, dynamic>> sendFloatchatMessage({
     required List<Map<String, String>> messages,
     required String contextString,
+    bool webSearchEnabled = false,
   }) async {
     final res = await _authedPost('/api/floatchat/message', data: {
       'messages': messages,
       'context_string': contextString,
+      if (webSearchEnabled) 'enable_web_search': true,
     });
     return Map<String, dynamic>.from(res.data as Map);
   }

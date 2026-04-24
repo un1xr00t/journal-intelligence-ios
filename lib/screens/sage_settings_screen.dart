@@ -164,8 +164,8 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                   const Padding(
                     padding: EdgeInsets.only(top: 60),
                     child: Center(
-                      child:
-                          CupertinoActivityIndicator(color: JournalColors.accent),
+                      child: CupertinoActivityIndicator(
+                          color: JournalColors.accent),
                     ),
                   )
                 else ...[
@@ -217,8 +217,8 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: GestureDetector(
-                            onTap: () =>
-                                _saveSettings(_settings.copyWith(voiceId: voice.id)),
+                            onTap: () => _saveSettings(
+                                _settings.copyWith(voiceId: voice.id)),
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -262,7 +262,8 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                                   ),
                                   Icon(
                                     active
-                                        ? CupertinoIcons.check_mark_circled_solid
+                                        ? CupertinoIcons
+                                            .check_mark_circled_solid
                                         : CupertinoIcons.circle,
                                     color: active
                                         ? JournalColors.accent
@@ -298,7 +299,9 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                                 (opt) => Expanded(
                                   child: Padding(
                                     padding: EdgeInsets.only(
-                                      right: opt.id == _kWarmthOptions.last.id ? 0 : 8,
+                                      right: opt.id == _kWarmthOptions.last.id
+                                          ? 0
+                                          : 8,
                                     ),
                                     child: _ChoicePill(
                                       label: opt.label,
@@ -329,7 +332,9 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                                   child: Padding(
                                     padding: EdgeInsets.only(
                                       right:
-                                          opt.id == _kDirectnessOptions.last.id ? 0 : 8,
+                                          opt.id == _kDirectnessOptions.last.id
+                                              ? 0
+                                              : 8,
                                     ),
                                     child: _ChoicePill(
                                       label: opt.label,
@@ -358,8 +363,8 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                           subtitle:
                               'Start each new session with a context-aware opening.',
                           value: _settings.autoGreeting,
-                          onChanged: (value) =>
-                              _saveSettings(_settings.copyWith(autoGreeting: value)),
+                          onChanged: (value) => _saveSettings(
+                              _settings.copyWith(autoGreeting: value)),
                         ),
                         Container(
                           height: 1,
@@ -372,8 +377,8 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                           subtitle:
                               'Let Sage save durable conversation facts for future context.',
                           value: _settings.autoRemember,
-                          onChanged: (value) =>
-                              _saveSettings(_settings.copyWith(autoRemember: value)),
+                          onChanged: (value) => _saveSettings(
+                              _settings.copyWith(autoRemember: value)),
                         ),
                         Container(
                           height: 1,
@@ -386,10 +391,59 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                           subtitle:
                               'Keep Sage natural and blunt when the moment calls for it.',
                           value: _settings.allowSwearing,
-                          onChanged: (value) =>
-                              _saveSettings(_settings.copyWith(allowSwearing: value)),
+                          onChanged: (value) => _saveSettings(
+                              _settings.copyWith(allowSwearing: value)),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionLabel('INTELLIGENCE'),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.severity, 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _withAlpha(JournalColors.severity, 0.28),
+                      ),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          CupertinoIcons.globe,
+                          color: JournalColors.severity,
+                          size: 18,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Web search sends your questions to external servers to fetch real-time results. '
+                            'No journal content is included in the search — only the specific query Sage generates. '
+                            'Off by default.',
+                            style: TextStyle(
+                              color: JournalColors.severity,
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  GlassCard(
+                    child: _ToggleRow(
+                      icon: CupertinoIcons.search,
+                      title: 'Web search',
+                      subtitle:
+                          'Let Sage fetch real-time results for lawyers, resources, news, and anything that needs live data.',
+                      value: _settings.webSearchEnabled,
+                      onChanged: (value) => _saveSettings(
+                        _settings.copyWith(webSearchEnabled: value),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -487,9 +541,11 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: _withAlpha(JournalColors.bgSurface, 0.9),
+                                  color:
+                                      _withAlpha(JournalColors.bgSurface, 0.9),
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: JournalColors.border),
+                                  border:
+                                      Border.all(color: JournalColors.border),
                                 ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,

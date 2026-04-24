@@ -8,6 +8,7 @@ class SageSettings {
     required this.autoGreeting,
     required this.autoRemember,
     required this.allowSwearing,
+    required this.webSearchEnabled,
     required this.warmth,
     required this.directness,
   });
@@ -17,6 +18,7 @@ class SageSettings {
     autoGreeting: true,
     autoRemember: true,
     allowSwearing: true,
+    webSearchEnabled: false,
     warmth: 'warm',
     directness: 'direct',
   );
@@ -25,6 +27,7 @@ class SageSettings {
   final bool autoGreeting;
   final bool autoRemember;
   final bool allowSwearing;
+  final bool webSearchEnabled;
   final String warmth;
   final String directness;
 
@@ -33,6 +36,7 @@ class SageSettings {
         'auto_greeting': autoGreeting,
         'auto_remember': autoRemember,
         'allow_swearing': allowSwearing,
+        'web_search_enabled': webSearchEnabled,
         'warmth': warmth,
         'directness': directness,
       };
@@ -43,6 +47,8 @@ class SageSettings {
       autoGreeting: json['auto_greeting'] as bool? ?? defaults.autoGreeting,
       autoRemember: json['auto_remember'] as bool? ?? defaults.autoRemember,
       allowSwearing: json['allow_swearing'] as bool? ?? defaults.allowSwearing,
+      webSearchEnabled:
+          json['web_search_enabled'] as bool? ?? defaults.webSearchEnabled,
       warmth: json['warmth']?.toString() ?? defaults.warmth,
       directness: json['directness']?.toString() ?? defaults.directness,
     );
@@ -53,6 +59,7 @@ class SageSettings {
     bool? autoGreeting,
     bool? autoRemember,
     bool? allowSwearing,
+    bool? webSearchEnabled,
     String? warmth,
     String? directness,
   }) {
@@ -61,6 +68,7 @@ class SageSettings {
       autoGreeting: autoGreeting ?? this.autoGreeting,
       autoRemember: autoRemember ?? this.autoRemember,
       allowSwearing: allowSwearing ?? this.allowSwearing,
+      webSearchEnabled: webSearchEnabled ?? this.webSearchEnabled,
       warmth: warmth ?? this.warmth,
       directness: directness ?? this.directness,
     );
@@ -75,6 +83,7 @@ class SageSettings {
 Warmth: $warmth
 Directness: $directness
 $swearing
+Web search: ${webSearchEnabled ? 'ENABLED' : 'DISABLED'}
 ''';
   }
 }
@@ -141,7 +150,8 @@ class SageProfileService {
     try {
       final decoded = (jsonDecode(raw) as List)
           .whereType<Map>()
-          .map((item) => SageMemoryItem.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              SageMemoryItem.fromJson(Map<String, dynamic>.from(item)))
           .where((item) => item.text.trim().isNotEmpty)
           .toList();
       return decoded;
