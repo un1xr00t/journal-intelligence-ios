@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
@@ -159,6 +161,9 @@ const _kSupportedSageFileExtensions = <String>{
   'htm',
   'rtf',
   'sql',
+  'docx',
+  'odt',
+  'pdf',
 };
 
 const _kMaxSageFileChars = 12000;
@@ -169,7 +174,37 @@ String _extensionForName(String filename) {
   return filename.substring(dot + 1).toLowerCase();
 }
 
-Future<String?> _readTextFile(String path) async {
+String _decodeBasicHtmlEntities(String input) {
+  return input
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'");
+}
+
+String? _finalizeExtractedText(String raw) {
+  final cleaned = raw
+      .replaceAll('\u0000', '')
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+  if (cleaned.isEmpty) return null;
+
+  final truncated = cleaned.length > _kMaxSageFileChars
+      ? '${cleaned.substring(0, _kMaxSageFileChars)}\n... [truncated]'
+      : cleaned;
+  return truncated;
+}
+
+String _stripMarkdownImages(String text) {
+  return text.replaceAll(RegExp(r'!\[[^\]]*\]\([^)]+\)'), '').replaceAll(
+      RegExp(r'^\s*\[[^\]]*\]:\s*data:image/[^\n]+$', multiLine: true), '');
+}
+
+Future<String?> _readPlainTextFile(String path) async {
   try {
     final file = File(path);
     if (!await file.exists()) return null;
@@ -182,20 +217,160 @@ Future<String?> _readTextFile(String path) async {
     } catch (_) {
       text = latin1.decode(bytes, allowInvalid: true);
     }
-
-    final cleaned = text
-        .replaceAll('\u0000', '')
-        .replaceAll('\r\n', '\n')
-        .replaceAll('\r', '\n')
-        .trim();
-    if (cleaned.isEmpty) return null;
-
-    final truncated = cleaned.length > _kMaxSageFileChars
-        ? '${cleaned.substring(0, _kMaxSageFileChars)}\n... [truncated]'
-        : cleaned;
-    return truncated;
+    return _finalizeExtractedText(_stripMarkdownImages(text));
   } catch (_) {
     return null;
+  }
+}
+
+Future<String?> _readHtmlTextFile(String path) async {
+  final text = await _readPlainTextFile(path);
+  if (text == null) return null;
+
+  final withoutImages =
+      text.replaceAll(RegExp(r'<img\b[^>]*>', caseSensitive: false), ' ');
+  final withoutScript = withoutImages
+      .replaceAll(
+          RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false),
+          ' ')
+      .replaceAll(
+          RegExp(r'<style\b[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ');
+  final withBreaks = withoutScript
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</p\s*>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'</div\s*>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</li\s*>', caseSensitive: false), '\n');
+  final stripped = withBreaks.replaceAll(RegExp(r'<[^>]+>'), ' ');
+  return _finalizeExtractedText(_decodeBasicHtmlEntities(stripped));
+}
+
+String _decodeRtfHexEscapes(String text) {
+  return text.replaceAllMapped(RegExp(r"\\'([0-9a-fA-F]{2})"), (match) {
+    final value = int.tryParse(match.group(1) ?? '', radix: 16);
+    if (value == null) return '';
+    return latin1.decode([value], allowInvalid: true);
+  });
+}
+
+Future<String?> _readRtfTextFile(String path) async {
+  final text = await _readPlainTextFile(path);
+  if (text == null) return null;
+
+  final withoutPictures = text.replaceAll(
+    RegExp(r'\{\\pict[\s\S]*?\}', multiLine: true),
+    ' ',
+  );
+  final decoded = _decodeRtfHexEscapes(withoutPictures);
+  final withBreaks = decoded
+      .replaceAll(RegExp(r'\\par[d]?'), '\n')
+      .replaceAll(RegExp(r'\\line'), '\n')
+      .replaceAll(RegExp(r'\\tab'), '\t');
+  final stripped = withBreaks
+      .replaceAll(RegExp(r'\\[a-zA-Z]+\d* ?'), ' ')
+      .replaceAll(RegExp(r'[{}]'), ' ');
+  return _finalizeExtractedText(stripped);
+}
+
+String _extractTextFromXmlDocument(String xml) {
+  final withBreaks = xml
+      .replaceAll(RegExp(r'<w:tab\b[^>]*/>'), '\t')
+      .replaceAll(RegExp(r'<text:tab\b[^>]*/>'), '\t')
+      .replaceAll(RegExp(r'<w:(br|cr)\b[^>]*/>'), '\n')
+      .replaceAll(RegExp(r'<text:line-break\b[^>]*/>'), '\n')
+      .replaceAll('</w:p>', '\n\n')
+      .replaceAll('</text:p>', '\n\n')
+      .replaceAll('</text:h>', '\n\n')
+      .replaceAll('</table:table-row>', '\n');
+  final stripped = withBreaks.replaceAll(RegExp(r'<[^>]+>'), ' ');
+  return _decodeBasicHtmlEntities(stripped);
+}
+
+Future<String?> _readZipXmlTextFile(
+  String path, {
+  required bool Function(String name) includeFile,
+}) async {
+  try {
+    final file = File(path);
+    if (!await file.exists()) return null;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+
+    final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+    final xmlTexts = archive.files
+        .where((entry) => !entry.isFile ? false : includeFile(entry.name))
+        .map((entry) {
+          final content = entry.content;
+          if (content is List<int>) {
+            return utf8.decode(content, allowMalformed: true);
+          }
+          if (content is Uint8List) {
+            return utf8.decode(content, allowMalformed: true);
+          }
+          return '';
+        })
+        .where((text) => text.trim().isNotEmpty)
+        .toList();
+    if (xmlTexts.isEmpty) return null;
+
+    final combined = xmlTexts.map(_extractTextFromXmlDocument).join('\n\n');
+    return _finalizeExtractedText(combined);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<String?> _readDocxTextFile(String path) {
+  return _readZipXmlTextFile(
+    path,
+    includeFile: (name) =>
+        name.startsWith('word/') &&
+        name.endsWith('.xml') &&
+        !name.contains('/_rels/'),
+  );
+}
+
+Future<String?> _readOdtTextFile(String path) {
+  return _readZipXmlTextFile(
+    path,
+    includeFile: (name) => name == 'content.xml',
+  );
+}
+
+Future<String?> _readPdfTextFile(String path) async {
+  try {
+    final file = File(path);
+    if (!await file.exists()) return null;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+
+    final document = PdfDocument(inputBytes: bytes);
+    try {
+      final extractor = PdfTextExtractor(document);
+      final text = extractor.extractText();
+      return _finalizeExtractedText(text);
+    } finally {
+      document.dispose();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<String?> _readTextFile(String path, String extension) {
+  switch (extension) {
+    case 'html':
+    case 'htm':
+      return _readHtmlTextFile(path);
+    case 'rtf':
+      return _readRtfTextFile(path);
+    case 'docx':
+      return _readDocxTextFile(path);
+    case 'odt':
+      return _readOdtTextFile(path);
+    case 'pdf':
+      return _readPdfTextFile(path);
+    default:
+      return _readPlainTextFile(path);
   }
 }
 
@@ -366,7 +541,7 @@ class _SageScreenState extends State<SageScreen> {
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Some Files Skipped'),
         content: Text(
-          'Sage can currently read text-based files like TXT, Markdown, JSON, CSV, logs, YAML, XML, HTML, RTF, and SQL.\n\nSkipped: $shown$extra',
+          'Sage can currently read supported document and text formats like TXT, Markdown, JSON, CSV, logs, YAML, XML, HTML, RTF, SQL, DOCX, ODT, and text-based PDF files. Image content inside those files is ignored for now.\n\nSkipped: $shown$extra',
         ),
         actions: [
           CupertinoDialogAction(
@@ -1522,7 +1697,7 @@ class _SageFileDraft {
     final ext = _extensionForName(file.name);
     if (!_kSupportedSageFileExtensions.contains(ext)) return null;
 
-    final extractedText = await _readTextFile(path);
+    final extractedText = await _readTextFile(path, ext);
     if (extractedText == null || extractedText.trim().isEmpty) return null;
 
     return _SageFileDraft(
@@ -2395,7 +2570,6 @@ class _SageMessageAttachmentTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
                 width: 34,
@@ -2423,15 +2597,19 @@ class _SageMessageAttachmentTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                attachment.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: JournalColors.textSecondary,
-                  fontSize: 10,
-                  height: 1.3,
+              Expanded(
+                child: Center(
+                  child: Text(
+                    attachment.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 10,
+                      height: 1.3,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -2534,7 +2712,6 @@ class _SageInputBar extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.all(10),
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
                                   width: 30,
@@ -2564,15 +2741,19 @@ class _SageInputBar extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  attachment.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: JournalColors.textSecondary,
-                                    fontSize: 10,
-                                    height: 1.25,
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      attachment.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: JournalColors.textSecondary,
+                                        fontSize: 10,
+                                        height: 1.25,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -2751,7 +2932,7 @@ class _SageInputBar extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              'Attach text-based files and Sage will read their contents inside the chat.',
+              'Attach supported documents or text files and Sage will read the text it can extract inside the chat.',
               style: TextStyle(
                 color: JournalColors.textMuted,
                 fontSize: 11,

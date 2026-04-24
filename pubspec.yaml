@@ -42,10 +42,12 @@ dependencies:
 
   # File picker — Day One import + attachments
   file_picker: ^8.1.2
+  archive: ^3.6.1
 
- # PDF export sharing
+  # PDF export sharing
   share_plus: ^10.0.0
   path_provider: ^2.1.0
+  syncfusion_flutter_pdf: ^28.2.12
 
   # Markdown rendering (for AI responses)
   flutter_markdown: ^0.7.4
