@@ -22,6 +22,7 @@ import 'invite_access_screen.dart';
 import 'mental_health_screen.dart';
 import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
+import 'saved_sage_chats_screen.dart';
 import 'sage_settings_screen.dart';
 import 'settings_screen.dart';
 import 'timeline_screen.dart';
@@ -159,10 +160,12 @@ class _SageScreenState extends State<SageScreen> {
   bool _contextLoading = true;
   bool _replyLoading = false;
   bool _profileLoading = true;
+  bool _savingConversation = false;
   String? _speakingMessageId;
   String? _ttsLoadingMessageId;
   String? _ttsErrorMessageId;
   String? _ttsErrorText;
+  String? _savedConversationId;
   int _messageCounter = 0;
   int _ttsRequestCounter = 0;
   bool _ttsSequenceActive = false;
@@ -261,12 +264,16 @@ ${_settings.toPromptInstruction()}
 ''';
   }
 
-  Future<void> _loadContextAndStart({bool forceRefresh = false}) async {
+  Future<void> _loadContextAndStart({
+    bool forceRefresh = false,
+    bool autoStartGreeting = true,
+  }) async {
     setState(() {
       _contextLoading = true;
       _contextError = null;
       _replyError = null;
       _messages = const [];
+      _savedConversationId = null;
       _speakingMessageId = null;
       _ttsLoadingMessageId = null;
       _ttsErrorMessageId = null;
@@ -286,7 +293,7 @@ ${_settings.toPromptInstruction()}
         _expandedContextString = expandedContextString;
         _contextLoading = false;
       });
-      if (_settings.autoGreeting) {
+      if (autoStartGreeting && _settings.autoGreeting) {
         await _send(text: '[SESSION_START]', hiddenUserMessage: true);
       }
     } catch (_) {
@@ -738,7 +745,137 @@ Return JSON only.
         _ttsErrorText = null;
       });
     }
-    await _loadContextAndStart();
+    await _loadContextAndStart(autoStartGreeting: false);
+  }
+
+  List<Map<String, dynamic>> _messagesForSave() {
+    return _messages
+        .map((message) => message.toSavedPayload())
+        .where((message) =>
+            (message['content']?.toString().trim().isNotEmpty ?? false))
+        .toList();
+  }
+
+  Future<void> _showSavedChatMenu() async {
+    if (_savingConversation || _contextLoading) return;
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('Saved Chats'),
+        message: const Text(
+          'Save this Sage conversation to the server or open a previously saved one.',
+        ),
+        actions: [
+          if (_messages.isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'save'),
+              child: Text(
+                _savedConversationId == null
+                    ? 'Save current conversation'
+                    : 'Update saved conversation',
+              ),
+            ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context, 'open'),
+            child: const Text('Open saved conversations'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+    if (action == 'save') {
+      await _saveConversation();
+    } else if (action == 'open') {
+      await _openSavedConversations();
+    }
+  }
+
+  Future<void> _saveConversation() async {
+    if (_messages.isEmpty || _contextString == null || _savingConversation) {
+      return;
+    }
+
+    final wasUpdate = _savedConversationId != null;
+    setState(() => _savingConversation = true);
+    try {
+      final saved = await _api.saveFloatchatConversation(
+        conversationId: _savedConversationId,
+        contextString: _buildContextPayload(_contextString!),
+        messages: _messagesForSave(),
+        webSearchEnabled: _settings.webSearchEnabled,
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedConversationId = saved.id;
+        _savingConversation = false;
+      });
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title:
+              Text(wasUpdate ? 'Conversation updated' : 'Conversation saved'),
+          content: Text('"${saved.title}" is now available in Saved Chats.'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingConversation = false);
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: const Text('Save failed'),
+          content: Text(_parseError(e)),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _openSavedConversations() async {
+    final result = await Navigator.push<SavedSageChatsResult>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => const SavedSageChatsScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result.startNewChat) {
+      await _clearChat();
+      return;
+    }
+    final saved = result.conversation;
+    if (saved == null) return;
+
+    await _audioPlayer.stop();
+    setState(() {
+      _messages = saved.messages
+          .map((message) => _SageMessage.fromSavedMessage(message))
+          .toList();
+      _savedConversationId = saved.id;
+      _replyLoading = false;
+      _replyError = null;
+      _speakingMessageId = null;
+      _ttsLoadingMessageId = null;
+      _ttsErrorMessageId = null;
+      _ttsErrorText = null;
+    });
+    _scrollDown();
   }
 
   Future<void> _openSageSettings() async {
@@ -1092,8 +1229,9 @@ Return JSON only.
             children: [
               _SageHeader(
                 hasConversation: _messages.isNotEmpty,
-                busy: _replyLoading || _contextLoading,
+                busy: _replyLoading || _contextLoading || _savingConversation,
                 onClear: _clearChat,
+                onOpenSavedChats: _showSavedChatMenu,
                 onOpenSettings: _openSageSettings,
               ),
               Expanded(
@@ -1115,6 +1253,7 @@ Return JSON only.
                   settings: _settings,
                   profileLoading: _profileLoading,
                   memoryCount: _memoryItems.length,
+                  onNewChat: _clearChat,
                 ),
               ),
               _SageInputBar(
@@ -1164,9 +1303,24 @@ class _SageMessage {
   final String text;
   final List<Map<String, dynamic>> actions;
 
+  factory _SageMessage.fromSavedMessage(SavedFloatchatMessage message) {
+    return _SageMessage(
+      id: 'sage_saved_${DateTime.now().microsecondsSinceEpoch}_${message.role}_${message.content.length}',
+      role: message.role,
+      text: message.content,
+      actions: message.actions,
+    );
+  }
+
   Map<String, String> toApiMessage() => {
         'role': role,
         'content': text,
+      };
+
+  Map<String, dynamic> toSavedPayload() => {
+        'role': role,
+        'content': text,
+        if (actions.isNotEmpty) 'actions': actions,
       };
 }
 
@@ -1254,12 +1408,14 @@ class _SageHeader extends StatelessWidget {
     required this.hasConversation,
     required this.busy,
     required this.onClear,
+    required this.onOpenSavedChats,
     required this.onOpenSettings,
   });
 
   final bool hasConversation;
   final bool busy;
   final VoidCallback onClear;
+  final VoidCallback onOpenSavedChats;
   final VoidCallback onOpenSettings;
 
   @override
@@ -1304,6 +1460,11 @@ class _SageHeader extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              _HeaderButton(
+                icon: CupertinoIcons.bookmark,
+                onTap: onOpenSavedChats,
+              ),
+              const SizedBox(width: 10),
               _HeaderButton(
                 icon: CupertinoIcons.slider_horizontal_3,
                 onTap: onOpenSettings,
@@ -1374,6 +1535,7 @@ class _SageThread extends StatelessWidget {
     required this.settings,
     required this.profileLoading,
     required this.memoryCount,
+    required this.onNewChat,
   });
 
   final ScrollController scrollController;
@@ -1394,6 +1556,7 @@ class _SageThread extends StatelessWidget {
   final SageSettings settings;
   final bool profileLoading;
   final int memoryCount;
+  final Future<void> Function() onNewChat;
 
   @override
   Widget build(BuildContext context) {
@@ -1478,6 +1641,7 @@ class _SageThread extends StatelessWidget {
                   settings: settings,
                   profileLoading: profileLoading,
                   memoryCount: memoryCount,
+                  onNewChat: onNewChat,
                 ),
                 const SizedBox(height: 16),
                 ...messages.map(
@@ -1529,11 +1693,13 @@ class _SageIntroCard extends StatelessWidget {
     required this.settings,
     required this.profileLoading,
     required this.memoryCount,
+    required this.onNewChat,
   });
 
   final SageSettings settings;
   final bool profileLoading;
   final int memoryCount;
+  final Future<void> Function() onNewChat;
 
   @override
   Widget build(BuildContext context) {
@@ -1615,6 +1781,74 @@ class _SageIntroCard extends StatelessWidget {
                 ),
                 _MetaPill(label: '${settings.warmth} / ${settings.directness}'),
               ],
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: onNewChat,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      _withAlpha(JournalColors.accent, 0.16),
+                      _withAlpha(JournalColors.accent2, 0.1),
+                    ],
+                  ),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: _withAlpha(JournalColors.bgSurface, 0.9),
+                        border: Border.all(color: JournalColors.borderBright),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.plus_bubble,
+                        color: JournalColors.textPrimary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'New Chat',
+                            style: TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Start fresh without touching your saved chats.',
+                            style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      CupertinoIcons.arrow_up_right,
+                      color: JournalColors.accent,
+                      size: 17,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

@@ -4,6 +4,8 @@
 // Uses Dio + CookieManager so the HttpOnly refresh_token cookie is handled
 // exactly like the web app — no backend changes required.
 
+import 'dart:convert';
+
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -29,9 +31,84 @@ MediaType _imageMimeType(String filename) {
   }
 }
 
+class SavedFloatchatMessage {
+  const SavedFloatchatMessage({
+    required this.role,
+    required this.content,
+    this.actions = const [],
+  });
+
+  final String role;
+  final String content;
+  final List<Map<String, dynamic>> actions;
+
+  factory SavedFloatchatMessage.fromJson(Map<String, dynamic> json) {
+    return SavedFloatchatMessage(
+      role: json['role']?.toString() ?? 'assistant',
+      content: json['content']?.toString() ?? '',
+      actions: (json['actions'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          const <Map<String, dynamic>>[],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'content': content,
+        if (actions.isNotEmpty) 'actions': actions,
+      };
+}
+
+class SavedFloatchatConversation {
+  const SavedFloatchatConversation({
+    required this.id,
+    required this.title,
+    required this.preview,
+    required this.messageCount,
+    required this.webSearchEnabled,
+    required this.createdAt,
+    required this.updatedAt,
+    this.contextString,
+    this.messages = const [],
+  });
+
+  final String id;
+  final String title;
+  final String preview;
+  final int messageCount;
+  final bool webSearchEnabled;
+  final String createdAt;
+  final String updatedAt;
+  final String? contextString;
+  final List<SavedFloatchatMessage> messages;
+
+  factory SavedFloatchatConversation.fromJson(Map<String, dynamic> json) {
+    return SavedFloatchatConversation(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Saved Sage conversation',
+      preview: json['preview']?.toString() ?? '',
+      messageCount: (json['message_count'] as num?)?.toInt() ?? 0,
+      webSearchEnabled: json['web_search_enabled'] == true,
+      createdAt: json['created_at']?.toString() ?? '',
+      updatedAt: json['updated_at']?.toString() ?? '',
+      contextString: json['context_string']?.toString(),
+      messages: (json['messages'] as List?)
+              ?.whereType<Map>()
+              .map((item) => SavedFloatchatMessage.fromJson(
+                  Map<String, dynamic>.from(item)))
+              .toList() ??
+          const <SavedFloatchatMessage>[],
+    );
+  }
+}
+
 class ApiService {
   static const String baseUrl = 'https://journal.williamthomas.name';
   static const String _inviteTokenStorageKey = 'invite_access_token';
+  static const String _savedFloatchatStorageKey =
+      'saved_floatchat_conversations_v1';
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
@@ -96,6 +173,159 @@ class ApiService {
 
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _accessToken != null;
+
+  bool _isRouteMissing(DioException error) => error.response?.statusCode == 404;
+
+  String _collapseSavedText(String value, {required int limit}) {
+    final collapsed = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (collapsed.length <= limit) return collapsed;
+    return '${collapsed.substring(0, limit - 1).trimRight()}…';
+  }
+
+  String _deriveSavedTitle(
+    List<Map<String, dynamic>> messages, {
+    String? explicitTitle,
+  }) {
+    final explicit = explicitTitle?.trim();
+    if (explicit != null && explicit.isNotEmpty) {
+      return _collapseSavedText(explicit, limit: 80);
+    }
+
+    for (final message in messages) {
+      if (message['role']?.toString() == 'user') {
+        final content = message['content']?.toString().trim() ?? '';
+        if (content.isNotEmpty) return _collapseSavedText(content, limit: 80);
+      }
+    }
+
+    for (final message in messages) {
+      final content = message['content']?.toString().trim() ?? '';
+      if (content.isNotEmpty) return _collapseSavedText(content, limit: 80);
+    }
+
+    return 'Saved Sage conversation';
+  }
+
+  String _deriveSavedPreview(List<Map<String, dynamic>> messages) {
+    for (final message in messages.reversed) {
+      if (message['role']?.toString() == 'assistant') {
+        final content = message['content']?.toString().trim() ?? '';
+        if (content.isNotEmpty) return _collapseSavedText(content, limit: 180);
+      }
+    }
+
+    for (final message in messages.reversed) {
+      final content = message['content']?.toString().trim() ?? '';
+      if (content.isNotEmpty) return _collapseSavedText(content, limit: 180);
+    }
+
+    return 'No preview available.';
+  }
+
+  Future<List<SavedFloatchatConversation>>
+      _readLocalSavedFloatchatConversations() async {
+    final raw = await _storage.read(key: _savedFloatchatStorageKey);
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw) as List;
+      return decoded
+          .whereType<Map>()
+          .map((item) => SavedFloatchatConversation.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _writeLocalSavedFloatchatConversations(
+    List<SavedFloatchatConversation> items,
+  ) {
+    return _storage.write(
+      key: _savedFloatchatStorageKey,
+      value: jsonEncode(
+        items
+            .map((item) => {
+                  'id': item.id,
+                  'title': item.title,
+                  'preview': item.preview,
+                  'message_count': item.messageCount,
+                  'web_search_enabled': item.webSearchEnabled,
+                  'created_at': item.createdAt,
+                  'updated_at': item.updatedAt,
+                  'context_string': item.contextString,
+                  'messages':
+                      item.messages.map((message) => message.toJson()).toList(),
+                })
+            .toList(),
+      ),
+    );
+  }
+
+  Future<SavedFloatchatConversation> _saveFloatchatConversationLocally({
+    String? conversationId,
+    String? title,
+    required String contextString,
+    required List<Map<String, dynamic>> messages,
+    required bool webSearchEnabled,
+  }) async {
+    final existing = await _readLocalSavedFloatchatConversations();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final id = (conversationId != null && conversationId.trim().isNotEmpty)
+        ? conversationId.trim()
+        : 'local_${DateTime.now().microsecondsSinceEpoch}';
+
+    SavedFloatchatConversation? previous;
+    for (final item in existing) {
+      if (item.id == id) {
+        previous = item;
+        break;
+      }
+    }
+
+    final saved = SavedFloatchatConversation(
+      id: id,
+      title: _deriveSavedTitle(messages, explicitTitle: title),
+      preview: _deriveSavedPreview(messages),
+      messageCount: messages.length,
+      webSearchEnabled: webSearchEnabled,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      contextString: contextString,
+      messages: messages
+          .map((item) => SavedFloatchatMessage.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList(),
+    );
+
+    final next = [
+      saved,
+      ...existing.where((item) => item.id != id),
+    ];
+    await _writeLocalSavedFloatchatConversations(next);
+    return saved;
+  }
+
+  Future<SavedFloatchatConversation> _getLocalSavedFloatchatConversation(
+    String conversationId,
+  ) async {
+    final items = await _readLocalSavedFloatchatConversations();
+    for (final item in items) {
+      if (item.id == conversationId) return item;
+    }
+    throw DioException(
+      requestOptions:
+          RequestOptions(path: '/api/floatchat/saved/$conversationId'),
+      response: Response(
+        requestOptions:
+            RequestOptions(path: '/api/floatchat/saved/$conversationId'),
+        statusCode: 404,
+        data: {'detail': 'Saved conversation not found.'},
+      ),
+    );
+  }
 
   // ── Auth ──────────────────────────────────────────────────────
 
@@ -346,6 +576,90 @@ class ApiService {
       if (webSearchEnabled) 'enable_web_search': true,
     });
     return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<SavedFloatchatConversation> saveFloatchatConversation({
+    String? conversationId,
+    String? title,
+    required String contextString,
+    required List<Map<String, dynamic>> messages,
+    bool webSearchEnabled = false,
+  }) async {
+    final payload = {
+      if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+      'context_string': contextString,
+      'messages': messages,
+      'web_search_enabled': webSearchEnabled,
+    };
+
+    try {
+      final Response res;
+      if (conversationId != null && conversationId.trim().isNotEmpty) {
+        res = await _authedPut(
+          '/api/floatchat/saved/${conversationId.trim()}',
+          data: payload,
+        );
+      } else {
+        res = await _authedPost('/api/floatchat/saved', data: payload);
+      }
+
+      return SavedFloatchatConversation.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      return _saveFloatchatConversationLocally(
+        conversationId: conversationId,
+        title: title,
+        contextString: contextString,
+        messages: messages,
+        webSearchEnabled: webSearchEnabled,
+      );
+    }
+  }
+
+  Future<List<SavedFloatchatConversation>>
+      listSavedFloatchatConversations() async {
+    try {
+      final res = await _authedGet('/api/floatchat/saved');
+      final data = res.data;
+      final items = data is List
+          ? data
+          : (data is Map ? data['items'] as List? ?? const [] : const []);
+      return items
+          .whereType<Map>()
+          .map((item) => SavedFloatchatConversation.fromJson(
+              Map<String, dynamic>.from(item)))
+          .toList();
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      return _readLocalSavedFloatchatConversations();
+    }
+  }
+
+  Future<SavedFloatchatConversation> getSavedFloatchatConversation(
+    String conversationId,
+  ) async {
+    try {
+      final res = await _authedGet('/api/floatchat/saved/$conversationId');
+      return SavedFloatchatConversation.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      return _getLocalSavedFloatchatConversation(conversationId);
+    }
+  }
+
+  Future<void> deleteSavedFloatchatConversation(String conversationId) async {
+    try {
+      await _authedDelete('/api/floatchat/saved/$conversationId');
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final items = await _readLocalSavedFloatchatConversations();
+      final next = items.where((item) => item.id != conversationId).toList();
+      await _writeLocalSavedFloatchatConversations(next);
+    }
   }
 
   Future<List<int>> voiceSpeak({
