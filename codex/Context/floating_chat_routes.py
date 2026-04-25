@@ -22,6 +22,7 @@ logger = logging.getLogger("journal")
 ANTHROPIC_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 ANTHROPIC_IMAGE_TARGET_BYTES = 4_500_000
 ANTHROPIC_IMAGE_MAX_DIMENSION = 1568
+SAGE_VISION_MODEL = "claude-sonnet-4-6"
 
 
 class ChatMessage(BaseModel):
@@ -448,15 +449,14 @@ def register_floating_chat_routes(app, require_any_user):
             if all_images:
                 # Vision path — call Anthropic directly so we can pass content blocks.
                 # Use the same per-user key source as the rest of the app.
-                from src.api.ai_client import get_anthropic_key, get_model
+                from src.api.ai_client import get_anthropic_key
                 api_key = get_anthropic_key(user_id)
                 if not api_key:
                     raise RuntimeError("No Anthropic API key configured for this user.")
 
                 client = anthropic.Anthropic(api_key=api_key)
-                model = get_model()
                 msg    = client.messages.create(
-                    model=model,
+                    model=SAGE_VISION_MODEL,
                     max_tokens=500,
                     system=system_prompt,
                     messages=messages_payload,

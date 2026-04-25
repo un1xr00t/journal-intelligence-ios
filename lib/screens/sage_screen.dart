@@ -2842,9 +2842,10 @@ class _SageMessageAttachmentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isImage = attachment.isImage;
     return Container(
-      width: 92,
-      height: 92,
+      width: isImage ? 112 : 98,
+      height: isImage ? 112 : 98,
       decoration: BoxDecoration(
         color: _withAlpha(JournalColors.bgSurface, 0.92),
         borderRadius: BorderRadius.circular(16),
@@ -2853,50 +2854,55 @@ class _SageMessageAttachmentTile extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(9),
           child: Column(
             children: [
-              if (attachment.isImage && attachment.path.isNotEmpty)
+              if (isImage && attachment.path.isNotEmpty)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.file(
                     File(attachment.path),
-                    width: 34,
-                    height: 34,
+                    width: 78,
+                    height: 78,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        _AttachmentIcon(isImage: attachment.isImage),
+                    errorBuilder: (_, __, ___) => _AttachmentIcon(
+                      isImage: isImage,
+                      size: 78,
+                      iconSize: 24,
+                    ),
                   ),
                 )
               else
-                _AttachmentIcon(isImage: attachment.isImage),
-              const SizedBox(height: 8),
+                _AttachmentIcon(isImage: isImage),
+              const SizedBox(height: 6),
               Text(
                 attachment.displayExtension,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: JournalColors.accent,
-                  fontSize: 10,
+                  fontSize: isImage ? 11 : 10,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 4),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    attachment.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 10,
-                      height: 1.3,
+              if (!isImage) ...[
+                const SizedBox(height: 3),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      attachment.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 10,
+                        height: 1.3,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -3005,18 +3011,19 @@ class _SageInputBar extends StatelessWidget {
         children: [
           if (attachments.isNotEmpty) ...[
             SizedBox(
-              height: 86,
+              height: 112,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: attachments.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                 itemBuilder: (_, index) {
                   final attachment = attachments[index];
+                  final isImage = attachment.isImage;
                   return Stack(
                     clipBehavior: Clip.none,
                     children: [
                       Container(
-                        width: 86,
+                        width: isImage ? 108 : 94,
                         decoration: BoxDecoration(
                           color: _withAlpha(JournalColors.bgCardAlt, 0.94),
                           borderRadius: BorderRadius.circular(18),
@@ -3025,59 +3032,60 @@ class _SageInputBar extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(17),
                           child: Padding(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(9),
                             child: Column(
                               children: [
-                                if (attachment.isImage &&
-                                    attachment.path.isNotEmpty)
+                                if (isImage && attachment.path.isNotEmpty)
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
                                     child: Image.file(
                                       File(attachment.path),
-                                      width: 30,
-                                      height: 30,
+                                      width: 74,
+                                      height: 74,
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>
                                           _AttachmentIcon(
-                                        isImage: attachment.isImage,
-                                        size: 30,
-                                        iconSize: 16,
+                                        isImage: isImage,
+                                        size: 74,
+                                        iconSize: 22,
                                       ),
                                     ),
                                   )
                                 else
                                   _AttachmentIcon(
-                                    isImage: attachment.isImage,
-                                    size: 30,
+                                    isImage: isImage,
+                                    size: 40,
                                     iconSize: 16,
                                   ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 Text(
                                   attachment.displayExtension,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: JournalColors.accent,
-                                    fontSize: 9,
+                                    fontSize: isImage ? 11 : 9,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Expanded(
-                                  child: Center(
-                                    child: Text(
-                                      attachment.name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: JournalColors.textSecondary,
-                                        fontSize: 10,
-                                        height: 1.25,
+                                if (!isImage) ...[
+                                  const SizedBox(height: 3),
+                                  Expanded(
+                                    child: Center(
+                                      child: Text(
+                                        attachment.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: JournalColors.textSecondary,
+                                          fontSize: 10,
+                                          height: 1.25,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),

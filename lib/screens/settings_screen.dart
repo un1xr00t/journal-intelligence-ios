@@ -1901,7 +1901,7 @@ class _AIProviderScreenState extends State<_AIProviderScreen> {
                             CupertinoTextField(
                               controller: _modelCtrl,
                               placeholder: _provider == 'anthropic'
-                                  ? 'claude-sonnet-4-5'
+                                  ? 'claude-sonnet-4-6'
                                   : _provider == 'openai'
                                       ? 'gpt-4o-mini'
                                       : 'model-name',

@@ -2103,7 +2103,7 @@ class _AiProviderStepState extends State<_AiProviderStep> {
   String? _err;
 
   final _providers = const [
-    ('anthropic', '⊕', 'Anthropic Claude', 'claude-3-5-sonnet-20241022'),
+    ('anthropic', '⊕', 'Anthropic Claude', 'claude-sonnet-4-6'),
     ('openai',    '◈', 'OpenAI GPT',       'gpt-4o'),
     ('gemini',    '⬡', 'Google Gemini',    'gemini-1.5-pro'),
   ];
