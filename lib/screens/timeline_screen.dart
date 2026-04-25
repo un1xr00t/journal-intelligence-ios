@@ -18,6 +18,14 @@ class TimelineScreen extends StatefulWidget {
 
 class _TimelineScreenState extends State<TimelineScreen> {
   static const int _pageSize = 20;
+  static const List<String> _summaryTones = [
+    'therapist',
+    'best_friend',
+    'coach',
+    'mentor',
+    'inner_critic',
+    'chaos_agent',
+  ];
 
   final _api = ApiService();
   final _scroll = ScrollController();
@@ -31,6 +39,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   Map<String, dynamic>? _masterSummary;
   bool _summaryLoading = true;
+  String? _summaryTone;
+  bool _checkingSummaryTone = false;
 
   @override
   void initState() {
@@ -56,16 +66,49 @@ class _TimelineScreenState extends State<TimelineScreen> {
     }
   }
 
-  Future<void> _loadSummary() async {
-    if (_masterSummary != null) return;
+  Map<String, dynamic>? _normalizeInsightPayload(Map<String, dynamic> data) {
+    final payload = data['data'];
+    final normalized = payload is Map
+        ? Map<String, dynamic>.from(payload)
+        : Map<String, dynamic>.from(data);
+    final insight = normalized['insight']?.toString().trim();
+    return insight?.isNotEmpty == true ? normalized : null;
+  }
+
+  Future<(String, Map<String, dynamic>?)> _loadCachedSummaryForTone(
+    String tone,
+  ) async {
+    final data = await _api.getTherapistInsightStatus(tone: tone);
+    return (tone, _normalizeInsightPayload(data));
+  }
+
+  Future<(String, Map<String, dynamic>?)> _loadBestCachedSummary(
+    String preferredTone,
+  ) async {
+    final preferred = await _loadCachedSummaryForTone(preferredTone);
+    if (preferred.$2 != null) return preferred;
+
+    for (final tone in _summaryTones) {
+      if (tone == preferredTone) continue;
+      try {
+        final fallback = await _loadCachedSummaryForTone(tone);
+        if (fallback.$2 != null) return fallback;
+      } catch (_) {}
+    }
+
+    return preferred;
+  }
+
+  Future<void> _loadSummary({bool force = false, String? toneOverride}) async {
+    if (!force && _masterSummary != null) return;
     if (mounted) setState(() => _summaryLoading = true);
     try {
-      final tone = await _getPreferredTone();
-      final data = await _api.getTherapistInsightStatus(tone: tone);
-      final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
+      final tone = toneOverride ?? await _getPreferredTone();
+      final result = await _loadBestCachedSummary(tone);
       if (mounted) {
         setState(() {
-          _masterSummary = hasContent ? data : null;
+          _summaryTone = result.$1;
+          _masterSummary = result.$2;
           _summaryLoading = false;
         });
       }
@@ -88,22 +131,65 @@ class _TimelineScreenState extends State<TimelineScreen> {
     }
     try {
       final tone = await _getPreferredTone();
-      final data = await _api.generateTherapistInsight(tone: tone, force: true);
-      final hasContent = (data['insight'] as String?)?.isNotEmpty == true;
+      await _api.generateTherapistInsight(tone: tone, force: true);
+      final result = await _loadBestCachedSummary(tone);
       if (mounted) {
         setState(() {
-          _masterSummary = hasContent ? data : null;
+          _summaryTone = result.$1;
+          _masterSummary = result.$2;
           _summaryLoading = false;
         });
       }
     } catch (_) {
+      Map<String, dynamic>? cached;
+      try {
+        final tone = await _getPreferredTone();
+        final result = await _loadBestCachedSummary(tone);
+        cached = result.$2;
+        if (cached != null) _summaryTone = result.$1;
+      } catch (_) {}
       if (mounted) {
         setState(() {
-          _masterSummary = null;
+          _masterSummary = cached;
           _summaryLoading = false;
         });
       }
     }
+  }
+
+  Future<void> _refreshTimeline() async {
+    await Future.wait([
+      _load(),
+      _reloadSummary(),
+    ]);
+  }
+
+  Future<void> _reloadSummary() async {
+    if (mounted) {
+      setState(() {
+        _masterSummary = null;
+      });
+    }
+    await _loadSummary(force: true);
+  }
+
+  void _checkSummaryToneAfterBuild() {
+    if (_checkingSummaryTone) return;
+    _checkingSummaryTone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final preferredTone = await _getPreferredTone();
+        if (!mounted) return;
+        if (_summaryTone != null && preferredTone != _summaryTone) {
+          setState(() {
+            _masterSummary = null;
+          });
+          await _loadSummary(force: true, toneOverride: preferredTone);
+        }
+      } finally {
+        _checkingSummaryTone = false;
+      }
+    });
   }
 
   void _onScroll() {
@@ -415,6 +501,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _checkSummaryToneAfterBuild();
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
       child: Stack(
@@ -430,7 +517,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   bottom: BorderSide(color: JournalColors.border, width: 0.5),
                 ),
                 trailing: GestureDetector(
-                  onTap: _load,
+                  onTap: _refreshTimeline,
                   child: const Icon(
                     CupertinoIcons.refresh,
                     color: JournalColors.accent,
@@ -898,31 +985,24 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
                           ],
                         ),
                       ),
-                      if (cached)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            color: Colors.white.withOpacity(0.06),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.12),
-                            ),
-                          ),
-                          child: const Text(
-                            'cached',
-                            style: TextStyle(
-                              color: JournalColors.textMuted,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  if (cached) ...[
+                    const SizedBox(height: 12),
+                    const Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _SummaryMetaPill(
+                          icon: CupertinoIcons.check_mark_circled,
+                          label: 'cached',
+                          accent: JournalColors.textMuted,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ] else
+                    const SizedBox(height: 18),
                   Text(
                     insight,
                     style: const TextStyle(
@@ -971,7 +1051,7 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: JournalColors.accent.withOpacity(0.14),
+        color: JournalColors.accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(26),
       ),
       padding: const EdgeInsets.only(left: 20),
@@ -985,6 +1065,45 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
             style: const TextStyle(
               color: JournalColors.accent,
               fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetaPill extends StatelessWidget {
+  const _SummaryMetaPill({
+    required this.icon,
+    required this.label,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: accent.withValues(alpha: 0.08),
+        border: Border.all(color: accent.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: accent, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
           ),
