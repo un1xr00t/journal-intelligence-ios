@@ -2436,69 +2436,80 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
 
     showCupertinoModalPopup<String>(
       context: context,
-      builder: (_) => Container(
-        color: JournalColors.bgCard,
-        height: 300,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text('Cancel',
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: Container(
+          color: JournalColors.bgCard,
+          height: 300,
+          child: Column(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Text('Cancel',
+                          style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 15,
+                              decoration: TextDecoration.none)),
+                    ),
+                    const Text('Pick a question',
                         style: TextStyle(
-                            color: JournalColors.textSecondary, fontSize: 15)),
-                  ),
-                  const Text('Pick a question',
-                      style: TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text('Done',
-                        style: TextStyle(
-                            color: JournalColors.accent,
+                            color: JournalColors.textPrimary,
                             fontSize: 15,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: CupertinoPicker(
-                itemExtent: 44,
-                scrollController: FixedExtentScrollController(
-                  initialItem: opts.indexOf(current).clamp(0, opts.length - 1),
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.none)),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Text('Done',
+                          style: TextStyle(
+                              color: JournalColors.accent,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.none)),
+                    ),
+                  ],
                 ),
-                onSelectedItemChanged: (i) {
-                  setState(() {
-                    if (idx == 0)
-                      _q1 = opts[i];
-                    else if (idx == 1)
-                      _q2 = opts[i];
-                    else
-                      _q3 = opts[i];
-                  });
-                },
-                children: opts
-                    .map((q) => Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(q,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 13)),
-                          ),
-                        ))
-                    .toList(),
               ),
-            ),
-          ],
+              Expanded(
+                child: CupertinoPicker(
+                  itemExtent: 44,
+                  scrollController: FixedExtentScrollController(
+                    initialItem:
+                        opts.indexOf(current).clamp(0, opts.length - 1),
+                  ),
+                  onSelectedItemChanged: (i) {
+                    setState(() {
+                      if (idx == 0)
+                        _q1 = opts[i];
+                      else if (idx == 1)
+                        _q2 = opts[i];
+                      else
+                        _q3 = opts[i];
+                    });
+                  },
+                  children: opts
+                      .map((q) => Center(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(q,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 13,
+                                      decoration: TextDecoration.none)),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
