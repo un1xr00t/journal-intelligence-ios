@@ -14,43 +14,127 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_card.dart';
+
+Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const _kStepLabels = [
-  '✦  Welcome',   '◈  Features',  '◎  About You',  '〜  Situation',
-  '◈  People',    '⬡  Topics',    '⊕  Goals',      '⊞  Account',
-  '◉  Recovery',  '⊙  AI Setup',  '◷  Memory',     '⬆  Import',
-  '◉  Text Journal', '〇  All Set',
+  'Welcome',
+  'Features',
+  'About You',
+  'Situation',
+  'People',
+  'Topics',
+  'Goals',
+  'Account',
+  'Recovery',
+  'AI Setup',
+  'Memory',
+  'Import',
+  'Text Journal',
+  'All Set',
 ];
 
 const _kSituationOpts = [
-  ('relationship',  '⚡', 'Relationship',     'Difficult relationship or planning to leave'),
-  ('custody',       '◎', 'Custody/Parenting', 'Co-parenting conflict or custody dispute'),
-  ('workplace',     '⊞', 'Workplace',         'Hostile work environment or HR matter'),
-  ('housing',       '⬡', 'Housing',           'Instability, eviction, or unsafe living'),
-  ('legal',         '⊕', 'Legal Matter',      'Ongoing legal case needing documentation'),
-  ('mental_health', '〜', 'Mental Health',     'Tracking mood, anxiety, or wellbeing'),
-  ('growth',        '◈', 'Personal Growth',   'Self-reflection and building self-knowledge'),
-  ('other',         '✦', 'Something Else',    "My situation doesn't fit a category"),
+  (
+    'relationship',
+    '⚡',
+    'Relationship',
+    'Difficult relationship or planning to leave'
+  ),
+  (
+    'custody',
+    '◎',
+    'Custody/Parenting',
+    'Co-parenting conflict or custody dispute'
+  ),
+  ('workplace', '⊞', 'Workplace', 'Hostile work environment or HR matter'),
+  ('housing', '⬡', 'Housing', 'Instability, eviction, or unsafe living'),
+  ('legal', '⊕', 'Legal Matter', 'Ongoing legal case needing documentation'),
+  (
+    'mental_health',
+    '〜',
+    'Mental Health',
+    'Tracking mood, anxiety, or wellbeing'
+  ),
+  (
+    'growth',
+    '◈',
+    'Personal Growth',
+    'Self-reflection and building self-knowledge'
+  ),
+  ('other', '✦', 'Something Else', "My situation doesn't fit a category"),
 ];
 
 const _kTopicOpts = [
-  'Anxiety','Sleep','Health','Work','Relationships','Family',
-  'Money','Safety','Legal','Housing','Trauma','Boundaries',
-  'Self-worth','Healing','Documentation','Growth','Addiction',
-  'Children','Isolation','Identity',
+  'Anxiety',
+  'Sleep',
+  'Health',
+  'Work',
+  'Relationships',
+  'Family',
+  'Money',
+  'Safety',
+  'Legal',
+  'Housing',
+  'Trauma',
+  'Boundaries',
+  'Self-worth',
+  'Healing',
+  'Documentation',
+  'Growth',
+  'Addiction',
+  'Children',
+  'Isolation',
+  'Identity',
 ];
 
 const _kGoalOpts = [
-  ('document',  '◷', 'Document my experience',    'Build an accurate, timestamped record'),
-  ('patterns',  '⬡', "Find patterns I'm missing",  "Let AI surface what I can't see myself"),
-  ('case_file', '⊕', 'Build a case file',          'Exportable evidence for legal/medical use'),
-  ('mental',    '〜', 'Track my mental health',     'Mood, severity, and stability over time'),
-  ('exit',      '⚡', 'Plan a major life change',   'Structured roadmap with AI support'),
-  ('process',   '◎', 'Process my feelings',        "Understand what I'm actually experiencing"),
-  ('evidence',  '◈', 'Gather legal evidence',       'For custody, restraining orders, or court'),
-  ('heal',      '✦', 'Grow and heal',              'Long-term self-knowledge and recovery'),
+  (
+    'document',
+    '◷',
+    'Document my experience',
+    'Build an accurate, timestamped record'
+  ),
+  (
+    'patterns',
+    '⬡',
+    "Find patterns I'm missing",
+    "Let AI surface what I can't see myself"
+  ),
+  (
+    'case_file',
+    '⊕',
+    'Build a case file',
+    'Exportable evidence for legal/medical use'
+  ),
+  (
+    'mental',
+    '〜',
+    'Track my mental health',
+    'Mood, severity, and stability over time'
+  ),
+  (
+    'exit',
+    '⚡',
+    'Plan a major life change',
+    'Structured roadmap with AI support'
+  ),
+  (
+    'process',
+    '◎',
+    'Process my feelings',
+    "Understand what I'm actually experiencing"
+  ),
+  (
+    'evidence',
+    '◈',
+    'Gather legal evidence',
+    'For custody, restraining orders, or court'
+  ),
+  ('heal', '✦', 'Grow and heal', 'Long-term self-knowledge and recovery'),
 ];
 
 const _kPronounOpts = ['she/her', 'he/him', 'they/them', 'prefer not to say'];
@@ -80,23 +164,16 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _api = ApiService();
-
   int _step = 0;
 
   // Form data — mirrors Onboarding.jsx form state
   String _preferredName = '';
-  String _pronouns      = '';
+  String _pronouns = '';
   String _situationType = '';
   String _situationStory = '';
   final List<Map<String, String>> _people = [];
   final List<String> _topics = [];
-  final List<String> _goals  = [];
-  String _username        = '';
-  String _email           = '';
-  String _password        = '';
-  String? _pendingApiKey; // shown once after registration
-
+  final List<String> _goals = [];
   // Auth tokens held mid-onboarding (don't transition yet)
   Map<String, dynamic>? _midUser;
 
@@ -109,15 +186,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Map<String, dynamic> _memoryPayload({String aiSummary = ''}) => {
-    'preferred_name':   _preferredName,
-    'pronouns':         _pronouns,
-    'situation_type':   _situationType,
-    'situation_story':  _situationStory,
-    'people':           _people,
-    'topics':           _topics,
-    'goals':            _goals,
-    if (aiSummary.isNotEmpty) 'ai_summary': aiSummary,
-  };
+        'preferred_name': _preferredName,
+        'pronouns': _pronouns,
+        'situation_type': _situationType,
+        'situation_story': _situationStory,
+        'people': _people,
+        'topics': _topics,
+        'goals': _goals,
+        if (aiSummary.isNotEmpty) 'ai_summary': aiSummary,
+      };
 
   void _finishOnboarding() {
     if (!mounted) return;
@@ -145,17 +222,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           pronouns: _pronouns,
           onChanged: (name, pronouns) => setState(() {
             _preferredName = name;
-            _pronouns      = pronouns;
+            _pronouns = pronouns;
           }),
           onNext: _next,
           onBack: _back,
         );
       case 3:
         return _SituationStep(
-          situationType:  _situationType,
+          situationType: _situationType,
           situationStory: _situationStory,
           onChanged: (type, story) => setState(() {
-            _situationType  = type;
+            _situationType = type;
             _situationStory = story;
           }),
           onNext: _next,
@@ -163,34 +240,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         );
       case 4:
         return _PeopleStep(
-          people:    _people,
-          onChanged: (p) => setState(() { _people.clear(); _people.addAll(p); }),
+          people: _people,
+          onChanged: (p) => setState(() {
+            _people.clear();
+            _people.addAll(p);
+          }),
           onNext: _next,
           onBack: _back,
         );
       case 5:
         return _TopicsStep(
-          topics:    _topics,
-          onChanged: (t) => setState(() { _topics.clear(); _topics.addAll(t); }),
+          topics: _topics,
+          onChanged: (t) => setState(() {
+            _topics.clear();
+            _topics.addAll(t);
+          }),
           onNext: _next,
           onBack: _back,
         );
       case 6:
         return _GoalsStep(
-          goals:     _goals,
-          onChanged: (g) => setState(() { _goals.clear(); _goals.addAll(g); }),
+          goals: _goals,
+          onChanged: (g) => setState(() {
+            _goals.clear();
+            _goals.addAll(g);
+          }),
           onNext: _next,
           onBack: _back,
         );
       case 7:
         return _AccountStep(
-          onSuccess: (username, email, password, user, apiKey) {
+          onSuccess: (_, __, ___, user, ____) {
             setState(() {
-              _username      = username;
-              _email         = email;
-              _password      = password;
-              _midUser       = user;
-              _pendingApiKey = apiKey;
+              _midUser = user;
             });
             _next();
           },
@@ -202,9 +284,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         return _AiProviderStep(onNext: _next, onBack: _back);
       case 10:
         return _MemoryStep(
-          payload:  _memoryPayload(),
-          onNext:   _next,
-          onBack:   _back,
+          payload: _memoryPayload(),
+          onNext: _next,
+          onBack: _back,
         );
       case 11:
         return _DayOneStep(onNext: _next, onBack: _back);
@@ -213,7 +295,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       case 13:
         return _DoneStep(
           preferredName: _preferredName,
-          onDone:        _finishOnboarding,
+          onDone: _finishOnboarding,
         );
       default:
         _finishOnboarding();
@@ -225,40 +307,113 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JournalColors.bgBase,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Progress bar ─────────────────────────────────────
-            _ProgressDots(current: _step, total: _kStepLabels.length),
-
-            // ── Step content ─────────────────────────────────────
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.04),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-                      child: child,
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _OnboardingBackdrop()),
+          SafeArea(
+            child: Column(
+              children: [
+                _ProgressDots(current: _step, total: _kStepLabels.length),
+                Expanded(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(20, 2, 20, 32),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 280),
+                          transitionBuilder: (child, anim) => FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.035),
+                                end: Offset.zero,
+                              ).animate(
+                                CurvedAnimation(
+                                  parent: anim,
+                                  curve: Curves.easeOutCubic,
+                                ),
+                              ),
+                              child: child,
+                            ),
+                          ),
+                          child: KeyedSubtree(
+                            key: ValueKey(_step),
+                            child: _buildCurrentStep(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  child: KeyedSubtree(
-                    key: ValueKey(_step),
-                    child: _buildCurrentStep(),
-                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _OnboardingBackdrop extends StatelessWidget {
+  const _OnboardingBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(0.25, -0.65),
+          radius: 1.25,
+          colors: [
+            _withAlpha(JournalColors.bgCardAlt, 0.82),
+            JournalColors.bgBase,
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    _withAlpha(JournalColors.accent, 0.10),
+                    _withAlpha(JournalColors.bgBase, 0.0),
+                    _withAlpha(JournalColors.info, 0.05),
+                  ],
+                  stops: const [0, 0.42, 1],
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: CustomPaint(painter: _OnboardingGridPainter()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnboardingGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _withAlpha(JournalColors.borderBright, 0.14)
+      ..strokeWidth = 0.7;
+    const gap = 44.0;
+    for (double y = 0; y < size.height; y += gap) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Progress Dots ─────────────────────────────────────────────────────────────
@@ -271,40 +426,49 @@ class _ProgressDots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
       child: Column(
         children: [
-          // Step label
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                _kStepLabels[current],
-                style: const TextStyle(
-                  color: JournalColors.accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgCardAlt, 0.72),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: JournalColors.border),
+                ),
+                child: Text(
+                  _kStepLabels[current].toUpperCase(),
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
                 ),
               ),
               Text(
-                '${current + 1} of $total',
+                '${current + 1}/$total',
                 style: const TextStyle(
                   color: JournalColors.textMuted,
                   fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // Progress bar
+          const SizedBox(height: 12),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: (current + 1) / total,
-              backgroundColor: JournalColors.border,
-              valueColor: const AlwaysStoppedAnimation<Color>(JournalColors.accent),
-              minHeight: 3,
+              backgroundColor: _withAlpha(JournalColors.bgSurface, 0.84),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(JournalColors.accent),
+              minHeight: 4,
             ),
           ),
         ],
@@ -319,15 +483,13 @@ class _NavRow extends StatelessWidget {
   const _NavRow({
     required this.onNext,
     this.onBack,
-    this.nextLabel = 'Continue →',
+    this.nextLabel = 'Continue',
     this.loading = false,
-    this.disabled = false,
   });
   final VoidCallback onNext;
   final VoidCallback? onBack;
   final String nextLabel;
   final bool loading;
-  final bool disabled;
 
   @override
   Widget build(BuildContext context) {
@@ -339,14 +501,16 @@ class _NavRow extends StatelessWidget {
             GestureDetector(
               onTap: onBack,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
-                  color: JournalColors.bgSurface,
+                  color: _withAlpha(JournalColors.bgSurface, 0.78),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: JournalColors.border),
                 ),
-                child: const Text('← Back',
-                    style: TextStyle(color: JournalColors.textSecondary, fontSize: 14)),
+                child: const Text('Back',
+                    style: TextStyle(
+                        color: JournalColors.textSecondary, fontSize: 14)),
               ),
             ),
             const SizedBox(width: 10),
@@ -354,8 +518,8 @@ class _NavRow extends StatelessWidget {
           Expanded(
             child: AdaptiveButton(
               style: AdaptiveButtonStyle.prominentGlass,
-              onPressed: (loading || disabled) ? null : onNext,
-              label: loading ? 'Working…' : nextLabel,
+              onPressed: loading ? null : onNext,
+              label: loading ? 'Working...' : nextLabel,
             ),
           ),
         ],
@@ -365,25 +529,25 @@ class _NavRow extends StatelessWidget {
 }
 
 Widget _fieldLabel(String text) => Padding(
-  padding: const EdgeInsets.only(bottom: 6),
-  child: Text(
-    text.toUpperCase(),
-    style: const TextStyle(
-      color: JournalColors.textMuted,
-      fontSize: 10,
-      letterSpacing: 1.2,
-      fontWeight: FontWeight.w600,
-    ),
-  ),
-);
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          color: JournalColors.textMuted,
+          fontSize: 10,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
 
 BoxDecoration _fieldDeco({bool focused = false}) => BoxDecoration(
-  color: JournalColors.bgSurface,
-  borderRadius: BorderRadius.circular(14),
-  border: Border.all(
-    color: focused ? JournalColors.accent : JournalColors.border,
-  ),
-);
+      color: _withAlpha(JournalColors.bgSurface, 0.82),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(
+        color: focused ? JournalColors.borderBright : JournalColors.border,
+      ),
+    );
 
 Widget _errorBanner(String? msg) {
   if (msg == null || msg.isEmpty) return const SizedBox.shrink();
@@ -391,17 +555,20 @@ Widget _errorBanner(String? msg) {
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: Colors.red.withOpacity(0.1),
+      color: _withAlpha(JournalColors.danger, 0.10),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.red.withOpacity(0.3)),
+      border: Border.all(color: _withAlpha(JournalColors.danger, 0.30)),
     ),
-    child: Text(msg, style: const TextStyle(color: Colors.red, fontSize: 13)),
+    child: Text(
+      msg,
+      style: const TextStyle(color: JournalColors.danger, fontSize: 13),
+    ),
   );
 }
 
 String _parseErr(dynamic e) {
   final str = e.toString();
-  final m   = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
+  final m = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
   return m?.group(1) ?? 'Something went wrong.';
 }
 
@@ -416,38 +583,115 @@ class _WelcomeStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 32),
-        const Text('✦',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.accent, fontSize: 40)),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
+        Center(
+          child: Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  _withAlpha(JournalColors.accent, 0.30),
+                  _withAlpha(JournalColors.info, 0.16),
+                ],
+              ),
+              border: Border.all(color: JournalColors.borderBright),
+              boxShadow: const [
+                BoxShadow(
+                  color: JournalColors.accentGlow,
+                  blurRadius: 22,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            child: const Icon(
+              CupertinoIcons.lock_shield,
+              color: JournalColors.textPrimary,
+              size: 25,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
         const Text(
-          'Your private intelligence\nplatform.',
+          'Set up your private journal.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: JournalColors.textPrimary,
-            fontSize: 28,
+            fontSize: 27,
             fontWeight: FontWeight.w800,
             height: 1.2,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         const Text(
-          'Journal Intelligence helps you document your life, spot patterns the naked eye misses, and build a private, AI-powered record that belongs only to you.',
+          'A few short steps create your account, recovery options, and the context used for summaries and reflections.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 14, height: 1.6),
+          style: TextStyle(
+            color: JournalColors.textSecondary,
+            fontSize: 14,
+            height: 1.6,
+          ),
         ),
-        const SizedBox(height: 32),
-        for (final item in [
-          ('◷', 'Timestamped & tamper-evident'),
-          ('⬡', 'AI pattern detection'),
-          ('⊕', 'Legal-grade export'),
-          ('✦', 'Fully private — your data, your rules'),
-        ]) ...[
-          _FeatureRow(icon: item.$1, text: item.$2),
-          const SizedBox(height: 10),
-        ],
-        _NavRow(onNext: onNext, nextLabel: 'Get Started →', onBack: null),
+        const SizedBox(height: 24),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 430;
+            final items = [
+              (
+                CupertinoIcons.time,
+                'Timestamped record',
+                'Entries stay searchable and dated.'
+              ),
+              (
+                CupertinoIcons.waveform_path_ecg,
+                'Pattern signals',
+                'Summaries can highlight repeats.'
+              ),
+              (
+                CupertinoIcons.folder,
+                'Organized context',
+                'People, topics, and goals are saved.'
+              ),
+              (
+                CupertinoIcons.lock,
+                'Private setup',
+                'You control what gets added.'
+              ),
+            ];
+            if (compact) {
+              return Column(
+                children: [
+                  for (final item in items) ...[
+                    _FeatureRow(
+                      icon: item.$1,
+                      text: item.$2,
+                      detail: item.$3,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              );
+            }
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: items
+                  .map(
+                    (item) => SizedBox(
+                      width: (constraints.maxWidth - 10) / 2,
+                      child: _FeatureRow(
+                        icon: item.$1,
+                        text: item.$2,
+                        detail: item.$3,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
+        _NavRow(onNext: onNext, nextLabel: 'Begin Setup', onBack: null),
         const SizedBox(height: 12),
       ],
     );
@@ -455,24 +699,62 @@ class _WelcomeStep extends StatelessWidget {
 }
 
 class _FeatureRow extends StatelessWidget {
-  const _FeatureRow({required this.icon, required this.text});
-  final String icon;
+  const _FeatureRow({
+    required this.icon,
+    required this.text,
+    required this.detail,
+  });
+  final IconData icon;
   final String text;
+  final String detail;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: JournalColors.bgSurface,
-        borderRadius: BorderRadius.circular(12),
+        color: _withAlpha(JournalColors.bgSurface, 0.72),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: JournalColors.border),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(icon, style: const TextStyle(color: JournalColors.accent, fontSize: 16)),
-          const SizedBox(width: 14),
-          Text(text, style: const TextStyle(color: JournalColors.textPrimary, fontSize: 14)),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: _withAlpha(JournalColors.accent, 0.13),
+              shape: BoxShape.circle,
+              border: Border.all(color: JournalColors.borderBright),
+            ),
+            child: Icon(icon, color: JournalColors.accent, size: 17),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -483,25 +765,35 @@ class _FeatureRow extends StatelessWidget {
 
 class _FSlide {
   const _FSlide({
-    required this.icon, required this.accent, required this.title,
-    required this.tagline, required this.desc,
-    this.bullets = const [], this.tones = const [], this.who = const [],
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.tagline,
+    required this.desc,
+    this.bullets = const [],
+    this.tones = const [],
+    this.who = const [],
   });
   final String icon;
-  final Color  accent;
+  final Color accent;
   final String title;
   final String tagline;
   final String desc;
   final List<String> bullets;
-  final List<_Tone>  tones;
-  final List<_Who>   who;
+  final List<_Tone> tones;
+  final List<_Who> who;
 }
 
 class _Tone {
-  const _Tone({required this.emoji, required this.label, required this.color, required this.desc, this.nsfw = false});
+  const _Tone(
+      {required this.emoji,
+      required this.label,
+      required this.color,
+      required this.desc,
+      this.nsfw = false});
   final String emoji, label, desc;
-  final Color  color;
-  final bool   nsfw;
+  final Color color;
+  final bool nsfw;
 }
 
 class _Who {
@@ -511,73 +803,150 @@ class _Who {
 
 const _kFeatureSlides = [
   _FSlide(
-    icon: '⬡', accent: Color(0xFF6366f1), title: 'Pattern Detection',
-    tagline: 'AI that reads between the lines',
-    desc: 'Journal Intelligence automatically scans every entry and surfaces behavioral, emotional, and situational patterns you might miss yourself — escalation cycles, trigger windows, recurring themes.',
-    bullets: ['Detects escalation before it peaks', 'Weekly pattern summaries', 'Early Warning System alerts'],
-  ),
-  _FSlide(
-    icon: '⊕', accent: Color(0xFF8b5cf6), title: 'Evidence Vault',
-    tagline: 'Built for legal and medical use',
-    desc: 'Every entry is timestamped and indexed. Export a court-ready PDF case file at any time — with incident summaries, attached files, and a full chronological record.',
-    bullets: ['Legal-ready PDF exports', 'Attach photos, documents, audio', 'Chain-of-context evidence bundles'],
-  ),
-  _FSlide(
-    icon: '⚡', accent: Color(0xFFf59e0b), title: 'Exit Plan Engine',
-    tagline: 'A structured roadmap when you need one',
-    desc: 'Answer a few questions and the AI generates a personalized, step-by-step exit plan — covering safety, finances, housing, support, and legal steps — all from inside your private journal.',
-    bullets: ['Personalized to your situation', 'Tracks progress across sessions', 'Shareable via secure passphrase link'],
-  ),
-  _FSlide(
-    icon: '〜', accent: Color(0xFF10b981), title: 'Nervous System Tracker',
-    tagline: 'Your emotional weather over time',
-    desc: 'Every entry is scored for severity and mood. The Nervous System page visualizes your emotional baseline, spikes, and recovery windows — so you can see the bigger picture.',
-    bullets: ['Severity & mood trend charts', 'Stability scoring', 'Identifies recovery patterns'],
-  ),
-  _FSlide(
-    icon: '◈', accent: Color(0xFFec4899), title: 'People Intelligence',
-    tagline: 'Understand who impacts you most',
-    desc: 'The AI tracks every person you mention across all entries. See impact scores, sentiment trends, and a heatmap showing exactly when and how each person affects your wellbeing.',
-    bullets: ['Per-person impact scoring', '52-week activity heatmap', 'Severity trend by person'],
-  ),
-  _FSlide(
-    icon: '◗', accent: Color(0xFF06b6d4), title: 'Ask My Journal',
-    tagline: 'Search your past with natural language',
-    desc: 'Ask questions like "when did I last feel safe?" or "what happened with J in March?" — and the AI searches your entire journal using semantic understanding, not just keywords.',
-    bullets: ['Semantic search across all entries', 'AI-synthesized answers', 'References specific past entries'],
-  ),
-  _FSlide(
-    icon: '✦', accent: Color(0xFFa78bfa), title: 'AI Reflections',
-    tagline: 'Six lenses on every entry',
-    desc: 'After each entry, the AI generates a personalized reflection in one of six tones — each designed to surface something different about what you wrote.',
-    tones: [
-      _Tone(emoji: '🧠', label: 'Therapist',    color: Color(0xFFa78bfa), desc: 'Warm, clinical insight — patterns, emotional themes, your current state'),
-      _Tone(emoji: '💬', label: 'Best Friend',  color: Color(0xFF38bdf8), desc: 'Real talk, no filter — what a sharp, caring friend would actually say'),
-      _Tone(emoji: '⚡',  label: 'Coach',        color: Color(0xFF34d399), desc: 'Forward-looking and action-oriented — what to do next and why'),
-      _Tone(emoji: '🌿', label: 'Mentor',       color: Color(0xFFfbbf24), desc: 'Big-picture wisdom — the arc of your story and what it means'),
-      _Tone(emoji: '🔍', label: 'Inner Critic', color: Color(0xFFf87171), desc: 'Unflinching honesty — what you might be avoiding or not fully owning'),
-      _Tone(emoji: '🌀', label: 'Chaos Agent',  color: Color(0xFFf472b6), desc: 'Unhinged, darkly funny, profane — says the thing no one else will say', nsfw: true),
+    icon: '⬡',
+    accent: JournalColors.accent,
+    title: 'Pattern Detection',
+    tagline: 'Repeated themes and timing',
+    desc:
+        'Entries can be summarized for recurring emotional, behavioral, and situational patterns.',
+    bullets: [
+      'Escalation windows',
+      'Weekly summaries',
+      'Early-warning signals'
     ],
   ),
   _FSlide(
-    icon: '◬', accent: Color(0xFF22c55e), title: 'Detective Mode',
-    tagline: 'For when you need to build a real case',
-    desc: 'A full investigation workspace for legal disputes, custody battles, workplace situations, or anything that requires serious, private documentation. The more you log, the smarter it gets.',
+    icon: '⊕',
+    accent: JournalColors.accent2,
+    title: 'Evidence Vault',
+    tagline: 'Records and attachments',
+    desc:
+        'Keep entries, files, and incident context together so they can be reviewed or exported later.',
+    bullets: [
+      'PDF exports',
+      'Photo and document attachments',
+      'Chronological records'
+    ],
+  ),
+  _FSlide(
+    icon: '⚡',
+    accent: JournalColors.severity,
+    title: 'Exit Plan',
+    tagline: 'Step-by-step planning',
+    desc:
+        'If you need a structured plan, the app can organize safety, finances, housing, support, and next steps.',
+    bullets: [
+      'Personalized checklist',
+      'Progress tracking',
+      'Secure sharing option'
+    ],
+  ),
+  _FSlide(
+    icon: '〜',
+    accent: JournalColors.success,
+    title: 'Nervous System',
+    tagline: 'Mood and severity trends',
+    desc:
+        'Mood and severity scores help show baselines, spikes, and recovery windows over time.',
+    bullets: ['Trend charts', 'Stability scoring', 'Recovery patterns'],
+  ),
+  _FSlide(
+    icon: '◈',
+    accent: JournalColors.orange,
+    title: 'People',
+    tagline: 'Names and relationship context',
+    desc:
+        'People you identify during setup can be tracked across entries for impact and sentiment trends.',
+    bullets: [
+      'Per-person summaries',
+      'Activity history',
+      'Severity trend by person'
+    ],
+  ),
+  _FSlide(
+    icon: '◗',
+    accent: JournalColors.info,
+    title: 'Ask My Journal',
+    tagline: 'Natural-language search',
+    desc:
+        'Ask questions about your entries and get answers grounded in matching journal history.',
+    bullets: ['Semantic search', 'Synthesized answers', 'Entry references'],
+  ),
+  _FSlide(
+    icon: '✦',
+    accent: JournalColors.accent2,
+    title: 'AI Reflections',
+    tagline: 'Tone options for entries',
+    desc:
+        'Each entry can be reflected back in a tone you choose. You can change these preferences later.',
+    tones: [
+      _Tone(
+          emoji: 'T',
+          label: 'Therapist',
+          color: JournalColors.accent2,
+          desc: 'Warm, clinical insight with emotional themes'),
+      _Tone(
+          emoji: 'F',
+          label: 'Best Friend',
+          color: JournalColors.info,
+          desc: 'Plainspoken support and perspective'),
+      _Tone(
+          emoji: 'C',
+          label: 'Coach',
+          color: JournalColors.success,
+          desc: 'Action-oriented next steps'),
+      _Tone(
+          emoji: 'M',
+          label: 'Mentor',
+          color: JournalColors.severity,
+          desc: 'Big-picture meaning and guidance'),
+      _Tone(
+          emoji: 'I',
+          label: 'Inner Critic',
+          color: JournalColors.danger,
+          desc: 'Direct questions about avoidance and ownership'),
+      _Tone(
+          emoji: 'X',
+          label: 'Chaos Agent',
+          color: JournalColors.orange,
+          desc: 'Unfiltered language and stronger opinions',
+          nsfw: true),
+    ],
+  ),
+  _FSlide(
+    icon: '◬',
+    accent: JournalColors.success,
+    title: 'Detective Mode',
+    tagline: 'Structured documentation',
+    desc:
+        'A focused workspace for situations where incident logs, files, timelines, and reports need to stay organized.',
     bullets: [
       'Investigation log with severity tags: Critical, High, Medium, Low',
       'Photo & document upload with AI vision analysis on every file',
-      'Case Partner AI reads your full journal and entire case file',
-      'Drop a Wire: full intelligence briefing covering patterns, contradictions, and your next move',
-      'Persistent Case Intelligence Brief that auto-updates after every wire drop',
-      'Wire History: full chronological record of every briefing session',
+      'Case workspace uses relevant journal and case-file context',
+      'Briefings summarize patterns, contradictions, and next steps',
+      'Case brief can be refreshed as the record changes',
+      'Briefing history keeps prior sessions available',
       'Gallery view with lightbox and per-photo AI analysis panel',
-      'Exportable case report for attorneys, courts, or medical providers',
+      'Exportable case report',
     ],
     who: [
-      _Who(icon: '⚖️', label: 'Legal disputes',       desc: 'Building evidence for court, restraining orders, or attorneys'),
-      _Who(icon: '👨‍👧', label: 'Custody battles',      desc: 'Documenting incidents, tracking patterns, protecting your case'),
-      _Who(icon: '🏢', label: 'Workplace situations', desc: 'HR complaints, hostile environments, hostile managers'),
-      _Who(icon: '🛡️', label: 'Safety situations',    desc: 'Anyone who needs a serious private record that cannot be touched'),
+      _Who(
+          icon: 'L',
+          label: 'Legal disputes',
+          desc: 'Records for review with counsel or court support'),
+      _Who(
+          icon: 'C',
+          label: 'Custody',
+          desc: 'Incidents, patterns, and supporting context'),
+      _Who(
+          icon: 'W',
+          label: 'Workplace',
+          desc: 'HR complaints, events, and timelines'),
+      _Who(
+          icon: 'S',
+          label: 'Safety',
+          desc: 'Private records for serious situations'),
     ],
   ),
 ];
@@ -596,8 +965,8 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
 
   @override
   Widget build(BuildContext context) {
-    final f      = _kFeatureSlides[_idx];
-    final total  = _kFeatureSlides.length;
+    final f = _kFeatureSlides[_idx];
+    final total = _kFeatureSlides.length;
     final isLast = _idx == total - 1;
 
     return Column(
@@ -607,19 +976,24 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
 
         // Header
         Text(
-          "WHAT'S INSIDE — ${_idx + 1} OF $total",
+          'FEATURE ${_idx + 1} OF $total',
           textAlign: TextAlign.center,
           style: const TextStyle(
-            color: JournalColors.textMuted, fontSize: 10,
-            letterSpacing: 1.4, fontWeight: FontWeight.w600,
+            color: JournalColors.textMuted,
+            fontSize: 10,
+            letterSpacing: 1.4,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Built for people who need more than a diary',
+          'What the app can organize',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+            color: JournalColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -628,196 +1002,233 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
           duration: const Duration(milliseconds: 220),
           child: KeyedSubtree(
             key: ValueKey(_idx),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: JournalColors.bgSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: f.accent.withOpacity(0.25)),
-                boxShadow: [
-                  BoxShadow(color: f.accent.withOpacity(0.07), blurRadius: 28, spreadRadius: 2),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Icon + title row
-                  Row(
-                    children: [
-                      Container(
-                        width: 44, height: 44,
-                        decoration: BoxDecoration(
-                          color: f.accent.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: f.accent.withOpacity(0.3)),
-                        ),
-                        child: Center(
-                          child: Text(f.icon,
-                              style: TextStyle(color: f.accent, fontSize: 20)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(f.title,
-                                style: const TextStyle(
-                                  color: JournalColors.textPrimary,
-                                  fontSize: 15, fontWeight: FontWeight.w800,
-                                  height: 1.2,
-                                )),
-                            const SizedBox(height: 2),
-                            Text(f.tagline,
-                                style: TextStyle(
-                                    color: f.accent, fontSize: 11)),
-                          ],
-                        ),
-                      ),
+            child: GlassCard(
+              accentBorder: true,
+              padding: EdgeInsets.zero,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      _withAlpha(JournalColors.bgCard, 0.96),
+                      _withAlpha(JournalColors.bgCardAlt, 0.90),
                     ],
                   ),
-                  const SizedBox(height: 12),
-
-                  // Description
-                  Text(f.desc,
-                      style: const TextStyle(
-                          color: JournalColors.textSecondary, fontSize: 12, height: 1.65)),
-
-                  // Bullets
-                  if (f.bullets.isNotEmpty) ...[
+                ),
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Icon + title row
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: _withAlpha(f.accent, 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: _withAlpha(f.accent, 0.3)),
+                          ),
+                          child: Center(
+                            child: Text(f.icon,
+                                style:
+                                    TextStyle(color: f.accent, fontSize: 20)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(f.title,
+                                  style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.2,
+                                  )),
+                              const SizedBox(height: 2),
+                              Text(f.tagline,
+                                  style:
+                                      TextStyle(color: f.accent, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
-                    for (final b in f.bullets) ...[
-                      const SizedBox(height: 5),
+
+                    // Description
+                    Text(f.desc,
+                        style: const TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontSize: 12,
+                            height: 1.65)),
+
+                    // Bullets
+                    if (f.bullets.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      for (final b in f.bullets) ...[
+                        const SizedBox(height: 5),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              margin: const EdgeInsets.only(top: 5),
+                              decoration: BoxDecoration(
+                                  color: f.accent, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Text(b,
+                                  style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 11,
+                                      height: 1.5)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+
+                    // "Who this is for" grid (Detective Mode)
+                    if (f.who.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      const Text('WHO THIS IS FOR',
+                          style: TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 9,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.w700,
+                          )),
+                      const SizedBox(height: 8),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 5, height: 5,
-                            margin: const EdgeInsets.only(top: 5),
-                            decoration: BoxDecoration(
-                              color: f.accent, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 9),
                           Expanded(
-                            child: Text(b,
-                                style: const TextStyle(
-                                    color: JournalColors.textSecondary,
-                                    fontSize: 11, height: 1.5)),
-                          ),
+                              child: _WhoCard(w: f.who[0], accent: f.accent)),
+                          const SizedBox(width: 7),
+                          Expanded(
+                              child: _WhoCard(w: f.who[1], accent: f.accent)),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                              child: _WhoCard(w: f.who[2], accent: f.accent)),
+                          const SizedBox(width: 7),
+                          Expanded(
+                              child: _WhoCard(w: f.who[3], accent: f.accent)),
                         ],
                       ),
                     ],
-                  ],
 
-                  // "Who this is for" grid (Detective Mode)
-                  if (f.who.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    const Text('WHO THIS IS FOR',
-                        style: TextStyle(
-                          color: JournalColors.textMuted, fontSize: 9,
-                          letterSpacing: 1.2, fontWeight: FontWeight.w700,
-                        )),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: _WhoCard(w: f.who[0], accent: f.accent)),
-                        const SizedBox(width: 7),
-                        Expanded(child: _WhoCard(w: f.who[1], accent: f.accent)),
+                    // Tones (AI Reflections)
+                    if (f.tones.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      for (final t in f.tones) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: JournalColors.bgBase,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: JournalColors.border),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.emoji,
+                                  style: const TextStyle(fontSize: 14)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(t.label,
+                                            style: TextStyle(
+                                                color: t.color,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700)),
+                                        if (t.nsfw) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                  color: _withAlpha(
+                                                      JournalColors.orange,
+                                                      0.4)),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: const Text('18+',
+                                                style: TextStyle(
+                                                    color: JournalColors.orange,
+                                                    fontSize: 9,
+                                                    letterSpacing: 0.8)),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(t.desc,
+                                        style: const TextStyle(
+                                            color: JournalColors.textSecondary,
+                                            fontSize: 11,
+                                            height: 1.45)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                    ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        Expanded(child: _WhoCard(w: f.who[2], accent: f.accent)),
-                        const SizedBox(width: 7),
-                        Expanded(child: _WhoCard(w: f.who[3], accent: f.accent)),
-                      ],
-                    ),
-                  ],
-
-                  // Tones (AI Reflections)
-                  if (f.tones.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    for (final t in f.tones) ...[
+                      // Chaos Agent warning
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
-                          color: JournalColors.bgBase,
+                          color: _withAlpha(JournalColors.orange, 0.06),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: JournalColors.border),
+                          border: Border.all(
+                              color: _withAlpha(JournalColors.orange, 0.24)),
                         ),
-                        child: Row(
+                        child: const Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(t.emoji, style: const TextStyle(fontSize: 14)),
-                            const SizedBox(width: 10),
+                            Icon(
+                              CupertinoIcons.exclamationmark_triangle,
+                              color: JournalColors.orange,
+                              size: 14,
+                            ),
+                            SizedBox(width: 8),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(t.label,
-                                          style: TextStyle(
-                                              color: t.color, fontSize: 12,
-                                              fontWeight: FontWeight.w700)),
-                                      if (t.nsfw) ...[
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 5, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                                color: const Color(0xFFf472b6).withOpacity(0.4)),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text('18+',
-                                              style: TextStyle(
-                                                  color: Color(0xFFf472b6),
-                                                  fontSize: 9, letterSpacing: 0.8)),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(t.desc,
-                                      style: const TextStyle(
-                                          color: JournalColors.textSecondary,
-                                          fontSize: 11, height: 1.45)),
-                                ],
+                              child: Text(
+                                'Chaos Agent uses stronger language. Opt in from Settings when you want it.',
+                                style: TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 11,
+                                    height: 1.5),
                               ),
                             ),
                           ],
                         ),
                       ),
                     ],
-                    // Chaos Agent warning
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFf472b6).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFf472b6).withOpacity(0.22)),
-                      ),
-                      child: const Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('⚠️', style: TextStyle(fontSize: 13)),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              "Chaos Agent uses strong language and unfiltered opinions. Opt in from Settings when you're ready.",
-                              style: TextStyle(
-                                  color: Color(0xCCf472b6), fontSize: 11, height: 1.5),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -852,11 +1263,10 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
         Row(
           children: [
             GestureDetector(
-              onTap: _idx > 0
-                  ? () => setState(() => _idx--)
-                  : widget.onBack,
+              onTap: _idx > 0 ? () => setState(() => _idx--) : widget.onBack,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: JournalColors.bgSurface,
                   borderRadius: BorderRadius.circular(14),
@@ -864,7 +1274,8 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
                 ),
                 child: Text(
                   _idx > 0 ? '← Prev' : '← Back',
-                  style: const TextStyle(color: JournalColors.textSecondary, fontSize: 13),
+                  style: const TextStyle(
+                      color: JournalColors.textSecondary, fontSize: 13),
                 ),
               ),
             ),
@@ -877,18 +1288,20 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isLast
-                          ? [JournalColors.accent, const Color(0xFF8b5cf6)]
-                          : [f.accent, f.accent.withOpacity(0.75)],
+                          ? [JournalColors.accent, JournalColors.accent2]
+                          : [f.accent, _withAlpha(f.accent, 0.75)],
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                     ),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    isLast ? "Let's set you up →" : 'Next Feature →',
+                    isLast ? 'Continue Setup' : 'Next Feature',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                        color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                        color: JournalColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -903,7 +1316,7 @@ class _FeatureTourStepState extends State<_FeatureTourStep> {
 
 class _WhoCard extends StatelessWidget {
   const _WhoCard({required this.w, required this.accent});
-  final _Who  w;
+  final _Who w;
   final Color accent;
 
   @override
@@ -927,11 +1340,14 @@ class _WhoCard extends StatelessWidget {
                 Text(w.label,
                     style: const TextStyle(
                         color: JournalColors.textPrimary,
-                        fontSize: 10, fontWeight: FontWeight.w700)),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(w.desc,
                     style: const TextStyle(
-                        color: JournalColors.textMuted, fontSize: 9, height: 1.4)),
+                        color: JournalColors.textMuted,
+                        fontSize: 9,
+                        height: 1.4)),
               ],
             ),
           ),
@@ -969,7 +1385,7 @@ class _AboutStepState extends State<_AboutStep> {
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.preferredName);
-    _pronouns  = widget.pronouns;
+    _pronouns = widget.pronouns;
   }
 
   @override
@@ -984,13 +1400,17 @@ class _AboutStepState extends State<_AboutStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('About you', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('About you',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('This helps the AI personalise every response. Both fields are optional.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text(
+            'Used only to address you correctly in reflections. Both fields are optional.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 24),
-
         _fieldLabel('Preferred Name'),
         CupertinoTextField(
           controller: _nameCtrl,
@@ -1003,7 +1423,6 @@ class _AboutStepState extends State<_AboutStep> {
           onChanged: (_) => widget.onChanged(_nameCtrl.text, _pronouns),
         ),
         const SizedBox(height: 20),
-
         _fieldLabel('Pronouns'),
         Wrap(
           spacing: 8,
@@ -1016,19 +1435,25 @@ class _AboutStepState extends State<_AboutStep> {
                 widget.onChanged(_nameCtrl.text, _pronouns);
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: on ? JournalColors.accent.withOpacity(0.15) : JournalColors.bgSurface,
+                  color: on
+                      ? JournalColors.accent.withOpacity(0.15)
+                      : JournalColors.bgSurface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: on ? JournalColors.accent : JournalColors.border,
                   ),
                 ),
-                child: Text(p, style: TextStyle(
-                  color: on ? JournalColors.accent : JournalColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-                )),
+                child: Text(p,
+                    style: TextStyle(
+                      color: on
+                          ? JournalColors.accent
+                          : JournalColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                    )),
               ),
             );
           }).toList(),
@@ -1039,9 +1464,9 @@ class _AboutStepState extends State<_AboutStep> {
   }
 
   VoidCallback get onNext => () {
-    widget.onChanged(_nameCtrl.text, _pronouns);
-    widget.onNext();
-  };
+        widget.onChanged(_nameCtrl.text, _pronouns);
+        widget.onNext();
+      };
 
   VoidCallback get onBack => widget.onBack;
 }
@@ -1073,7 +1498,7 @@ class _SituationStepState extends State<_SituationStep> {
   @override
   void initState() {
     super.initState();
-    _type      = widget.situationType;
+    _type = widget.situationType;
     _storyCtrl = TextEditingController(text: widget.situationStory);
   }
 
@@ -1089,11 +1514,15 @@ class _SituationStepState extends State<_SituationStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text("What's your situation?", style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text("What brings you here?",
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('This seeds your AI memory. You can update it anytime.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text('Pick the closest match. You can update this later.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 20),
 
         // Situation grid
@@ -1104,9 +1533,19 @@ class _SituationStepState extends State<_SituationStep> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
-                Expanded(child: _SituationCard(opt: a, selected: _type == a.$1, onTap: () => setState(() => _type = _type == a.$1 ? '' : a.$1))),
+                Expanded(
+                    child: _SituationCard(
+                        opt: a,
+                        selected: _type == a.$1,
+                        onTap: () =>
+                            setState(() => _type = _type == a.$1 ? '' : a.$1))),
                 const SizedBox(width: 8),
-                Expanded(child: _SituationCard(opt: b, selected: _type == b.$1, onTap: () => setState(() => _type = _type == b.$1 ? '' : b.$1))),
+                Expanded(
+                    child: _SituationCard(
+                        opt: b,
+                        selected: _type == b.$1,
+                        onTap: () =>
+                            setState(() => _type = _type == b.$1 ? '' : b.$1))),
               ],
             ),
           );
@@ -1116,9 +1555,11 @@ class _SituationStepState extends State<_SituationStep> {
         _fieldLabel('Your situation in your own words (optional)'),
         CupertinoTextField(
           controller: _storyCtrl,
-          placeholder: 'Give the AI context it won\'t get from category alone…',
-          placeholderStyle: const TextStyle(color: JournalColors.textMuted, fontSize: 13),
-          style: const TextStyle(color: JournalColors.textPrimary, fontSize: 14),
+          placeholder: 'Briefly describe the situation in your own words.',
+          placeholderStyle:
+              const TextStyle(color: JournalColors.textMuted, fontSize: 13),
+          style:
+              const TextStyle(color: JournalColors.textPrimary, fontSize: 14),
           padding: const EdgeInsets.all(14),
           decoration: _fieldDeco(),
           maxLines: 4,
@@ -1139,7 +1580,8 @@ class _SituationStepState extends State<_SituationStep> {
 }
 
 class _SituationCard extends StatelessWidget {
-  const _SituationCard({required this.opt, required this.selected, required this.onTap});
+  const _SituationCard(
+      {required this.opt, required this.selected, required this.onTap});
   final (String, String, String, String) opt;
   final bool selected;
   final VoidCallback onTap;
@@ -1151,7 +1593,9 @@ class _SituationCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? JournalColors.accent.withOpacity(0.12) : JournalColors.bgSurface,
+          color: selected
+              ? JournalColors.accent.withOpacity(0.12)
+              : JournalColors.bgSurface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? JournalColors.accent : JournalColors.border,
@@ -1160,19 +1604,28 @@ class _SituationCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(opt.$2, style: TextStyle(
-              color: selected ? JournalColors.accent : JournalColors.textMuted,
-              fontSize: 16,
-            )),
+            Text(opt.$2,
+                style: TextStyle(
+                  color:
+                      selected ? JournalColors.accent : JournalColors.textMuted,
+                  fontSize: 16,
+                )),
             const SizedBox(height: 4),
-            Text(opt.$3, style: TextStyle(
-              color: selected ? JournalColors.accent : JournalColors.textPrimary,
-              fontSize: 12, fontWeight: FontWeight.w700,
-            )),
+            Text(opt.$3,
+                style: TextStyle(
+                  color: selected
+                      ? JournalColors.accent
+                      : JournalColors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                )),
             const SizedBox(height: 2),
-            Text(opt.$4, style: const TextStyle(
-              color: JournalColors.textMuted, fontSize: 10, height: 1.4,
-            )),
+            Text(opt.$4,
+                style: const TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 10,
+                  height: 1.4,
+                )),
           ],
         ),
       ),
@@ -1239,13 +1692,17 @@ class _PeopleStepState extends State<_PeopleStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Key people in your life', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Key people',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('The AI will track how these people affect your mood. You can add more later.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text(
+            'Add names or aliases you want grouped across entries. You can add more later.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 20),
-
         Row(
           children: [
             Expanded(
@@ -1253,9 +1710,11 @@ class _PeopleStepState extends State<_PeopleStep> {
               child: CupertinoTextField(
                 controller: _nameCtrl,
                 placeholder: 'Name',
-                placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+                placeholderStyle:
+                    const TextStyle(color: JournalColors.textMuted),
                 style: const TextStyle(color: JournalColors.textPrimary),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: _fieldDeco(),
                 textInputAction: TextInputAction.next,
               ),
@@ -1266,9 +1725,11 @@ class _PeopleStepState extends State<_PeopleStep> {
               child: CupertinoTextField(
                 controller: _roleCtrl,
                 placeholder: 'Role (e.g. partner)',
-                placeholderStyle: const TextStyle(color: JournalColors.textMuted, fontSize: 12),
+                placeholderStyle: const TextStyle(
+                    color: JournalColors.textMuted, fontSize: 12),
                 style: const TextStyle(color: JournalColors.textPrimary),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: _fieldDeco(),
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _add(),
@@ -1278,20 +1739,21 @@ class _PeopleStepState extends State<_PeopleStep> {
             GestureDetector(
               onTap: _add,
               child: Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: JournalColors.accent.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JournalColors.accent.withOpacity(0.4)),
+                  border:
+                      Border.all(color: JournalColors.accent.withOpacity(0.4)),
                 ),
-                child: const Icon(CupertinoIcons.add, color: JournalColors.accent, size: 20),
+                child: const Icon(CupertinoIcons.add,
+                    color: JournalColors.accent, size: 20),
               ),
             ),
           ],
         ),
-
         const SizedBox(height: 16),
-
         for (int i = 0; i < _people.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -1304,25 +1766,28 @@ class _PeopleStepState extends State<_PeopleStep> {
               ),
               child: Row(
                 children: [
-                  const Text('◈', style: TextStyle(color: JournalColors.accent, fontSize: 14)),
+                  const Text('◈',
+                      style:
+                          TextStyle(color: JournalColors.accent, fontSize: 14)),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text('${_people[i]['name']} · ${_people[i]['role']}',
-                        style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13)),
+                        style: const TextStyle(
+                            color: JournalColors.textPrimary, fontSize: 13)),
                   ),
                   GestureDetector(
                     onTap: () => _remove(i),
-                    child: const Icon(CupertinoIcons.xmark, color: JournalColors.textMuted, size: 16),
+                    child: const Icon(CupertinoIcons.xmark,
+                        color: JournalColors.textMuted, size: 16),
                   ),
                 ],
               ),
             ),
           ),
-
         _NavRow(
           onNext: widget.onNext,
           onBack: widget.onBack,
-          nextLabel: _people.isEmpty ? 'Skip →' : 'Continue →',
+          nextLabel: _people.isEmpty ? 'Skip' : 'Continue',
         ),
       ],
     );
@@ -1358,7 +1823,10 @@ class _TopicsStepState extends State<_TopicsStep> {
 
   void _toggle(String t) {
     setState(() {
-      if (_topics.contains(t)) _topics.remove(t); else _topics.add(t);
+      if (_topics.contains(t))
+        _topics.remove(t);
+      else
+        _topics.add(t);
     });
     widget.onChanged(_topics);
   }
@@ -1369,13 +1837,16 @@ class _TopicsStepState extends State<_TopicsStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Topics that matter to you', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Topics',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('The AI will pay closer attention to these themes in your entries.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text('Choose themes you want reflected in summaries and search.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 20),
-
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1384,19 +1855,25 @@ class _TopicsStepState extends State<_TopicsStep> {
             return GestureDetector(
               onTap: () => _toggle(t),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
-                  color: on ? JournalColors.accent.withOpacity(0.15) : JournalColors.bgSurface,
+                  color: on
+                      ? JournalColors.accent.withOpacity(0.15)
+                      : JournalColors.bgSurface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: on ? JournalColors.accent : JournalColors.border,
                   ),
                 ),
-                child: Text(t, style: TextStyle(
-                  color: on ? JournalColors.accent : JournalColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-                )),
+                child: Text(t,
+                    style: TextStyle(
+                      color: on
+                          ? JournalColors.accent
+                          : JournalColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                    )),
               ),
             );
           }).toList(),
@@ -1404,7 +1881,7 @@ class _TopicsStepState extends State<_TopicsStep> {
         _NavRow(
           onNext: widget.onNext,
           onBack: widget.onBack,
-          nextLabel: _topics.isEmpty ? 'Skip →' : 'Continue →',
+          nextLabel: _topics.isEmpty ? 'Skip' : 'Continue',
         ),
       ],
     );
@@ -1440,7 +1917,10 @@ class _GoalsStepState extends State<_GoalsStep> {
 
   void _toggle(String id) {
     setState(() {
-      if (_goals.contains(id)) _goals.remove(id); else _goals.add(id);
+      if (_goals.contains(id))
+        _goals.remove(id);
+      else
+        _goals.add(id);
     });
     widget.onChanged(_goals);
   }
@@ -1451,13 +1931,16 @@ class _GoalsStepState extends State<_GoalsStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('What do you want to achieve?', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Goals',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('Select all that apply. Your AI adapts to these goals.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text('Select anything useful. These can be changed later.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 20),
-
         for (final g in _kGoalOpts) ...[
           GestureDetector(
             onTap: () => _toggle(g.$1),
@@ -1470,28 +1953,40 @@ class _GoalsStepState extends State<_GoalsStep> {
                     : JournalColors.bgSurface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: _goals.contains(g.$1) ? JournalColors.accent : JournalColors.border,
+                  color: _goals.contains(g.$1)
+                      ? JournalColors.accent
+                      : JournalColors.border,
                 ),
               ),
               child: Row(
                 children: [
-                  Text(g.$2, style: TextStyle(
-                    color: _goals.contains(g.$1) ? JournalColors.accent : JournalColors.textMuted,
-                    fontSize: 18,
-                  )),
+                  Text(g.$2,
+                      style: TextStyle(
+                        color: _goals.contains(g.$1)
+                            ? JournalColors.accent
+                            : JournalColors.textMuted,
+                        fontSize: 18,
+                      )),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(g.$3, style: TextStyle(
-                          color: _goals.contains(g.$1) ? JournalColors.accent : JournalColors.textPrimary,
-                          fontSize: 13, fontWeight: FontWeight.w700,
-                        )),
+                        Text(g.$3,
+                            style: TextStyle(
+                              color: _goals.contains(g.$1)
+                                  ? JournalColors.accent
+                                  : JournalColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            )),
                         const SizedBox(height: 2),
-                        Text(g.$4, style: const TextStyle(
-                          color: JournalColors.textMuted, fontSize: 11, height: 1.4,
-                        )),
+                        Text(g.$4,
+                            style: const TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 11,
+                              height: 1.4,
+                            )),
                       ],
                     ),
                   ),
@@ -1503,7 +1998,7 @@ class _GoalsStepState extends State<_GoalsStep> {
         _NavRow(
           onNext: widget.onNext,
           onBack: widget.onBack,
-          nextLabel: _goals.isEmpty ? 'Skip →' : 'Continue →',
+          nextLabel: _goals.isEmpty ? 'Skip' : 'Continue',
         ),
       ],
     );
@@ -1514,8 +2009,7 @@ class _GoalsStepState extends State<_GoalsStep> {
 
 class _AccountStep extends StatefulWidget {
   const _AccountStep({required this.onSuccess, required this.onBack});
-  final void Function(
-      String username, String email, String password,
+  final void Function(String username, String email, String password,
       Map<String, dynamic> user, String? apiKey) onSuccess;
   final VoidCallback onBack;
 
@@ -1524,14 +2018,14 @@ class _AccountStep extends StatefulWidget {
 }
 
 class _AccountStepState extends State<_AccountStep> {
-  final _api          = ApiService();
-  final _userCtrl     = TextEditingController();
-  final _emailCtrl    = TextEditingController();
-  final _passCtrl     = TextEditingController();
-  final _confirmCtrl  = TextEditingController();
+  final _api = ApiService();
+  final _userCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
 
-  bool   _obscure  = true;
-  bool   _loading  = false;
+  bool _obscure = true;
+  bool _loading = false;
   String? _err;
   String? _apiKey; // shown once after registration
   Map<String, dynamic> _user = {};
@@ -1549,20 +2043,22 @@ class _AccountStepState extends State<_AccountStep> {
   String _strengthLabel(int s) =>
       ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong'][s.clamp(0, 5)];
   Color _strengthColor(int s) => [
-    Colors.transparent,
-    Colors.red,
-    Colors.orange,
-    Colors.yellow,
-    const Color(0xFF10b981),
-    JournalColors.accent,
-  ][s.clamp(0, 5)];
+        Colors.transparent,
+        Colors.red,
+        Colors.orange,
+        Colors.yellow,
+        const Color(0xFF10b981),
+        JournalColors.accent,
+      ][s.clamp(0, 5)];
 
   String? _validate() {
-    if (_userCtrl.text.trim().length < 3) return 'Username must be at least 3 characters';
+    if (_userCtrl.text.trim().length < 3)
+      return 'Username must be at least 3 characters';
     if (!_emailCtrl.text.contains('@')) return 'Valid email required';
     final pw = _passCtrl.text;
     if (pw.length < 12) return 'Password must be at least 12 characters';
-    if (!pw.contains(RegExp(r'[A-Z]'))) return 'Password needs an uppercase letter';
+    if (!pw.contains(RegExp(r'[A-Z]')))
+      return 'Password needs an uppercase letter';
     if (!pw.contains(RegExp(r'[0-9]'))) return 'Password needs a number';
     if (!pw.contains(RegExp(r'[^a-zA-Z0-9]'))) return 'Password needs a symbol';
     if (pw != _confirmCtrl.text) return 'Passwords do not match';
@@ -1571,9 +2067,15 @@ class _AccountStepState extends State<_AccountStep> {
 
   Future<void> _submit() async {
     final err = _validate();
-    if (err != null) { setState(() => _err = err); return; }
+    if (err != null) {
+      setState(() => _err = err);
+      return;
+    }
 
-    setState(() { _loading = true; _err = null; });
+    setState(() {
+      _loading = true;
+      _err = null;
+    });
 
     try {
       final regData = await _api.register(
@@ -1590,15 +2092,18 @@ class _AccountStepState extends State<_AccountStep> {
       await _api.clearInviteAccessToken();
 
       if (!mounted) return;
-      setState(() { _loading = false; _apiKey = apiKey; _user = user; });
+      setState(() {
+        _loading = false;
+        _apiKey = apiKey;
+        _user = user;
+      });
 
       if (apiKey == null) {
         // No API key to show → continue immediately
-        widget.onSuccess(
-          _userCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text, user, null);
+        widget.onSuccess(_userCtrl.text.trim(), _emailCtrl.text.trim(),
+            _passCtrl.text, user, null);
       }
       // else: show API key first, user taps "Continue" which calls onSuccess
-
     } catch (e) {
       if (!mounted) return;
       final detail = _parseErr(e);
@@ -1608,17 +2113,25 @@ class _AccountStepState extends State<_AccountStep> {
           detail.toLowerCase().contains('exists');
       if (alreadyExists) {
         try {
-          final loginData = await _api.login(_userCtrl.text.trim(), _passCtrl.text);
+          final loginData =
+              await _api.login(_userCtrl.text.trim(), _passCtrl.text);
           _api.setAccessToken(loginData['access_token'] as String);
           final user = await _api.getMe();
           await _api.clearInviteAccessToken();
           if (!mounted) return;
-          setState(() { _loading = false; _user = user; });
-          widget.onSuccess(_userCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text, user, null);
+          setState(() {
+            _loading = false;
+            _user = user;
+          });
+          widget.onSuccess(_userCtrl.text.trim(), _emailCtrl.text.trim(),
+              _passCtrl.text, user, null);
           return;
         } catch (_) {}
       }
-      setState(() { _loading = false; _err = detail; });
+      setState(() {
+        _loading = false;
+        _err = detail;
+      });
     }
   }
 
@@ -1637,10 +2150,11 @@ class _AccountStepState extends State<_AccountStep> {
     if (_apiKey != null) {
       return _ApiKeyReveal(
         apiKey: _apiKey!,
-        user:   _user,
+        user: _user,
         onContinue: () {
           widget.onSuccess(
-            _userCtrl.text.trim(), _emailCtrl.text.trim(),
+            _userCtrl.text.trim(),
+            _emailCtrl.text.trim(),
             _passCtrl.text,
             _user,
             _apiKey,
@@ -1649,22 +2163,25 @@ class _AccountStepState extends State<_AccountStep> {
       );
     }
 
-    final pw       = _passCtrl.text;
+    final pw = _passCtrl.text;
     final strength = _passwordStrength(pw);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Secure your account', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Secure your account',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('Passwords stored as bcrypt hashes. Plain text is never kept or logged.',
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
+        const Text(
+            'Passwords stored as bcrypt hashes. Plain text is never kept or logged.',
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.5)),
         const SizedBox(height: 20),
-
         _errorBanner(_err),
-
         _fieldLabel('Username'),
         CupertinoTextField(
           controller: _userCtrl,
@@ -1677,7 +2194,6 @@ class _AccountStepState extends State<_AccountStep> {
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 14),
-
         _fieldLabel('Email'),
         CupertinoTextField(
           controller: _emailCtrl,
@@ -1691,12 +2207,12 @@ class _AccountStepState extends State<_AccountStep> {
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 14),
-
         _fieldLabel('Password'),
         CupertinoTextField(
           controller: _passCtrl,
           placeholder: 'Min 12 chars, upper, number, symbol',
-          placeholderStyle: const TextStyle(color: JournalColors.textMuted, fontSize: 12),
+          placeholderStyle:
+              const TextStyle(color: JournalColors.textMuted, fontSize: 12),
           style: const TextStyle(color: JournalColors.textPrimary),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: _fieldDeco(),
@@ -1708,13 +2224,13 @@ class _AccountStepState extends State<_AccountStep> {
               padding: const EdgeInsets.only(right: 14),
               child: Icon(
                 _obscure ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
-                color: JournalColors.textMuted, size: 18,
+                color: JournalColors.textMuted,
+                size: 18,
               ),
             ),
           ),
           onChanged: (_) => setState(() {}),
         ),
-
         if (pw.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(
@@ -1725,18 +2241,19 @@ class _AccountStepState extends State<_AccountStep> {
                   child: LinearProgressIndicator(
                     value: strength / 5,
                     backgroundColor: JournalColors.border,
-                    valueColor: AlwaysStoppedAnimation<Color>(_strengthColor(strength)),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(_strengthColor(strength)),
                     minHeight: 3,
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Text(_strengthLabel(strength),
-                  style: TextStyle(color: _strengthColor(strength), fontSize: 11)),
+                  style:
+                      TextStyle(color: _strengthColor(strength), fontSize: 11)),
             ],
           ),
         ],
-
         const SizedBox(height: 14),
         _fieldLabel('Confirm Password'),
         CupertinoTextField(
@@ -1750,11 +2267,10 @@ class _AccountStepState extends State<_AccountStep> {
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submit(),
         ),
-
         _NavRow(
           onNext: _submit,
           onBack: widget.onBack,
-          nextLabel: 'Create Account →',
+          nextLabel: 'Create Account',
           loading: _loading,
         ),
       ],
@@ -1763,7 +2279,8 @@ class _AccountStepState extends State<_AccountStep> {
 }
 
 class _ApiKeyReveal extends StatefulWidget {
-  const _ApiKeyReveal({required this.apiKey, required this.user, required this.onContinue});
+  const _ApiKeyReveal(
+      {required this.apiKey, required this.user, required this.onContinue});
   final String apiKey;
   final Map<String, dynamic> user;
   final VoidCallback onContinue;
@@ -1781,19 +2298,24 @@ class _ApiKeyRevealState extends State<_ApiKeyReveal> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('⊞', textAlign: TextAlign.center,
+        const Text('⊞',
+            textAlign: TextAlign.center,
             style: TextStyle(color: JournalColors.accent, fontSize: 36)),
         const SizedBox(height: 16),
-        const Text('Account created!', textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Account created!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 10),
         const Text(
           'Your API key is shown once — copy it now and paste it into your iPhone Shortcut. You can regenerate it later in Settings.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
         ),
         const SizedBox(height: 20),
-
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1825,7 +2347,6 @@ class _ApiKeyRevealState extends State<_ApiKeyReveal> {
           ),
         ),
         const SizedBox(height: 12),
-
         GestureDetector(
           onTap: () async {
             // Copy to clipboard
@@ -1851,18 +2372,20 @@ class _ApiKeyRevealState extends State<_ApiKeyReveal> {
               _copied ? '✓ Copied!' : '⊕ Copy API Key',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _copied ? const Color(0xFF10b981) : JournalColors.textPrimary,
-                fontSize: 13, fontWeight: FontWeight.w700,
+                color: _copied
+                    ? const Color(0xFF10b981)
+                    : JournalColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
         ),
         const SizedBox(height: 14),
-
         AdaptiveButton(
           style: AdaptiveButtonStyle.prominentGlass,
           onPressed: widget.onContinue,
-          label: 'Continue →',
+          label: 'Continue',
         ),
       ],
     );
@@ -1886,11 +2409,11 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
   String _q1 = _kSecurityQuestionsBank[0];
   String _q2 = _kSecurityQuestionsBank[1];
   String _q3 = _kSecurityQuestionsBank[2];
-  final _a1  = TextEditingController();
-  final _a2  = TextEditingController();
-  final _a3  = TextEditingController();
+  final _a1 = TextEditingController();
+  final _a2 = TextEditingController();
+  final _a3 = TextEditingController();
 
-  bool    _saving = false;
+  bool _saving = false;
   String? _err;
 
   @override
@@ -1904,8 +2427,12 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
   void _pickQuestion(int idx, String current) {
     final others = idx == 0
         ? [_q2, _q3]
-        : idx == 1 ? [_q1, _q3] : [_q1, _q2];
-    final opts = _kSecurityQuestionsBank.where((q) => q == current || !others.contains(q)).toList();
+        : idx == 1
+            ? [_q1, _q3]
+            : [_q1, _q2];
+    final opts = _kSecurityQuestionsBank
+        .where((q) => q == current || !others.contains(q))
+        .toList();
 
     showCupertinoModalPopup<String>(
       context: context,
@@ -1922,14 +2449,21 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: const Text('Cancel',
-                        style: TextStyle(color: JournalColors.textSecondary, fontSize: 15)),
+                        style: TextStyle(
+                            color: JournalColors.textSecondary, fontSize: 15)),
                   ),
                   const Text('Pick a question',
-                      style: TextStyle(color: JournalColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600)),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: const Text('Done',
-                        style: TextStyle(color: JournalColors.accent, fontSize: 15, fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            color: JournalColors.accent,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),
@@ -1942,19 +2476,26 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
                 ),
                 onSelectedItemChanged: (i) {
                   setState(() {
-                    if (idx == 0) _q1 = opts[i];
-                    else if (idx == 1) _q2 = opts[i];
-                    else _q3 = opts[i];
+                    if (idx == 0)
+                      _q1 = opts[i];
+                    else if (idx == 1)
+                      _q2 = opts[i];
+                    else
+                      _q3 = opts[i];
                   });
                 },
-                children: opts.map((q) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(q,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: JournalColors.textPrimary, fontSize: 13)),
-                  ),
-                )).toList(),
+                children: opts
+                    .map((q) => Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(q,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 13)),
+                          ),
+                        ))
+                    .toList(),
               ),
             ),
           ],
@@ -1964,7 +2505,9 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
   }
 
   Future<void> _save() async {
-    if (_a1.text.trim().isEmpty || _a2.text.trim().isEmpty || _a3.text.trim().isEmpty) {
+    if (_a1.text.trim().isEmpty ||
+        _a2.text.trim().isEmpty ||
+        _a3.text.trim().isEmpty) {
       setState(() => _err = 'Please answer all three questions.');
       return;
     }
@@ -1972,12 +2515,18 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
       setState(() => _err = 'Please choose three different questions.');
       return;
     }
-    setState(() { _saving = true; _err = null; });
+    setState(() {
+      _saving = true;
+      _err = null;
+    });
     try {
       await _api.setupSecurityQuestions(
-        q1: _q1, a1: _a1.text.trim(),
-        q2: _q2, a2: _a2.text.trim(),
-        q3: _q3, a3: _a3.text.trim(),
+        q1: _q1,
+        a1: _a1.text.trim(),
+        q2: _q2,
+        a2: _a2.text.trim(),
+        q3: _q3,
+        a3: _a3.text.trim(),
       );
       if (mounted) widget.onNext();
     } catch (e) {
@@ -2005,10 +2554,14 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(q, style: const TextStyle(
-                    color: JournalColors.textSecondary, fontSize: 12, height: 1.4)),
+                  child: Text(q,
+                      style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 12,
+                          height: 1.4)),
                 ),
-                const Icon(CupertinoIcons.chevron_down, color: JournalColors.textMuted, size: 14),
+                const Icon(CupertinoIcons.chevron_down,
+                    color: JournalColors.textMuted, size: 14),
               ],
             ),
           ),
@@ -2035,21 +2588,22 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Recovery questions', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Recovery questions',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
           'If you ever lose email access, these let you reset your password offline. Answers are hashed — never stored in plain text.',
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
         ),
         const SizedBox(height: 20),
-
         _errorBanner(_err),
-
         _questionBlock(0, _q1, _a1),
         _questionBlock(1, _q2, _a2),
         _questionBlock(2, _q3, _a3),
-
         Row(
           children: [
             Expanded(
@@ -2064,7 +2618,8 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
                   ),
                   child: const Text('Skip for now',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
+                      style: TextStyle(
+                          color: JournalColors.textSecondary, fontSize: 13)),
                 ),
               ),
             ),
@@ -2073,7 +2628,7 @@ class _SecurityQuestionsStepState extends State<_SecurityQuestionsStep> {
               child: AdaptiveButton(
                 style: AdaptiveButtonStyle.prominentGlass,
                 onPressed: _saving ? null : _save,
-                label: _saving ? 'Saving…' : 'Save & Continue →',
+                label: _saving ? 'Saving...' : 'Save and Continue',
               ),
             ),
           ],
@@ -2095,33 +2650,42 @@ class _AiProviderStep extends StatefulWidget {
 }
 
 class _AiProviderStepState extends State<_AiProviderStep> {
-  final _api    = ApiService();
+  final _api = ApiService();
   final _keyCtrl = TextEditingController();
 
-  String  _provider = 'anthropic';
-  bool    _saving   = false;
+  String _provider = 'anthropic';
+  bool _saving = false;
   String? _err;
 
   final _providers = const [
     ('anthropic', '⊕', 'Anthropic Claude', 'claude-sonnet-4-6'),
-    ('openai',    '◈', 'OpenAI GPT',       'gpt-4o'),
-    ('gemini',    '⬡', 'Google Gemini',    'gemini-1.5-pro'),
+    ('openai', '◈', 'OpenAI GPT', 'gpt-4o'),
+    ('gemini', '⬡', 'Google Gemini', 'gemini-1.5-pro'),
   ];
 
   Future<void> _save() async {
     final key = _keyCtrl.text.trim();
-    if (key.isEmpty) { widget.onNext(); return; }
+    if (key.isEmpty) {
+      widget.onNext();
+      return;
+    }
 
-    setState(() { _saving = true; _err = null; });
+    setState(() {
+      _saving = true;
+      _err = null;
+    });
     try {
       await _api.updateAiProvider({
         'provider': _provider,
-        'api_key':  key,
+        'api_key': key,
       });
       if (mounted) widget.onNext();
     } catch (e) {
       if (!mounted) return;
-      setState(() { _saving = false; _err = _parseErr(e); });
+      setState(() {
+        _saving = false;
+        _err = _parseErr(e);
+      });
     }
   }
 
@@ -2137,12 +2701,16 @@ class _AiProviderStepState extends State<_AiProviderStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('AI provider setup', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('AI provider setup',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
-          'Connect your own AI API key to unlock reflections, pattern analysis, and memory summaries. You can skip this and add it later in Settings.',
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+          'Connect an AI API key for reflections, pattern analysis, and memory summaries. You can skip this and add it later in Settings.',
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
         ),
         const SizedBox(height: 20),
 
@@ -2161,26 +2729,37 @@ class _AiProviderStepState extends State<_AiProviderStep> {
                     : JournalColors.bgSurface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _provider == p.$1 ? JournalColors.accent : JournalColors.border,
+                  color: _provider == p.$1
+                      ? JournalColors.accent
+                      : JournalColors.border,
                 ),
               ),
               child: Row(
                 children: [
-                  Text(p.$2, style: TextStyle(
-                    color: _provider == p.$1 ? JournalColors.accent : JournalColors.textMuted,
-                    fontSize: 16,
-                  )),
+                  Text(p.$2,
+                      style: TextStyle(
+                        color: _provider == p.$1
+                            ? JournalColors.accent
+                            : JournalColors.textMuted,
+                        fontSize: 16,
+                      )),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(p.$3, style: TextStyle(
-                        color: _provider == p.$1 ? JournalColors.accent : JournalColors.textPrimary,
-                        fontSize: 13, fontWeight: FontWeight.w700,
-                      )),
-                      Text(p.$4, style: const TextStyle(
-                        color: JournalColors.textMuted, fontSize: 11,
-                      )),
+                      Text(p.$3,
+                          style: TextStyle(
+                            color: _provider == p.$1
+                                ? JournalColors.accent
+                                : JournalColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          )),
+                      Text(p.$4,
+                          style: const TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 11,
+                          )),
                     ],
                   ),
                 ],
@@ -2205,7 +2784,8 @@ class _AiProviderStepState extends State<_AiProviderStep> {
         const SizedBox(height: 8),
         const Text(
           'Your key is stored encrypted on the server and never logged.',
-          style: TextStyle(color: JournalColors.textMuted, fontSize: 11, height: 1.5),
+          style: TextStyle(
+              color: JournalColors.textMuted, fontSize: 11, height: 1.5),
         ),
 
         Padding(
@@ -2224,7 +2804,8 @@ class _AiProviderStepState extends State<_AiProviderStep> {
                     ),
                     child: const Text('Skip for now',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
+                        style: TextStyle(
+                            color: JournalColors.textSecondary, fontSize: 13)),
                   ),
                 ),
               ),
@@ -2233,7 +2814,7 @@ class _AiProviderStepState extends State<_AiProviderStep> {
                 child: AdaptiveButton(
                   style: AdaptiveButtonStyle.prominentGlass,
                   onPressed: _saving ? null : _save,
-                  label: _saving ? 'Saving…' : 'Save & Continue →',
+                  label: _saving ? 'Saving...' : 'Save and Continue',
                 ),
               ),
             ],
@@ -2261,10 +2842,10 @@ class _MemoryStep extends StatefulWidget {
 }
 
 class _MemoryStepState extends State<_MemoryStep> {
-  final _api    = ApiService();
+  final _api = ApiService();
   String? _aiSummary;
-  bool    _loadingPreview = true;
-  bool    _saving         = false;
+  bool _loadingPreview = true;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -2275,7 +2856,11 @@ class _MemoryStepState extends State<_MemoryStep> {
   Future<void> _loadPreview() async {
     try {
       final res = await _api.onboardingMemoryPreview(widget.payload);
-      if (mounted) setState(() { _aiSummary = res['ai_summary'] as String?; _loadingPreview = false; });
+      if (mounted)
+        setState(() {
+          _aiSummary = res['ai_summary'] as String?;
+          _loadingPreview = false;
+        });
     } catch (_) {
       if (mounted) setState(() => _loadingPreview = false);
     }
@@ -2286,42 +2871,53 @@ class _MemoryStepState extends State<_MemoryStep> {
     try {
       await _api.onboardingMemorySave({
         ...widget.payload,
-        if (_aiSummary != null && _aiSummary!.isNotEmpty) 'ai_summary': _aiSummary,
+        if (_aiSummary != null && _aiSummary!.isNotEmpty)
+          'ai_summary': _aiSummary,
       });
     } catch (_) {}
     if (mounted) widget.onNext();
   }
 
   Widget _memRow(String icon, String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(icon, style: const TextStyle(color: JournalColors.accent, fontSize: 13)),
-        const SizedBox(width: 10),
-        Text('$label: ', style: const TextStyle(
-            color: JournalColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
-        Expanded(
-          child: Text(value, style: const TextStyle(
-              color: JournalColors.textSecondary, fontSize: 12, height: 1.4)),
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(icon,
+                style:
+                    const TextStyle(color: JournalColors.accent, fontSize: 13)),
+            const SizedBox(width: 10),
+            Text('$label: ',
+                style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.4)),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 
   @override
   Widget build(BuildContext context) {
     final p = widget.payload;
-    final name    = p['preferred_name'] as String? ?? '';
-    final sit     = p['situation_type'] as String? ?? '';
-    final people  = (p['people'] as List?)?.cast<Map>() ?? [];
-    final topics  = (p['topics'] as List?)?.cast<String>() ?? [];
-    final goals   = (p['goals'] as List?)?.cast<String>() ?? [];
+    final name = p['preferred_name'] as String? ?? '';
+    final sit = p['situation_type'] as String? ?? '';
+    final people = (p['people'] as List?)?.cast<Map>() ?? [];
+    final topics = (p['topics'] as List?)?.cast<String>() ?? [];
+    final goals = (p['goals'] as List?)?.cast<String>() ?? [];
 
-    final sitLabel = _kSituationOpts.firstWhere(
-      (s) => s.$1 == sit, orElse: () => ('', '', sit, '')).$3;
+    final sitLabel = _kSituationOpts
+        .firstWhere((s) => s.$1 == sit, orElse: () => ('', '', sit, ''))
+        .$3;
     final goalLabels = goals.map((id) {
-      final g = _kGoalOpts.firstWhere((g) => g.$1 == id, orElse: () => (id, '', id, ''));
+      final g = _kGoalOpts.firstWhere((g) => g.$1 == id,
+          orElse: () => (id, '', id, ''));
       return g.$3;
     }).join(', ');
 
@@ -2329,15 +2925,18 @@ class _MemoryStepState extends State<_MemoryStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Your AI memory', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Your AI memory',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
-          'This context is injected into every AI interaction — reflections, pattern analysis, summaries, everything.',
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+          'This context is saved for reflections, pattern analysis, and summaries.',
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
         ),
         const SizedBox(height: 20),
-
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -2351,34 +2950,43 @@ class _MemoryStepState extends State<_MemoryStep> {
               Row(
                 children: [
                   const Text('✦',
-                      style: TextStyle(color: JournalColors.accent, fontSize: 18)),
+                      style:
+                          TextStyle(color: JournalColors.accent, fontSize: 18)),
                   const SizedBox(width: 10),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text('AI Memory — Active',
-                          style: TextStyle(color: JournalColors.accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                          style: TextStyle(
+                              color: JournalColors.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
                       Text('updates with every new journal entry',
-                          style: TextStyle(color: JournalColors.textMuted, fontSize: 10)),
+                          style: TextStyle(
+                              color: JournalColors.textMuted, fontSize: 10)),
                     ],
                   ),
                 ],
               ),
               const Divider(color: Color(0x22818cf8), height: 24),
-
               if (name.isNotEmpty) _memRow('◎', 'Name', name),
               if (sitLabel.isNotEmpty) _memRow('〜', 'Situation', sitLabel),
               if (people.isNotEmpty)
-                _memRow('◈', 'Key People',
-                    people.map((p) => '${p['name']} (${p['role']})').join(', ')),
+                _memRow(
+                    '◈',
+                    'Key People',
+                    people
+                        .map((p) => '${p['name']} (${p['role']})')
+                        .join(', ')),
               if (topics.isNotEmpty) _memRow('⬡', 'Topics', topics.join(', ')),
               if (goalLabels.isNotEmpty) _memRow('⊕', 'Goals', goalLabels),
-
               const Divider(color: Color(0x22818cf8), height: 20),
               const Text('AI CONTEXT SUMMARY',
                   style: TextStyle(
-                    color: JournalColors.textMuted, fontSize: 9,
-                    letterSpacing: 1.2, fontWeight: FontWeight.w700,
+                    color: JournalColors.textMuted,
+                    fontSize: 9,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
                   )),
               const SizedBox(height: 8),
               if (_loadingPreview)
@@ -2387,31 +2995,36 @@ class _MemoryStepState extends State<_MemoryStep> {
                     CupertinoActivityIndicator(radius: 8),
                     SizedBox(width: 10),
                     Text('Generating your context…',
-                        style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
+                        style: TextStyle(
+                            color: JournalColors.textMuted, fontSize: 12)),
                   ],
                 )
               else if (_aiSummary != null && _aiSummary!.isNotEmpty)
                 Text(_aiSummary!,
                     style: const TextStyle(
-                        color: JournalColors.textSecondary, fontSize: 12, height: 1.65))
+                        color: JournalColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.65))
               else
                 const Text(
                   'Your memory context will grow as you add journal entries.',
-                  style: TextStyle(color: JournalColors.textMuted, fontSize: 12,
-                      fontStyle: FontStyle.italic, height: 1.6),
+                  style: TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      height: 1.6),
                 ),
             ],
           ),
         ),
-
         const SizedBox(height: 10),
-        const Text('Update your memory profile anytime from Settings → Memory Profile.',
+        const Text(
+            'Update your memory profile anytime from Settings → Memory Profile.',
             style: TextStyle(color: JournalColors.textMuted, fontSize: 11)),
-
         _NavRow(
           onNext: _saveAndContinue,
           onBack: widget.onBack,
-          nextLabel: 'Save Memory & Continue →',
+          nextLabel: 'Save Memory and Continue',
           loading: _saving,
         ),
       ],
@@ -2434,22 +3047,30 @@ class _DayOneStepState extends State<_DayOneStep> {
   final _api = ApiService();
 
   // intro | uploading | processing | done | error
-  String _phase  = 'intro';
+  String _phase = 'intro';
   String? _jobId;
   String? _errMsg;
 
   int _processed = 0;
-  int _total     = 0;
-  int _inserted  = 0;
-  int _skipped   = 0;
-  int _errors    = 0;
+  int _total = 0;
+  int _inserted = 0;
+  int _skipped = 0;
+  int _errors = 0;
 
   static const _steps = [
     ('1', 'Open Day One', 'Open the Day One app on your iPhone, iPad, or Mac.'),
     ('2', 'Go to Settings', 'Tap the menu icon and open Settings.'),
     ('3', 'Tap Journals', 'Select the journal you want to export.'),
-    ('4', 'Choose "Export Journal"', 'Tap Export Journal → choose JSON format when prompted.'),
-    ('5', 'Share the file here', 'Day One creates a .json or .zip file — use the share sheet or Files app to pick it below.'),
+    (
+      '4',
+      'Choose "Export Journal"',
+      'Tap Export Journal → choose JSON format when prompted.'
+    ),
+    (
+      '5',
+      'Share the file here',
+      'Day One creates a .json or .zip file — use the share sheet or Files app to pick it below.'
+    ),
   ];
 
   Future<void> _pickAndUpload() async {
@@ -2464,16 +3085,19 @@ class _DayOneStepState extends State<_DayOneStep> {
     final file = result.files.first;
     if (file.path == null) return;
 
-    setState(() { _phase = 'uploading'; _errMsg = null; });
+    setState(() {
+      _phase = 'uploading';
+      _errMsg = null;
+    });
 
     try {
       final res = await _api.importDayOne(file.path!, file.name);
       final jobId = res['job_id'] as String?;
       if (jobId == null) throw Exception('No job_id returned');
       setState(() {
-        _jobId  = jobId;
-        _total  = (res['total'] as num?)?.toInt() ?? 0;
-        _phase  = 'processing';
+        _jobId = jobId;
+        _total = (res['total'] as num?)?.toInt() ?? 0;
+        _phase = 'processing';
       });
       _startPolling();
     } catch (e) {
@@ -2482,7 +3106,7 @@ class _DayOneStepState extends State<_DayOneStep> {
         _errMsg = _parseErr(e).isNotEmpty
             ? _parseErr(e)
             : 'Upload failed — check the file is a valid Day One export.';
-        _phase  = 'error';
+        _phase = 'error';
       });
     }
   }
@@ -2496,12 +3120,12 @@ class _DayOneStepState extends State<_DayOneStep> {
         if (!mounted) return false;
         setState(() {
           _processed = (res['processed'] as num?)?.toInt() ?? _processed;
-          _total     = (res['total']     as num?)?.toInt() ?? _total;
-          _inserted  = (res['inserted']  as num?)?.toInt() ?? _inserted;
-          _skipped   = (res['skipped']   as num?)?.toInt() ?? _skipped;
-          _errors    = (res['errors']    as num?)?.toInt() ?? _errors;
+          _total = (res['total'] as num?)?.toInt() ?? _total;
+          _inserted = (res['inserted'] as num?)?.toInt() ?? _inserted;
+          _skipped = (res['skipped'] as num?)?.toInt() ?? _skipped;
+          _errors = (res['errors'] as num?)?.toInt() ?? _errors;
           final status = res['status'] as String? ?? '';
-          if (status == 'done')  _phase = 'done';
+          if (status == 'done') _phase = 'done';
           if (status == 'error') _phase = 'error';
         });
         return _phase == 'processing';
@@ -2548,18 +3172,23 @@ class _DayOneStepState extends State<_DayOneStep> {
         const SizedBox(height: 24),
         Row(
           children: const [
-            Text('⬆', style: TextStyle(color: JournalColors.accent, fontSize: 22)),
+            Text('⬆',
+                style: TextStyle(color: JournalColors.accent, fontSize: 22)),
             SizedBox(width: 10),
             Expanded(
-              child: Text('Have a Day One account?', style: TextStyle(
-                  color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+              child: Text('Have a Day One account?',
+                  style: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800)),
             ),
           ],
         ),
         const SizedBox(height: 8),
         const Text(
-          'Import your Day One history and instantly unlock years of patterns, contradictions, and people intelligence.',
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
+          'Import earlier Day One entries so they are available in timeline, search, and summaries.',
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
         ),
         const SizedBox(height: 18),
 
@@ -2572,17 +3201,20 @@ class _DayOneStepState extends State<_DayOneStep> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 22, height: 22,
+                  width: 22,
+                  height: 22,
                   decoration: BoxDecoration(
                     color: JournalColors.accent.withOpacity(0.12),
                     shape: BoxShape.circle,
-                    border: Border.all(color: JournalColors.accent.withOpacity(0.3)),
+                    border: Border.all(
+                        color: JournalColors.accent.withOpacity(0.3)),
                   ),
                   child: Center(
                     child: Text(_steps[i].$1,
                         style: const TextStyle(
                           color: JournalColors.accent,
-                          fontSize: 10, fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
                         )),
                   ),
                 ),
@@ -2591,13 +3223,17 @@ class _DayOneStepState extends State<_DayOneStep> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_steps[i].$2, style: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 12, fontWeight: FontWeight.w700)),
+                      Text(_steps[i].$2,
+                          style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
-                      Text(_steps[i].$3, style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 11, height: 1.5)),
+                      Text(_steps[i].$3,
+                          style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.5)),
                     ],
                   ),
                 ),
@@ -2620,7 +3256,9 @@ class _DayOneStepState extends State<_DayOneStep> {
             'ⓘ  Text entries are fully imported. Photo-only entries are skipped.',
             style: TextStyle(
                 color: JournalColors.textMuted,
-                fontSize: 11, height: 1.55, fontFamily: 'monospace'),
+                fontSize: 11,
+                height: 1.55,
+                fontFamily: 'monospace'),
           ),
         ),
         const SizedBox(height: 18),
@@ -2628,7 +3266,7 @@ class _DayOneStepState extends State<_DayOneStep> {
         AdaptiveButton(
           style: AdaptiveButtonStyle.prominentGlass,
           onPressed: _pickAndUpload,
-          label: 'Upload .json or .zip →',
+          label: 'Upload .json or .zip',
         ),
         const SizedBox(height: 10),
         GestureDetector(
@@ -2643,7 +3281,8 @@ class _DayOneStepState extends State<_DayOneStep> {
             child: const Text(
               'Skip — I\'ll import later in Settings',
               textAlign: TextAlign.center,
-              style: TextStyle(color: JournalColors.textSecondary, fontSize: 13),
+              style:
+                  TextStyle(color: JournalColors.textSecondary, fontSize: 13),
             ),
           ),
         ),
@@ -2669,17 +3308,22 @@ class _DayOneStepState extends State<_DayOneStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: 48),
-        Text('📤', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 44)),
+        Text('📤', textAlign: TextAlign.center, style: TextStyle(fontSize: 44)),
         SizedBox(height: 20),
-        Text('Uploading…', textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textPrimary,
-                fontSize: 18, fontWeight: FontWeight.w700)),
+        Text('Uploading…',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700)),
         SizedBox(height: 8),
-        Text('Hang tight', textAlign: TextAlign.center,
+        Text('Hang tight',
+            textAlign: TextAlign.center,
             style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
         SizedBox(height: 24),
-        Center(child: CupertinoActivityIndicator(radius: 14, color: JournalColors.accent)),
+        Center(
+            child: CupertinoActivityIndicator(
+                radius: 14, color: JournalColors.accent)),
       ],
     );
   }
@@ -2691,9 +3335,12 @@ class _DayOneStepState extends State<_DayOneStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 32),
-        const Text('Importing your journal…', textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textPrimary,
-                fontSize: 16, fontWeight: FontWeight.w700)),
+        const Text('Importing your journal…',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
         const Text("Don't close this screen. This may take a few minutes.",
             textAlign: TextAlign.center,
@@ -2706,7 +3353,8 @@ class _DayOneStepState extends State<_DayOneStep> {
           child: LinearProgressIndicator(
             value: _total > 0 ? _pct / 100 : null,
             backgroundColor: JournalColors.border,
-            valueColor: const AlwaysStoppedAnimation<Color>(JournalColors.accent),
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(JournalColors.accent),
             minHeight: 5,
           ),
         ),
@@ -2716,10 +3364,12 @@ class _DayOneStepState extends State<_DayOneStep> {
           children: [
             Text(
               _processed < _total ? 'Processing entries…' : 'Running analysis…',
-              style: const TextStyle(color: JournalColors.textSecondary, fontSize: 11),
+              style: const TextStyle(
+                  color: JournalColors.textSecondary, fontSize: 11),
             ),
             Text('$_processed / $_total',
-                style: const TextStyle(color: JournalColors.accent, fontSize: 11)),
+                style:
+                    const TextStyle(color: JournalColors.accent, fontSize: 11)),
           ],
         ),
         const SizedBox(height: 20),
@@ -2727,11 +3377,19 @@ class _DayOneStepState extends State<_DayOneStep> {
         // Stats grid
         Row(
           children: [
-            _StatCard(label: 'Imported', value: _inserted, color: const Color(0xFF10b981)),
+            _StatCard(
+                label: 'Imported',
+                value: _inserted,
+                color: const Color(0xFF10b981)),
             const SizedBox(width: 8),
-            _StatCard(label: 'Skipped',  value: _skipped,  color: JournalColors.textSecondary),
+            _StatCard(
+                label: 'Skipped',
+                value: _skipped,
+                color: JournalColors.textSecondary),
             const SizedBox(width: 8),
-            _StatCard(label: 'Errors',   value: _errors,
+            _StatCard(
+                label: 'Errors',
+                value: _errors,
                 color: _errors > 0 ? Colors.red : JournalColors.textSecondary),
           ],
         ),
@@ -2747,7 +3405,8 @@ class _DayOneStepState extends State<_DayOneStep> {
       children: [
         const SizedBox(height: 32),
         Container(
-          width: 56, height: 56,
+          width: 56,
+          height: 56,
           margin: const EdgeInsets.symmetric(horizontal: 140),
           decoration: BoxDecoration(
             color: const Color(0xFF10b981).withOpacity(0.15),
@@ -2757,36 +3416,44 @@ class _DayOneStepState extends State<_DayOneStep> {
           child: const Center(
             child: Text('✓',
                 style: TextStyle(
-                    color: Color(0xFF10b981), fontSize: 24, fontWeight: FontWeight.w700)),
+                    color: Color(0xFF10b981),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700)),
           ),
         ),
         const SizedBox(height: 18),
-        const Text('Import complete', textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textPrimary,
-                fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Import complete',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 10),
         Text(
           '$_inserted ${_inserted == 1 ? 'entry' : 'entries'} imported. '
           'Patterns, people intelligence, and mood analysis are ready on your dashboard.',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
+          style: const TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
         ),
         if (_skipped > 0 || _errors > 0) ...[
           const SizedBox(height: 6),
           Text(
             [
-              if (_skipped > 0) '$_skipped duplicate${_skipped != 1 ? 's' : ''} skipped',
-              if (_errors > 0)  '$_errors error${_errors != 1 ? 's' : ''}',
+              if (_skipped > 0)
+                '$_skipped duplicate${_skipped != 1 ? 's' : ''} skipped',
+              if (_errors > 0) '$_errors error${_errors != 1 ? 's' : ''}',
             ].join(' · '),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: JournalColors.textMuted, fontSize: 11),
+            style:
+                const TextStyle(color: JournalColors.textMuted, fontSize: 11),
           ),
         ],
         const SizedBox(height: 28),
         AdaptiveButton(
           style: AdaptiveButtonStyle.prominentGlass,
           onPressed: widget.onNext,
-          label: 'Continue →',
+          label: 'Continue',
         ),
       ],
     );
@@ -2799,23 +3466,32 @@ class _DayOneStepState extends State<_DayOneStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 32),
-        const Text('⚠', textAlign: TextAlign.center,
+        const Text('⚠',
+            textAlign: TextAlign.center,
             style: TextStyle(color: Colors.orange, fontSize: 40)),
         const SizedBox(height: 16),
-        const Text('Import failed', textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textPrimary,
-                fontSize: 20, fontWeight: FontWeight.w800)),
+        const Text('Import failed',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 10),
         Text(
-          _errMsg ?? 'Something went wrong. Check the file is a valid Day One export.',
+          _errMsg ??
+              'Something went wrong. Check the file is a valid Day One export.',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+          style: const TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
         ),
         const SizedBox(height: 24),
         AdaptiveButton(
           style: AdaptiveButtonStyle.prominentGlass,
-          onPressed: () => setState(() { _phase = 'intro'; _errMsg = null; }),
-          label: 'Try Again →',
+          onPressed: () => setState(() {
+            _phase = 'intro';
+            _errMsg = null;
+          }),
+          label: 'Try Again',
         ),
         const SizedBox(height: 10),
         GestureDetector(
@@ -2829,7 +3505,8 @@ class _DayOneStepState extends State<_DayOneStep> {
             ),
             child: const Text('Skip for now',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
+                style: TextStyle(
+                    color: JournalColors.textSecondary, fontSize: 13)),
           ),
         ),
       ],
@@ -2838,10 +3515,11 @@ class _DayOneStepState extends State<_DayOneStep> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard(
+      {required this.label, required this.value, required this.color});
   final String label;
-  final int    value;
-  final Color  color;
+  final int value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2857,8 +3535,10 @@ class _StatCard extends StatelessWidget {
           children: [
             Text('$value',
                 style: TextStyle(
-                    color: color, fontSize: 22,
-                    fontWeight: FontWeight.w700, fontFamily: 'monospace')),
+                    color: color,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'monospace')),
             const SizedBox(height: 3),
             Text(label,
                 style: const TextStyle(
@@ -2882,37 +3562,63 @@ class _SmsStep extends StatefulWidget {
 }
 
 class _SmsStepState extends State<_SmsStep> {
-  final _api       = ApiService();
+  final _api = ApiService();
   final _phoneCtrl = TextEditingController();
-  final _codeCtrl  = TextEditingController();
+  final _codeCtrl = TextEditingController();
 
-  String _phase   = 'enter'; // enter | verify | done
-  bool   _loading = false;
+  String _phase = 'enter'; // enter | verify | done
+  bool _loading = false;
   String? _err;
 
   Future<void> _sendCode() async {
     final phone = _phoneCtrl.text.trim();
-    if (phone.isEmpty) { setState(() => _err = 'Enter your phone number'); return; }
-    setState(() { _loading = true; _err = null; });
+    if (phone.isEmpty) {
+      setState(() => _err = 'Enter your phone number');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _err = null;
+    });
     try {
       await _api.requestSmsVerification(phone);
-      if (mounted) setState(() { _loading = false; _phase = 'verify'; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _phase = 'verify';
+        });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _loading = false; _err = _parseErr(e); });
+      setState(() {
+        _loading = false;
+        _err = _parseErr(e);
+      });
     }
   }
 
   Future<void> _verify() async {
     final code = _codeCtrl.text.trim();
-    if (code.length != 6) { setState(() => _err = 'Enter the 6-digit code'); return; }
-    setState(() { _loading = true; _err = null; });
+    if (code.length != 6) {
+      setState(() => _err = 'Enter the 6-digit code');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _err = null;
+    });
     try {
       await _api.verifySmsCode(_phoneCtrl.text.trim(), code);
-      if (mounted) setState(() { _loading = false; _phase = 'done'; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _phase = 'done';
+        });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _loading = false; _err = _parseErr(e); });
+      setState(() {
+        _loading = false;
+        _err = _parseErr(e);
+      });
     }
   }
 
@@ -2929,15 +3635,18 @@ class _SmsStepState extends State<_SmsStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 24),
-        const Text('Text journal', style: TextStyle(
-            color: JournalColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text('Text journal',
+            style: TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text(
           'Text any message to your journal number and it\'s saved as an entry. You\'ll get an AI summary back. Optional — skip if you prefer the app.',
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.5),
         ),
         const SizedBox(height: 20),
-
         if (_phase == 'enter') ...[
           _errorBanner(_err),
           _fieldLabel('Your Phone Number'),
@@ -2968,7 +3677,9 @@ class _SmsStepState extends State<_SmsStep> {
                       ),
                       child: const Text('Skip',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
+                          style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 13)),
                     ),
                   ),
                 ),
@@ -2977,14 +3688,13 @@ class _SmsStepState extends State<_SmsStep> {
                   child: AdaptiveButton(
                     style: AdaptiveButtonStyle.prominentGlass,
                     onPressed: _loading ? null : _sendCode,
-                    label: _loading ? 'Sending…' : 'Send Code →',
+                    label: _loading ? 'Sending...' : 'Send Code',
                   ),
                 ),
               ],
             ),
           ),
         ],
-
         if (_phase == 'verify') ...[
           Container(
             padding: const EdgeInsets.all(12),
@@ -2995,7 +3705,10 @@ class _SmsStepState extends State<_SmsStep> {
             ),
             child: Text(
               'Code sent to ${_phoneCtrl.text} — expires in 10 minutes',
-              style: const TextStyle(color: JournalColors.textSecondary, fontSize: 12, height: 1.5),
+              style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 12,
+                  height: 1.5),
             ),
           ),
           const SizedBox(height: 16),
@@ -3007,8 +3720,10 @@ class _SmsStepState extends State<_SmsStep> {
             placeholderStyle: const TextStyle(
                 color: JournalColors.textMuted, fontSize: 24, letterSpacing: 8),
             style: const TextStyle(
-                color: JournalColors.textPrimary, fontSize: 28,
-                fontWeight: FontWeight.w700, letterSpacing: 10),
+                color: JournalColors.textPrimary,
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 10),
             textAlign: TextAlign.center,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: _fieldDeco(),
@@ -3023,7 +3738,11 @@ class _SmsStepState extends State<_SmsStep> {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() { _phase = 'enter'; _err = null; _codeCtrl.clear(); }),
+                    onTap: () => setState(() {
+                      _phase = 'enter';
+                      _err = null;
+                      _codeCtrl.clear();
+                    }),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
@@ -3033,7 +3752,9 @@ class _SmsStepState extends State<_SmsStep> {
                       ),
                       child: const Text('Resend',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13)),
+                          style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 13)),
                     ),
                   ),
                 ),
@@ -3042,7 +3763,7 @@ class _SmsStepState extends State<_SmsStep> {
                   child: AdaptiveButton(
                     style: AdaptiveButtonStyle.prominentGlass,
                     onPressed: _loading ? null : _verify,
-                    label: _loading ? 'Verifying…' : 'Verify →',
+                    label: _loading ? 'Verifying...' : 'Verify',
                   ),
                 ),
               ],
@@ -3051,34 +3772,43 @@ class _SmsStepState extends State<_SmsStep> {
           const SizedBox(height: 12),
           GestureDetector(
             onTap: widget.onNext,
-            child: const Text('skip for now →',
+            child: const Text('Skip for now',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: JournalColors.textMuted, fontSize: 12)),
           ),
         ],
-
         if (_phase == 'done') ...[
           const SizedBox(height: 12),
           Container(
-            width: 56, height: 56,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               color: const Color(0xFF10b981).withOpacity(0.15),
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF10b981).withOpacity(0.3)),
+              border:
+                  Border.all(color: const Color(0xFF10b981).withOpacity(0.3)),
             ),
             child: const Center(
               child: Text('✓',
-                  style: TextStyle(color: Color(0xFF10b981), fontSize: 24, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: Color(0xFF10b981),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700)),
             ),
           ),
           const SizedBox(height: 16),
-          const Text('Phone verified!', textAlign: TextAlign.center,
-              style: TextStyle(color: JournalColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w800)),
+          const Text('Phone verified!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           const Text(
             'Text any message to your journal number to save it as an entry. You\'ll receive an AI-generated summary back.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
+            style: TextStyle(
+                color: JournalColors.textSecondary, fontSize: 13, height: 1.6),
           ),
           const SizedBox(height: 16),
           Container(
@@ -3092,7 +3822,9 @@ class _SmsStepState extends State<_SmsStep> {
               _phoneCtrl.text,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: JournalColors.textSecondary, fontSize: 12, fontFamily: 'monospace'),
+                  color: JournalColors.textSecondary,
+                  fontSize: 12,
+                  fontFamily: 'monospace'),
             ),
           ),
           Padding(
@@ -3100,7 +3832,7 @@ class _SmsStepState extends State<_SmsStep> {
             child: AdaptiveButton(
               style: AdaptiveButtonStyle.prominentGlass,
               onPressed: widget.onNext,
-              label: 'Continue Setup →',
+              label: 'Continue Setup',
             ),
           ),
         ],
@@ -3149,7 +3881,8 @@ class _DoneStepState extends State<_DoneStep> {
       children: [
         const SizedBox(height: 32),
         Container(
-          width: 64, height: 64,
+          width: 64,
+          height: 64,
           margin: const EdgeInsets.symmetric(horizontal: 148),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -3161,12 +3894,14 @@ class _DoneStepState extends State<_DoneStep> {
             boxShadow: [
               BoxShadow(
                 color: JournalColors.accent.withOpacity(0.4),
-                blurRadius: 24, spreadRadius: 4,
+                blurRadius: 24,
+                spreadRadius: 4,
               ),
             ],
           ),
           child: const Center(
-            child: Text('✦', style: TextStyle(color: Colors.white, fontSize: 28)),
+            child:
+                Text('✦', style: TextStyle(color: Colors.white, fontSize: 28)),
           ),
         ),
         const SizedBox(height: 24),
@@ -3174,30 +3909,47 @@ class _DoneStepState extends State<_DoneStep> {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: JournalColors.textPrimary,
-              fontSize: 26, fontWeight: FontWeight.w800, height: 1.2,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              height: 1.2,
             )),
         const SizedBox(height: 12),
         const Text(
-          'Your AI already knows your context. Every reflection, pattern alert, and insight will be personalized from day one.',
+          'Your setup is saved. You can write, import, or adjust settings next.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: JournalColors.textSecondary, fontSize: 13, height: 1.65),
+          style: TextStyle(
+              color: JournalColors.textSecondary, fontSize: 13, height: 1.65),
         ),
         const SizedBox(height: 28),
 
         // 2x2 feature grid
         Row(
           children: [
-            Expanded(child: _DoneFeatureCard(icon: '◈', title: 'Upload first entry', hint: 'via iPhone Shortcut')),
+            Expanded(
+                child: _DoneFeatureCard(
+                    icon: '◈',
+                    title: 'Upload first entry',
+                    hint: 'via iPhone Shortcut')),
             const SizedBox(width: 8),
-            Expanded(child: _DoneFeatureCard(icon: '〜', title: 'Nervous System', hint: 'mood tracking over time')),
+            Expanded(
+                child: _DoneFeatureCard(
+                    icon: '〜',
+                    title: 'Nervous System',
+                    hint: 'mood tracking over time')),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(child: _DoneFeatureCard(icon: '⬡', title: 'Pattern Detection', hint: 'AI runs automatically')),
+            Expanded(
+                child: _DoneFeatureCard(
+                    icon: '⬡',
+                    title: 'Pattern Detection',
+                    hint: 'AI runs automatically')),
             const SizedBox(width: 8),
-            Expanded(child: _DoneFeatureCard(icon: '✦', title: 'Exit Plan', hint: "when you're ready")),
+            Expanded(
+                child: _DoneFeatureCard(
+                    icon: '✦', title: 'Exit Plan', hint: "when you're ready")),
           ],
         ),
 
@@ -3205,7 +3957,7 @@ class _DoneStepState extends State<_DoneStep> {
         AdaptiveButton(
           style: AdaptiveButtonStyle.prominentGlass,
           onPressed: widget.onDone,
-          label: 'Enter Dashboard →',
+          label: 'Enter Dashboard',
         ),
         const SizedBox(height: 10),
         Text(
@@ -3219,7 +3971,8 @@ class _DoneStepState extends State<_DoneStep> {
 }
 
 class _DoneFeatureCard extends StatelessWidget {
-  const _DoneFeatureCard({required this.icon, required this.title, required this.hint});
+  const _DoneFeatureCard(
+      {required this.icon, required this.title, required this.hint});
   final String icon;
   final String title;
   final String hint;
@@ -3236,12 +3989,19 @@ class _DoneFeatureCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(icon, style: const TextStyle(color: JournalColors.accent, fontSize: 14)),
+          Text(icon,
+              style:
+                  const TextStyle(color: JournalColors.accent, fontSize: 14)),
           const SizedBox(height: 4),
-          Text(title, style: const TextStyle(
-              color: JournalColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(title,
+              style: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
-          Text(hint, style: const TextStyle(color: JournalColors.textMuted, fontSize: 10)),
+          Text(hint,
+              style: const TextStyle(
+                  color: JournalColors.textMuted, fontSize: 10)),
         ],
       ),
     );

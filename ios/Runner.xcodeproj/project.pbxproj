@@ -254,6 +254,7 @@
 				A10000000000000000000006 /* Embed App Extensions */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				A10000000000000000000011 /* Sign Native Asset Frameworks */,
 				3B53B03A40288E700C69500C /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
@@ -369,6 +370,21 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		A10000000000000000000011 /* Sign Native Asset Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Sign Native Asset Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nframework=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/objective_c.framework\"\nbinary=\"${framework}/objective_c\"\n\nif [ ! -f \"${binary}\" ]; then\n  exit 0\nfi\n\nif command -v lipo >/dev/null 2>&1; then\n  for arch in $(lipo -archs \"${binary}\"); do\n    case \" ${ARCHS} \" in\n      *\" ${arch} \"*) ;;\n      *)\n        echo \"Removing ${arch} from objective_c.framework\"\n        lipo -remove \"${arch}\" -output \"${binary}\" \"${binary}\"\n        ;;\n    esac\n  done\nfi\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ] && [ \"${CODE_SIGNING_REQUIRED:-}\" != \"NO\" ] && [ \"${CODE_SIGNING_ALLOWED:-}\" != \"NO\" ]; then\n  echo \"Code Signing objective_c.framework with Identity ${EXPANDED_CODE_SIGN_IDENTITY_NAME:-${EXPANDED_CODE_SIGN_IDENTITY}}\"\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" ${OTHER_CODE_SIGN_FLAGS:-} --preserve-metadata=identifier,entitlements \"${framework}\"\nfi\n";
 		};
 		6BBFE4F31059A891E083A455 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
