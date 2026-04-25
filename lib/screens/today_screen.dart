@@ -219,7 +219,7 @@ class _TodayScreenState extends State<TodayScreen> {
             if (avgMood7d != null)
               _InsightStatCard(
                 label: 'Mood 7d',
-                value: avgMood7d.toStringAsFixed(1),
+                value: _formatMoodScore(avgMood7d),
                 color: JournalColors.success,
               ),
             if (avgSeverity7d != null)
@@ -699,8 +699,9 @@ class _TodayHero extends StatelessWidget {
   final int? entries30d;
 
   Color _moodColor(double score) {
-    if (score >= 0.7) return JournalColors.success;
-    if (score >= 0.4) return JournalColors.severity;
+    final normalized = _normalizeMoodScore(score);
+    if (normalized >= 7.0) return JournalColors.success;
+    if (normalized >= 4.0) return JournalColors.severity;
     return JournalColors.danger;
   }
 
@@ -815,7 +816,7 @@ class _TodayHero extends StatelessWidget {
                   Expanded(
                     child: _MetricTile(
                       label: 'Mood',
-                      value: '${(latestMood! * 100).round()}%',
+                      value: _formatMoodScore(latestMood!),
                       color: _moodColor(latestMood!),
                     ),
                   ),
@@ -881,6 +882,11 @@ Color _severityColor(double? severity) {
   if (severity <= 6.0) return JournalColors.severity;
   return JournalColors.danger;
 }
+
+double _normalizeMoodScore(double score) => score <= 1.0 ? score * 10 : score;
+
+String _formatMoodScore(double score) =>
+    _normalizeMoodScore(score).toStringAsFixed(1);
 
 class _MetricTile extends StatelessWidget {
   const _MetricTile({
