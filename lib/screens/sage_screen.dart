@@ -2636,37 +2636,70 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bubbleRadius = BorderRadius.only(
+      topLeft: const Radius.circular(24),
+      topRight: const Radius.circular(24),
+      bottomLeft: Radius.circular(_isUser ? 24 : 8),
+      bottomRight: Radius.circular(_isUser ? 8 : 24),
+    );
+
     return Align(
       alignment: _isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
+          maxWidth: MediaQuery.of(context).size.width * (_isUser ? 0.78 : 0.84),
         ),
         child: Column(
           crossAxisAlignment:
               _isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: EdgeInsets.fromLTRB(
+                message.attachments.isNotEmpty ? 12 : 16,
+                message.attachments.isNotEmpty ? 12 : 14,
+                message.attachments.isNotEmpty ? 12 : 16,
+                14,
+              ),
               decoration: BoxDecoration(
-                color: _isUser
-                    ? _withAlpha(JournalColors.accent, 0.86)
-                    : _withAlpha(JournalColors.bgCard, 0.92),
-                borderRadius: BorderRadius.circular(20),
+                color: _isUser ? null : _withAlpha(JournalColors.bgCard, 0.9),
+                gradient: _isUser
+                    ? LinearGradient(
+                        colors: [
+                          _withAlpha(JournalColors.accent2, 0.92),
+                          _withAlpha(JournalColors.accent, 0.88),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : LinearGradient(
+                        colors: [
+                          _withAlpha(JournalColors.bgCardAlt, 0.96),
+                          _withAlpha(JournalColors.bgSurface, 0.9),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                borderRadius: bubbleRadius,
                 border: Border.all(
                   color: _isUser
-                      ? _withAlpha(JournalColors.borderBright, 0.9)
-                      : JournalColors.border,
+                      ? _withAlpha(JournalColors.textPrimary, 0.12)
+                      : _withAlpha(JournalColors.borderBright, 0.42),
                 ),
-                boxShadow: _isUser
-                    ? const [
-                        BoxShadow(
-                          color: JournalColors.accentGlow,
-                          blurRadius: 16,
-                          offset: Offset(0, 8),
-                        ),
-                      ]
-                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: _isUser
+                        ? JournalColors.accentGlow
+                        : _withAlpha(JournalColors.bgBase, 0.44),
+                    blurRadius: _isUser ? 22 : 18,
+                    offset: const Offset(0, 10),
+                  ),
+                  if (_isUser)
+                    BoxShadow(
+                      color: _withAlpha(JournalColors.accent2, 0.16),
+                      blurRadius: 28,
+                      offset: const Offset(0, 2),
+                    ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2689,8 +2722,9 @@ class _MessageBubble extends StatelessWidget {
                             message.text,
                             style: const TextStyle(
                               color: JournalColors.textPrimary,
-                              fontSize: 15,
-                              height: 1.45,
+                              fontSize: 16,
+                              height: 1.42,
+                              fontWeight: FontWeight.w700,
                             ),
                           )
                         : MarkdownBody(
@@ -2843,72 +2877,248 @@ class _SageMessageAttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isImage = attachment.isImage;
-    return Container(
-      width: isImage ? 112 : 98,
+    final tile = Container(
+      width: isImage ? 136 : 98,
       height: isImage ? 112 : 98,
       decoration: BoxDecoration(
         color: _withAlpha(JournalColors.bgSurface, 0.92),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: JournalColors.borderBright),
+        boxShadow: isImage
+            ? [
+                BoxShadow(
+                  color: _withAlpha(JournalColors.bgBase, 0.36),
+                  blurRadius: 14,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
-        child: Padding(
-          padding: const EdgeInsets.all(9),
-          child: Column(
-            children: [
-              if (isImage && attachment.path.isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(attachment.path),
-                    width: 78,
-                    height: 78,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _AttachmentIcon(
+        child: isImage
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (attachment.path.isNotEmpty)
+                    Image.file(
+                      File(attachment.path),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _AttachmentIcon(
+                        isImage: isImage,
+                        size: 112,
+                        iconSize: 28,
+                      ),
+                    )
+                  else
+                    _AttachmentIcon(
                       isImage: isImage,
-                      size: 78,
-                      iconSize: 24,
+                      size: 112,
+                      iconSize: 28,
+                    ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            _withAlpha(JournalColors.bgBase, 0),
+                            _withAlpha(JournalColors.bgBase, 0.72),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
                     ),
                   ),
-                )
-              else
-                _AttachmentIcon(isImage: isImage),
-              const SizedBox(height: 6),
-              Text(
-                attachment.displayExtension,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: JournalColors.accent,
-                  fontSize: isImage ? 11 : 10,
-                  fontWeight: FontWeight.w700,
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: _AttachmentBadge(label: attachment.displayExtension),
+                  ),
+                  if (attachment.path.isNotEmpty)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: _withAlpha(JournalColors.bgBase, 0.72),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: JournalColors.borderBright),
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.arrow_up_left_arrow_down_right,
+                          color: JournalColors.textPrimary,
+                          size: 13,
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            : Padding(
+                padding: const EdgeInsets.all(9),
+                child: Column(
+                  children: [
+                    _AttachmentIcon(isImage: isImage),
+                    const SizedBox(height: 6),
+                    Text(
+                      attachment.displayExtension,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: JournalColors.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          attachment.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontSize: 10,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (!isImage) ...[
-                const SizedBox(height: 3),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      attachment.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: JournalColors.textSecondary,
-                        fontSize: 10,
-                        height: 1.3,
+      ),
+    );
+
+    if (!isImage || attachment.path.isEmpty) return tile;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showSageImageLightbox(context, attachment),
+      child: tile,
+    );
+  }
+}
+
+class _AttachmentBadge extends StatelessWidget {
+  const _AttachmentBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgBase, 0.76),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showSageImageLightbox(
+  BuildContext context,
+  _SageMessageAttachment attachment,
+) {
+  return showCupertinoModalPopup<void>(
+    context: context,
+    barrierColor: _withAlpha(JournalColors.bgBase, 0.9),
+    builder: (context) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: _withAlpha(JournalColors.bgBase, 0.96),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 58, 16, 22),
+                    child: GestureDetector(
+                      onTap: () {},
+                      child: InteractiveViewer(
+                        minScale: 1,
+                        maxScale: 4,
+                        child: Image.file(
+                          File(attachment.path),
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(
+                              CupertinoIcons.photo,
+                              color: JournalColors.textMuted,
+                              size: 34,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  top: 10,
+                  right: 64,
+                  child: Text(
+                    attachment.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 4,
+                  right: 12,
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(40, 40),
+                    onPressed: () => Navigator.pop(context),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.bgSurface, 0.82),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: JournalColors.borderBright),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.xmark,
+                        color: JournalColors.textPrimary,
+                        size: 18,
                       ),
                     ),
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
 }
 
 class _AttachmentIcon extends StatelessWidget {
