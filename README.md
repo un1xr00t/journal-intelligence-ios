@@ -1,6 +1,12 @@
 # journal_intelligence
 
-A new Flutter project.
+Flutter iOS client for Journal Intelligence.
+
+## Development Notes
+
+- The iOS repo may include backend route copies under `codex/Context/` for
+  debugging and handoff. When a fix touches those files, remember that the live
+  server may need the matching route change applied or deployed manually.
 
 ## Getting Started
 

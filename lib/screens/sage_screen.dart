@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../services/api_service.dart';
@@ -96,6 +97,12 @@ Treat that text as part of the current question. Quote or summarize it when
 helpful, but say plainly if the file looked incomplete, truncated, or hard to
 parse. Never pretend you saw content that was not included in the extracted
 text.
+
+IMAGE REVIEW (when images are attached):
+If the user attaches images, inspect the actual visual content. Describe what
+you can see, read visible text, and connect the image to journal context when
+that is useful. Be explicit when an image is blurry, cropped, too small, or
+otherwise uncertain.
 ''';
 
 const _kSageKnowledgeChips = <({String label, String prompt})>[
@@ -166,7 +173,16 @@ const _kSupportedSageFileExtensions = <String>{
   'pdf',
 };
 
+const _kSupportedSageImageExtensions = <String>{
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+};
+
 const _kMaxSageFileChars = 12000;
+const _kMaxSageImageBytes = 12 * 1024 * 1024;
 
 String _extensionForName(String filename) {
   final dot = filename.lastIndexOf('.');
@@ -374,6 +390,27 @@ Future<String?> _readTextFile(String path, String extension) {
   }
 }
 
+enum _SageAttachmentSource {
+  photoLibrary,
+  camera,
+  files,
+}
+
+String _imageMediaTypeForExtension(String extension) {
+  switch (extension.toLowerCase()) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'jpg':
+    case 'jpeg':
+    default:
+      return 'image/jpeg';
+  }
+}
+
 class SageScreen extends StatefulWidget {
   const SageScreen({super.key});
 
@@ -388,6 +425,7 @@ class _SageScreenState extends State<SageScreen> {
   final _scroll = ScrollController();
   final _focusNode = FocusNode();
   final _audioPlayer = AudioPlayer();
+  final _imagePicker = ImagePicker();
 
   List<_SageMessage> _messages = const [];
   List<SageMemoryItem> _memoryItems = const [];
@@ -454,11 +492,13 @@ class _SageScreenState extends State<SageScreen> {
         if (detail is String && detail.trim().isNotEmpty) return detail.trim();
         if (detail is List && detail.isNotEmpty) {
           return detail.map((item) {
-            if (item is Map && item['msg'] != null) {
-              return item['msg'].toString();
+            if (item is Map) {
+              final msg = item['msg']?.toString() ?? '';
+              final loc = (item['loc'] as List?)?.join(' → ') ?? '';
+              return loc.isNotEmpty ? '$msg  [loc: $loc]' : msg;
             }
             return item.toString();
-          }).join(', ');
+          }).join('\n');
         }
       }
       if (data is String && data.trim().isNotEmpty) return data.trim();
@@ -492,7 +532,108 @@ class _SageScreenState extends State<SageScreen> {
     }
   }
 
-  Future<void> _pickAttachments() async {
+  Future<void> _chooseAttachmentSource() async {
+    if (_replyLoading || _pickingAttachments) return;
+    final source = await showCupertinoModalPopup<_SageAttachmentSource>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Add Attachment'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _SageAttachmentSource.photoLibrary),
+            child: const Text('Photo Library'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _SageAttachmentSource.camera),
+            child: const Text('Take Photo'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _SageAttachmentSource.files),
+            child: const Text('Browse Files'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    switch (source) {
+      case _SageAttachmentSource.photoLibrary:
+        await _pickPhotosFromLibrary();
+        break;
+      case _SageAttachmentSource.camera:
+        await _pickPhotoFromCamera();
+        break;
+      case _SageAttachmentSource.files:
+        await _pickFileAttachments();
+        break;
+    }
+  }
+
+  Future<void> _pickPhotosFromLibrary() async {
+    if (_replyLoading || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickMultiImage(imageQuality: 85);
+      await _addPickedImages(picked);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _pickPhotoFromCamera() async {
+    if (_replyLoading || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      await _addPickedImages([
+        if (picked != null) picked,
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _addPickedImages(List<XFile> picked) async {
+    if (picked.isEmpty) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+      return;
+    }
+
+    final next = List<_SageFileDraft>.from(_pendingAttachments);
+    final oversizedImages = <String>[];
+    for (final image in picked) {
+      final draft = await _SageFileDraft.fromXFile(
+        image,
+        onOversizedImage: oversizedImages.add,
+      );
+      if (draft != null) next.add(draft);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _pendingAttachments = next;
+      _pickingAttachments = false;
+    });
+    if (oversizedImages.isNotEmpty) {
+      await _showOversizedImagesDialog(oversizedImages);
+    }
+  }
+
+  Future<void> _pickFileAttachments() async {
     if (_replyLoading || _pickingAttachments) return;
     setState(() => _pickingAttachments = true);
     try {
@@ -509,10 +650,17 @@ class _SageScreenState extends State<SageScreen> {
 
       final next = List<_SageFileDraft>.from(_pendingAttachments);
       final unsupported = <String>[];
+      final oversizedImages = <String>[];
       for (final file in result.files) {
-        final draft = await _SageFileDraft.fromPlatformFile(file);
+        final oversizedCount = oversizedImages.length;
+        final draft = await _SageFileDraft.fromPlatformFile(
+          file,
+          onOversizedImage: oversizedImages.add,
+        );
         if (draft != null) {
           next.add(draft);
+        } else if (oversizedImages.length > oversizedCount) {
+          continue;
         } else {
           unsupported.add(file.name);
         }
@@ -525,6 +673,9 @@ class _SageScreenState extends State<SageScreen> {
       });
       if (unsupported.isNotEmpty) {
         await _showUnsupportedFilesDialog(unsupported);
+      }
+      if (oversizedImages.isNotEmpty) {
+        await _showOversizedImagesDialog(oversizedImages);
       }
     } catch (_) {
       if (!mounted) return;
@@ -541,7 +692,28 @@ class _SageScreenState extends State<SageScreen> {
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Some Files Skipped'),
         content: Text(
-          'Sage can currently read supported document and text formats like TXT, Markdown, JSON, CSV, logs, YAML, XML, HTML, RTF, SQL, DOCX, ODT, and text-based PDF files. Image content inside those files is ignored for now.\n\nSkipped: $shown$extra',
+          'Sage can currently read supported document, text, and image formats like TXT, Markdown, JSON, CSV, logs, YAML, XML, HTML, RTF, SQL, DOCX, ODT, text-based PDF files, JPG, PNG, WEBP, and GIF.\n\nSkipped: $shown$extra',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showOversizedImagesDialog(List<String> filenames) {
+    final shown = filenames.take(3).join(', ');
+    final extra =
+        filenames.length > 3 ? ' and ${filenames.length - 3} more' : '';
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Image Too Large'),
+        content: Text(
+          'Sage can resize most images on the server, but very large uploads need a smaller export or screenshot first.\n\nSkipped: $shown$extra',
         ),
         actions: [
           CupertinoDialogAction(
@@ -947,6 +1119,10 @@ ${available.join('\n\n')}
         messages: requestMessages,
         contextString: _buildContextPayload(_contextString!),
         webSearchEnabled: _settings.webSearchEnabled,
+        attachments: outgoing.attachments
+            .map((attachment) => attachment.toApiAttachmentPayload())
+            .where((payload) => payload.isNotEmpty)
+            .toList(),
       );
       final reply = response['reply']?.toString().trim();
       final actions = (response['actions'] as List?)
@@ -1594,7 +1770,7 @@ Return JSON only.
                 attachments: _pendingAttachments
                     .map((item) => item.toMessageAttachment())
                     .toList(),
-                onPickAttachment: _pickAttachments,
+                onPickAttachment: _chooseAttachmentSource,
                 onRemoveAttachment: _removeAttachment,
                 onSend: () => _send(),
                 onSuggestionTap: (prompt) => _send(text: prompt),
@@ -1688,13 +1864,40 @@ class _SageFileDraft {
     required this.name,
     required this.path,
     required this.extension,
-    required this.extractedText,
+    this.extractedText = '',
+    this.imageBase64,
+    this.imageMediaType,
+    this.imageByteSize,
   });
 
-  static Future<_SageFileDraft?> fromPlatformFile(PlatformFile file) async {
+  static Future<_SageFileDraft?> fromPlatformFile(
+    PlatformFile file, {
+    ValueChanged<String>? onOversizedImage,
+  }) async {
     final path = file.path;
     if (path == null || path.trim().isEmpty) return null;
     final ext = _extensionForName(file.name);
+
+    if (_kSupportedSageImageExtensions.contains(ext)) {
+      final imageFile = File(path);
+      if (!await imageFile.exists()) return null;
+      final bytes = await imageFile.readAsBytes();
+      if (bytes.isEmpty) return null;
+      if (bytes.length > _kMaxSageImageBytes) {
+        onOversizedImage?.call(file.name);
+        return null;
+      }
+
+      return _SageFileDraft(
+        name: file.name,
+        path: path,
+        extension: ext,
+        imageBase64: base64Encode(bytes),
+        imageMediaType: _imageMediaTypeForExtension(ext),
+        imageByteSize: bytes.length,
+      );
+    }
+
     if (!_kSupportedSageFileExtensions.contains(ext)) return null;
 
     final extractedText = await _readTextFile(path, ext);
@@ -1708,10 +1911,37 @@ class _SageFileDraft {
     );
   }
 
+  static Future<_SageFileDraft?> fromXFile(
+    XFile file, {
+    ValueChanged<String>? onOversizedImage,
+  }) async {
+    final ext = _extensionForName(file.name);
+    if (!_kSupportedSageImageExtensions.contains(ext)) return null;
+
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+    if (bytes.length > _kMaxSageImageBytes) {
+      onOversizedImage?.call(file.name);
+      return null;
+    }
+
+    return _SageFileDraft(
+      name: file.name,
+      path: file.path,
+      extension: ext,
+      imageBase64: base64Encode(bytes),
+      imageMediaType: _imageMediaTypeForExtension(ext),
+      imageByteSize: bytes.length,
+    );
+  }
+
   final String name;
   final String path;
   final String extension;
   final String extractedText;
+  final String? imageBase64;
+  final String? imageMediaType;
+  final int? imageByteSize;
 
   _SageMessageAttachment toMessageAttachment() {
     return _SageMessageAttachment(
@@ -1719,6 +1949,9 @@ class _SageFileDraft {
       path: path,
       extension: extension,
       extractedText: extractedText,
+      imageBase64: imageBase64,
+      imageMediaType: imageMediaType,
+      imageByteSize: imageByteSize,
     );
   }
 }
@@ -1729,6 +1962,9 @@ class _SageMessageAttachment {
     required this.path,
     required this.extension,
     required this.extractedText,
+    this.imageBase64,
+    this.imageMediaType,
+    this.imageByteSize,
   });
 
   factory _SageMessageAttachment.fromSavedPayload(Map<String, dynamic> json) {
@@ -1739,6 +1975,8 @@ class _SageMessageAttachment {
       path: path ?? '',
       extension: json['extension']?.toString() ?? '',
       extractedText: json['extracted_text']?.toString() ?? '',
+      imageMediaType: json['media_type']?.toString(),
+      imageByteSize: (json['byte_size'] as num?)?.toInt(),
     );
   }
 
@@ -1746,21 +1984,68 @@ class _SageMessageAttachment {
   final String path;
   final String extension;
   final String extractedText;
+  final String? imageBase64;
+  final String? imageMediaType;
+  final int? imageByteSize;
 
-  String get fileKindLabel =>
-      extension.isNotEmpty ? extension.toUpperCase() : 'FILE';
+  bool get isImage => _kSupportedSageImageExtensions.contains(
+        extension.toLowerCase(),
+      );
+
+  String get fileKindLabel => isImage
+      ? 'IMAGE'
+      : extension.isNotEmpty
+          ? extension.toUpperCase()
+          : 'FILE';
+
+  String get displayExtension =>
+      extension.isNotEmpty ? extension.toUpperCase() : fileKindLabel;
 
   String toPromptBlock() {
+    if (isImage) {
+      if (imageBase64 == null || imageBase64!.trim().isEmpty) {
+        return 'Image: $name\nType: ${imageMediaType ?? _imageMediaTypeForExtension(extension)}\nContent: image metadata from saved chat; visual bytes are not available in this resumed session.';
+      }
+      return 'Image: $name\nType: ${imageMediaType ?? _imageMediaTypeForExtension(extension)}\nContent: attached as a vision image block.';
+    }
     final trimmed = extractedText.trim();
     if (trimmed.isEmpty) return '';
     return 'File: $name\nType: $fileKindLabel\nContent:\n$trimmed';
+  }
+
+  Map<String, dynamic> toApiAttachmentPayload() {
+    if (isImage) {
+      final base64 = imageBase64?.trim();
+      if (base64 == null || base64.isEmpty) return const <String, dynamic>{};
+      final mediaType =
+          imageMediaType ?? _imageMediaTypeForExtension(extension);
+      return <String, dynamic>{
+        'kind': 'image',
+        'name': name,
+        'filename': name,
+        'media_type': mediaType,
+        'data_base64': base64,
+        if (imageByteSize != null) 'byte_size': imageByteSize,
+      };
+    }
+
+    final trimmed = extractedText.trim();
+    if (trimmed.isEmpty) return const <String, dynamic>{};
+    return <String, dynamic>{
+      'kind': 'file',
+      'name': name,
+      'extension': extension,
+      'extracted_text': trimmed,
+    };
   }
 
   Map<String, dynamic> toSavedPayload() => {
         'name': name,
         'path': path,
         'extension': extension,
-        'extracted_text': extractedText,
+        if (!isImage) 'extracted_text': extractedText,
+        if (isImage) 'media_type': imageMediaType,
+        if (isImage && imageByteSize != null) 'byte_size': imageByteSize,
       };
 }
 
@@ -2571,23 +2856,23 @@ class _SageMessageAttachmentTile extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: _withAlpha(JournalColors.accent, 0.16),
+              if (attachment.isImage && attachment.path.isNotEmpty)
+                ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JournalColors.borderBright),
-                ),
-                child: const Icon(
-                  CupertinoIcons.doc_text,
-                  color: JournalColors.textPrimary,
-                  size: 18,
-                ),
-              ),
+                  child: Image.file(
+                    File(attachment.path),
+                    width: 34,
+                    height: 34,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _AttachmentIcon(isImage: attachment.isImage),
+                  ),
+                )
+              else
+                _AttachmentIcon(isImage: attachment.isImage),
               const SizedBox(height: 8),
               Text(
-                attachment.fileKindLabel,
+                attachment.displayExtension,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -2615,6 +2900,36 @@ class _SageMessageAttachmentTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AttachmentIcon extends StatelessWidget {
+  const _AttachmentIcon({
+    required this.isImage,
+    this.size = 34,
+    this.iconSize = 18,
+  });
+
+  final bool isImage;
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.accent, 0.16),
+        borderRadius: BorderRadius.circular(size >= 34 ? 12 : 10),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Icon(
+        isImage ? CupertinoIcons.photo : CupertinoIcons.doc_text,
+        color: JournalColors.textPrimary,
+        size: iconSize,
       ),
     );
   }
@@ -2713,25 +3028,32 @@ class _SageInputBar extends StatelessWidget {
                             padding: const EdgeInsets.all(10),
                             child: Column(
                               children: [
-                                Container(
-                                  width: 30,
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _withAlpha(JournalColors.accent, 0.16),
+                                if (attachment.isImage &&
+                                    attachment.path.isNotEmpty)
+                                  ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                        color: JournalColors.borderBright),
+                                    child: Image.file(
+                                      File(attachment.path),
+                                      width: 30,
+                                      height: 30,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _AttachmentIcon(
+                                        isImage: attachment.isImage,
+                                        size: 30,
+                                        iconSize: 16,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  _AttachmentIcon(
+                                    isImage: attachment.isImage,
+                                    size: 30,
+                                    iconSize: 16,
                                   ),
-                                  child: const Icon(
-                                    CupertinoIcons.doc_text,
-                                    color: JournalColors.textPrimary,
-                                    size: 16,
-                                  ),
-                                ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  attachment.fileKindLabel,
+                                  attachment.displayExtension,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -2932,7 +3254,7 @@ class _SageInputBar extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              'Attach supported documents or text files and Sage will read the text it can extract inside the chat.',
+              'Attach images, documents, or text files and Sage will inspect what it can see or extract inside the chat.',
               style: TextStyle(
                 color: JournalColors.textMuted,
                 fontSize: 11,

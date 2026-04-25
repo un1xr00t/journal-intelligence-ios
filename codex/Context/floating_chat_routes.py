@@ -7,17 +7,21 @@ POST /api/floatchat/message   — AI chat using cached context string from front
 """
 
 from __future__ import annotations
-import anthropic
+import base64
+from io import BytesIO
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Optional
-from uuid import uuid4
 
+import anthropic
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger("journal")
+
+ANTHROPIC_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+ANTHROPIC_IMAGE_TARGET_BYTES = 4_500_000
+ANTHROPIC_IMAGE_MAX_DIMENSION = 1568
 
 
 class ChatMessage(BaseModel):
@@ -34,210 +38,100 @@ class ImageAttachment(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     context_string: str                           # cached from /context
-    images: list[ImageAttachment] = []            # top-level shorthand
-    image_attachments: list[ImageAttachment] = [] # alternate key iOS may send
-    enable_web_search: bool = False
+    images: list[ImageAttachment] = Field(default_factory=list)            # top-level shorthand
+    image_attachments: list[ImageAttachment] = Field(default_factory=list) # alternate key iOS may send
 
 
-class SavedChatMessage(BaseModel):
-    role: str
-    content: str
-    actions: list[dict] = []
-
-
-class SaveChatRequest(BaseModel):
-    title: Optional[str] = None
-    context_string: str = ""
-    messages: list[SavedChatMessage]
-    web_search_enabled: bool = False
-
-
-def _ensure_saved_chat_tables(conn) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS floatchat_saved_conversations (
-            id TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            preview TEXT NOT NULL,
-            context_string TEXT,
-            message_count INTEGER NOT NULL DEFAULT 0,
-            web_search_enabled INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS floatchat_saved_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conversation_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            message_order INTEGER NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            actions_json TEXT,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_floatchat_saved_conversations_user_updated
-        ON floatchat_saved_conversations (user_id, updated_at DESC)
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_floatchat_saved_messages_conversation_order
-        ON floatchat_saved_messages (conversation_id, message_order)
-        """
-    )
-    conn.commit()
-
-
-def _collapse_text(value: Optional[str], *, limit: int) -> str:
-    text = " ".join((value or "").split())
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
-
-
-def _derive_saved_chat_title(messages: list[SavedChatMessage], explicit: Optional[str]) -> str:
-    if explicit and explicit.strip():
-        return _collapse_text(explicit.strip(), limit=80)
-
-    for message in messages:
-        if message.role == "user" and message.content.strip():
-            return _collapse_text(message.content.strip(), limit=80)
-
-    for message in messages:
-        if message.content.strip():
-            return _collapse_text(message.content.strip(), limit=80)
-
-    return "Saved Sage conversation"
-
-
-def _derive_saved_chat_preview(messages: list[SavedChatMessage]) -> str:
-    for message in reversed(messages):
-        if message.role == "assistant" and message.content.strip():
-            return _collapse_text(message.content.strip(), limit=180)
-
-    for message in reversed(messages):
-        if message.content.strip():
-            return _collapse_text(message.content.strip(), limit=180)
-
-    return "No preview available."
-
-
-def _serialize_saved_chat_summary(row) -> dict:
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "preview": row["preview"],
-        "message_count": row["message_count"],
-        "web_search_enabled": bool(row["web_search_enabled"]),
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
-
-
-def _serialize_saved_chat_message(row) -> dict:
-    try:
-        actions = json.loads(row["actions_json"] or "[]")
-    except Exception:
-        actions = []
-
-    return {
-        "role": row["role"],
-        "content": row["content"],
-        "actions": actions if isinstance(actions, list) else [],
-    }
-
-
-def _save_conversation_snapshot(
-    conn,
+def _normalize_image_for_anthropic(
     *,
-    user_id: int,
-    conversation_id: str,
-    title: str,
-    preview: str,
-    context_string: str,
-    web_search_enabled: bool,
-    messages: list[SavedChatMessage],
-    existing: bool,
-) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    message_count = len(messages)
+    raw_b64: str,
+    media_type: str,
+    filename: str,
+) -> tuple[str, str]:
+    """
+    Resize/recompress image payloads so Anthropic vision requests stay below
+    the 5 MB decoded image limit.
+    """
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1]
 
-    if existing:
-        conn.execute(
-            """
-            UPDATE floatchat_saved_conversations
-            SET title = ?, preview = ?, context_string = ?, message_count = ?,
-                web_search_enabled = ?, updated_at = ?
-            WHERE id = ? AND user_id = ?
-            """,
-            (
-                title,
-                preview,
-                context_string,
-                message_count,
-                1 if web_search_enabled else 0,
-                now,
-                conversation_id,
-                user_id,
-            ),
-        )
-        conn.execute(
-            """
-            DELETE FROM floatchat_saved_messages
-            WHERE conversation_id = ? AND user_id = ?
-            """,
-            (conversation_id, user_id),
-        )
-    else:
-        conn.execute(
-            """
-            INSERT INTO floatchat_saved_conversations (
-                id, user_id, title, preview, context_string, message_count,
-                web_search_enabled, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                conversation_id,
-                user_id,
-                title,
-                preview,
-                context_string,
-                message_count,
-                1 if web_search_enabled else 0,
-                now,
-                now,
+    try:
+        image_bytes = base64.b64decode(raw_b64, validate=False)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image base64 for {filename or 'attachment'}: {e}")
+
+    if len(image_bytes) <= ANTHROPIC_IMAGE_TARGET_BYTES:
+        return media_type, raw_b64
+
+    try:
+        from PIL import Image, ImageOps
+    except Exception as e:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "Image is too large for Claude vision and the server cannot resize it "
+                f"because Pillow is not installed: {e}"
             ),
         )
 
-    for index, message in enumerate(messages):
-        conn.execute(
-            """
-            INSERT INTO floatchat_saved_messages (
-                conversation_id, user_id, message_order, role, content,
-                actions_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                conversation_id,
-                user_id,
-                index,
-                message.role,
-                message.content,
-                json.dumps(message.actions or []),
-                now,
+    try:
+        with Image.open(BytesIO(image_bytes)) as opened:
+            try:
+                opened.seek(0)
+            except Exception:
+                pass
+            image = ImageOps.exif_transpose(opened).copy()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read image {filename or 'attachment'}: {e}")
+
+    image.thumbnail(
+        (ANTHROPIC_IMAGE_MAX_DIMENSION, ANTHROPIC_IMAGE_MAX_DIMENSION),
+        Image.Resampling.LANCZOS,
+    )
+
+    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+        flattened = Image.new("RGB", image.size, (255, 255, 255))
+        flattened.paste(image.convert("RGBA"), mask=image.convert("RGBA").split()[-1])
+        image = flattened
+    elif image.mode != "RGB":
+        image = image.convert("RGB")
+
+    resized_bytes = b""
+    for quality in (85, 80, 75, 70, 65, 60, 55):
+        out = BytesIO()
+        image.save(out, format="JPEG", quality=quality, optimize=True, progressive=True)
+        resized_bytes = out.getvalue()
+        if len(resized_bytes) <= ANTHROPIC_IMAGE_TARGET_BYTES:
+            break
+
+    attempts = 0
+    while len(resized_bytes) > ANTHROPIC_IMAGE_TARGET_BYTES and attempts < 6:
+        attempts += 1
+        next_size = (
+            max(1, int(image.width * 0.85)),
+            max(1, int(image.height * 0.85)),
+        )
+        image = image.resize(next_size, Image.Resampling.LANCZOS)
+        out = BytesIO()
+        image.save(out, format="JPEG", quality=75, optimize=True, progressive=True)
+        resized_bytes = out.getvalue()
+
+    if len(resized_bytes) > ANTHROPIC_IMAGE_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Image remains too large after server resize: "
+                f"{len(resized_bytes)} bytes > {ANTHROPIC_IMAGE_MAX_BYTES} bytes"
             ),
         )
 
-    conn.commit()
+    logger.info(
+        "[floatchat/message] resized image %s from %s bytes to %s bytes",
+        filename or "attachment",
+        len(image_bytes),
+        len(resized_bytes),
+    )
+    return "image/jpeg", base64.b64encode(resized_bytes).decode("ascii")
 
 
 def register_floating_chat_routes(app, require_any_user):
@@ -459,261 +353,6 @@ def register_floating_chat_routes(app, require_any_user):
             "entry_count": entry_count,
         }
 
-    # ── Saved Sage conversations ─────────────────────────────────────────────
-    @app.get("/api/floatchat/saved")
-    async def list_saved_chats(current_user: dict = Depends(require_any_user)):
-        from src.auth.auth_db import get_db
-
-        user_id = current_user["id"]
-        conn = get_db()
-        try:
-            _ensure_saved_chat_tables(conn)
-            rows = conn.execute(
-                """
-                SELECT id, title, preview, message_count, web_search_enabled,
-                       created_at, updated_at
-                FROM floatchat_saved_conversations
-                WHERE user_id = ?
-                ORDER BY updated_at DESC
-                """,
-                (user_id,),
-            ).fetchall()
-            return [_serialize_saved_chat_summary(row) for row in rows]
-        except Exception as e:
-            logger.error(
-                f"[floatchat/saved:list] error for user {user_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail="Failed to load saved conversations.")
-        finally:
-            conn.close()
-
-    @app.get("/api/floatchat/saved/{conversation_id}")
-    async def get_saved_chat(conversation_id: str, current_user: dict = Depends(require_any_user)):
-        from src.auth.auth_db import get_db
-
-        user_id = current_user["id"]
-        conn = get_db()
-        try:
-            _ensure_saved_chat_tables(conn)
-            row = conn.execute(
-                """
-                SELECT id, title, preview, context_string, message_count,
-                       web_search_enabled, created_at, updated_at
-                FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            ).fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Saved conversation not found.")
-
-            message_rows = conn.execute(
-                """
-                SELECT role, content, actions_json
-                FROM floatchat_saved_messages
-                WHERE conversation_id = ? AND user_id = ?
-                ORDER BY message_order ASC, id ASC
-                """,
-                (conversation_id, user_id),
-            ).fetchall()
-
-            payload = _serialize_saved_chat_summary(row)
-            payload["context_string"] = row["context_string"] or ""
-            payload["messages"] = [
-                _serialize_saved_chat_message(message_row)
-                for message_row in message_rows
-            ]
-            return payload
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"[floatchat/saved:get] error for user {user_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail="Failed to load saved conversation.")
-        finally:
-            conn.close()
-
-    @app.post("/api/floatchat/saved")
-    async def create_saved_chat(
-        body: SaveChatRequest,
-        current_user: dict = Depends(require_any_user),
-    ):
-        from src.auth.auth_db import get_db
-
-        if not body.messages:
-            raise HTTPException(status_code=400, detail="No messages provided.")
-
-        user_id = current_user["id"]
-        conn = get_db()
-        try:
-            _ensure_saved_chat_tables(conn)
-            conversation_id = uuid4().hex
-            title = _derive_saved_chat_title(body.messages, body.title)
-            preview = _derive_saved_chat_preview(body.messages)
-            _save_conversation_snapshot(
-                conn,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                title=title,
-                preview=preview,
-                context_string=body.context_string or "",
-                web_search_enabled=body.web_search_enabled,
-                messages=body.messages,
-                existing=False,
-            )
-            row = conn.execute(
-                """
-                SELECT id, title, preview, context_string, message_count,
-                       web_search_enabled, created_at, updated_at
-                FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            ).fetchone()
-            payload = _serialize_saved_chat_summary(row)
-            payload["context_string"] = row["context_string"] or ""
-            payload["messages"] = [
-                {
-                    "role": message.role,
-                    "content": message.content,
-                    "actions": message.actions or [],
-                }
-                for message in body.messages
-            ]
-            return payload
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"[floatchat/saved:create] error for user {user_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail="Failed to save conversation.")
-        finally:
-            conn.close()
-
-    @app.put("/api/floatchat/saved/{conversation_id}")
-    async def update_saved_chat(
-        conversation_id: str,
-        body: SaveChatRequest,
-        current_user: dict = Depends(require_any_user),
-    ):
-        from src.auth.auth_db import get_db
-
-        if not body.messages:
-            raise HTTPException(status_code=400, detail="No messages provided.")
-
-        user_id = current_user["id"]
-        conn = get_db()
-        try:
-            _ensure_saved_chat_tables(conn)
-            existing_row = conn.execute(
-                """
-                SELECT id
-                FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            ).fetchone()
-            if not existing_row:
-                raise HTTPException(status_code=404, detail="Saved conversation not found.")
-
-            title = _derive_saved_chat_title(body.messages, body.title)
-            preview = _derive_saved_chat_preview(body.messages)
-            _save_conversation_snapshot(
-                conn,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                title=title,
-                preview=preview,
-                context_string=body.context_string or "",
-                web_search_enabled=body.web_search_enabled,
-                messages=body.messages,
-                existing=True,
-            )
-            row = conn.execute(
-                """
-                SELECT id, title, preview, context_string, message_count,
-                       web_search_enabled, created_at, updated_at
-                FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            ).fetchone()
-            payload = _serialize_saved_chat_summary(row)
-            payload["context_string"] = row["context_string"] or ""
-            payload["messages"] = [
-                {
-                    "role": message.role,
-                    "content": message.content,
-                    "actions": message.actions or [],
-                }
-                for message in body.messages
-            ]
-            return payload
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"[floatchat/saved:update] error for user {user_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail="Failed to update saved conversation.")
-        finally:
-            conn.close()
-
-    @app.delete("/api/floatchat/saved/{conversation_id}")
-    async def delete_saved_chat(
-        conversation_id: str,
-        current_user: dict = Depends(require_any_user),
-    ):
-        from src.auth.auth_db import get_db
-
-        user_id = current_user["id"]
-        conn = get_db()
-        try:
-            _ensure_saved_chat_tables(conn)
-            row = conn.execute(
-                """
-                SELECT id
-                FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            ).fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Saved conversation not found.")
-
-            conn.execute(
-                """
-                DELETE FROM floatchat_saved_messages
-                WHERE conversation_id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            )
-            conn.execute(
-                """
-                DELETE FROM floatchat_saved_conversations
-                WHERE id = ? AND user_id = ?
-                """,
-                (conversation_id, user_id),
-            )
-            conn.commit()
-            return {"message": "Saved conversation deleted."}
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"[floatchat/saved:delete] error for user {user_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail="Failed to delete saved conversation.")
-        finally:
-            conn.close()
-
     # ── POST /api/floatchat/message ───────────────────────────────────────────
     @app.post("/api/floatchat/message")
     async def chat_message(body: ChatRequest, current_user: dict = Depends(require_any_user)):
@@ -725,7 +364,6 @@ def register_floating_chat_routes(app, require_any_user):
             raise HTTPException(status_code=400, detail="No messages provided.")
 
         user_id = current_user["id"]
-        enable_web_search = getattr(body, "enable_web_search", False)
 
         system_prompt = (
             "You are a deeply perceptive AI embedded inside someone's private journal dashboard. "
@@ -772,79 +410,77 @@ def register_floating_chat_routes(app, require_any_user):
             # Multimodal content block list — images first, then text
             last_content = []
             for img in all_images:
-                # Strip data-URI prefix if iOS accidentally includes it
-                raw_b64 = img.data_base64
-                if "," in raw_b64:
-                    raw_b64 = raw_b64.split(",", 1)[1]
+                media_type, raw_b64 = _normalize_image_for_anthropic(
+                    raw_b64=img.data_base64,
+                    media_type=img.media_type,
+                    filename=img.filename,
+                )
                 last_content.append({
                     "type": "image",
                     "source": {
                         "type":       "base64",
-                        "media_type": img.media_type,
+                        "media_type": media_type,
                         "data":       raw_b64,
                     },
                 })
-            last_content.append({"type": "text", "text": last_text})
+            last_content.append({
+                "type": "text",
+                "text": last_text.strip() or "Please describe what you see in the attached image.",
+            })
             messages_payload.append({"role": last_msg.role, "content": last_content})
         else:
             messages_payload.append({"role": last_msg.role, "content": last_text})
 
+        # Anthropic rejects message arrays that begin with an assistant turn.
+        # The UI has a hidden session-start prompt, so the first visible turn can
+        # otherwise look like [assistant greeting, user image question].
+        while messages_payload and messages_payload[0].get("role") != "user":
+            dropped = messages_payload.pop(0)
+            logger.info(
+                "[floatchat/message] dropping leading %s message before Anthropic call",
+                dropped.get("role"),
+            )
+        if not messages_payload:
+            fallback_content = last_content if all_images else (last_text.strip() or "Hello")
+            messages_payload.append({"role": "user", "content": fallback_content})
+
         try:
             if all_images:
-                # Vision path — call Anthropic directly so we can pass content blocks
-                from src.api.anthropic_helper import get_anthropic_client, get_model
-                client = get_anthropic_client(user_id)
-                model  = get_model()
-                tools = []
-                if enable_web_search:
-                    tools.append({
-                        "type": "web_search_20250305",
-                        "name": "web_search",
-                    })
+                # Vision path — call Anthropic directly so we can pass content blocks.
+                # Use the same per-user key source as the rest of the app.
+                from src.api.ai_client import get_anthropic_key, get_model
+                api_key = get_anthropic_key(user_id)
+                if not api_key:
+                    raise RuntimeError("No Anthropic API key configured for this user.")
+
+                client = anthropic.Anthropic(api_key=api_key)
+                model = get_model()
                 msg    = client.messages.create(
                     model=model,
                     max_tokens=500,
                     system=system_prompt,
                     messages=messages_payload,
-                    tools=tools if tools else anthropic.NOT_GIVEN,
                 )
-                raw_response = " ".join(
-                    block.text for block in msg.content if block.type == "text"
-                ).strip()
+                raw_response = "".join(
+                    getattr(block, "text", "")
+                    for block in (msg.content or [])
+                    if getattr(block, "type", None) == "text"
+                )
             else:
                 # Text-only path — use the standard abstraction unchanged
-                if enable_web_search:
-                    from src.api.anthropic_helper import get_anthropic_client, get_model
-                    client = get_anthropic_client(user_id)
-                    model = get_model()
-                    tools = [{
-                        "type": "web_search_20250305",
-                        "name": "web_search",
-                    }]
-                    msg = client.messages.create(
-                        model=model,
-                        max_tokens=500,
-                        system=system_prompt,
-                        messages=messages_payload,
-                        tools=tools,
-                    )
-                    raw_response = " ".join(
-                        block.text for block in msg.content if block.type == "text"
-                    ).strip()
-                else:
-                    from src.api.ai_client import create_message
-                    raw_response = create_message(
-                        user_id=user_id,
-                        system=system_prompt,
-                        user_prompt=last_text,
-                        max_tokens=500,
-                        call_type="floating_chat",
-                    )
+                from src.api.ai_client import create_message
+                raw_response = create_message(
+                    user_id=user_id,
+                    system=system_prompt,
+                    user_prompt=last_text,
+                    max_tokens=500,
+                    call_type="floating_chat",
+                )
         except Exception as e:
-            logger.exception(f"[floatchat/message] AI call failed for user {user_id}")
+            logger.exception("[floatchat/message] AI call failed for user %s", user_id)
             raise HTTPException(
                 status_code=500,
-                detail="AI call failed. Make sure your API key is set in Settings -> AI Preferences."
+                detail=f"AI call failed: {type(e).__name__}: {str(e)[:300]}"
             )
 
         # ── Parse delimiter-based response (reliable, no JSON fragility) ─────

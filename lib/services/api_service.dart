@@ -579,13 +579,22 @@ class ApiService {
     bool webSearchEnabled = false,
     List<Map<String, dynamic>> attachments = const [],
   }) async {
-    final res = await _authedPost('/api/floatchat/message', data: {
+    final imageAttachments = attachments
+        .where((item) => item['kind']?.toString() == 'image')
+        .toList();
+    final fileAttachments = attachments
+        .where((item) => item['kind']?.toString() != 'image')
+        .toList();
+
+    final body = <String, dynamic>{
       'messages': messages,
       'context_string': contextString,
       if (webSearchEnabled) 'enable_web_search': true,
-      if (attachments.isNotEmpty) 'attachments': attachments,
-      if (attachments.isNotEmpty) 'images': attachments,
-    });
+      if (fileAttachments.isNotEmpty) 'attachments': fileAttachments,
+      if (imageAttachments.isNotEmpty) 'images': imageAttachments,
+    };
+
+    final res = await _authedPost('/api/floatchat/message', data: body);
     return Map<String, dynamic>.from(res.data as Map);
   }
 
