@@ -17,6 +17,8 @@ class TimelineScreen extends StatefulWidget {
 }
 
 class _TimelineScreenState extends State<TimelineScreen> {
+  static const int _pageSize = 20;
+
   final _api = ApiService();
   final _scroll = ScrollController();
 
@@ -117,15 +119,17 @@ class _TimelineScreenState extends State<TimelineScreen> {
       _loading = true;
       _page = 1;
       _hasMore = true;
+      _loadMore = false;
       _error = null;
     });
     try {
-      final data = await _api.getTimeline(page: 1);
+      final data = await _api.getTimelinePage(page: 1, limit: _pageSize);
       if (mounted) {
         setState(() {
-          _entries = data.cast<Map<String, dynamic>>();
+          _entries = data.entries;
+          _page = data.page;
           _loading = false;
-          _hasMore = data.length == 20;
+          _hasMore = data.hasMore;
         });
       }
     } catch (e) {
@@ -139,15 +143,21 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Future<void> _loadNext() async {
+    if (_loadMore || !_hasMore) return;
+    final nextPage = _page + 1;
     setState(() => _loadMore = true);
     try {
-      final data = await _api.getTimeline(page: _page + 1);
+      final data = await _api.getTimelinePage(page: nextPage, limit: _pageSize);
       if (mounted) {
         setState(() {
-          _entries.addAll(data.cast<Map<String, dynamic>>());
-          _page++;
+          final existingIds = _entries.map((entry) => entry['id']).toSet();
+          final newEntries = data.entries
+              .where((entry) => !existingIds.contains(entry['id']))
+              .toList();
+          _entries.addAll(newEntries);
+          _page = data.page > _page ? data.page : nextPage;
           _loadMore = false;
-          _hasMore = data.length == 20;
+          _hasMore = data.hasMore && newEntries.isNotEmpty;
         });
       }
     } catch (_) {

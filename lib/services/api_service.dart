@@ -112,6 +112,18 @@ class SavedFloatchatConversation {
   }
 }
 
+class TimelinePage {
+  const TimelinePage({
+    required this.entries,
+    required this.page,
+    required this.hasMore,
+  });
+
+  final List<Map<String, dynamic>> entries;
+  final int page;
+  final bool hasMore;
+}
+
 class ApiService {
   static const String baseUrl = 'https://journal.williamthomas.name';
   static const String _inviteTokenStorageKey = 'invite_access_token';
@@ -707,12 +719,36 @@ class ApiService {
 
   // ── Entries / Timeline ────────────────────────────────────────
 
-  Future<List<dynamic>> getTimeline({int page = 1, int limit = 20}) async {
+  Future<TimelinePage> getTimelinePage({int page = 1, int limit = 20}) async {
     final res = await _authedGet('/api/entries', queryParameters: {
       'page': page,
       'limit': limit,
+      'offset': (page - 1) * limit,
     });
-    return (res.data as Map<String, dynamic>)['entries'] as List<dynamic>;
+    final data = Map<String, dynamic>.from(res.data as Map);
+    final entries = (data['entries'] as List? ?? const [])
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+    final responsePage = (data['page'] as num?)?.toInt() ?? page;
+    final pages = (data['pages'] as num?)?.toInt();
+    final total = (data['total'] as num?)?.toInt();
+    final hasMore = pages != null
+        ? responsePage < pages
+        : total != null
+            ? responsePage * limit < total
+            : entries.length == limit;
+
+    return TimelinePage(
+      entries: entries,
+      page: responsePage,
+      hasMore: hasMore,
+    );
+  }
+
+  Future<List<dynamic>> getTimeline({int page = 1, int limit = 20}) async {
+    final timelinePage = await getTimelinePage(page: page, limit: limit);
+    return timelinePage.entries;
   }
 
   Future<Map<String, dynamic>> getEntry(int entryId) async {
