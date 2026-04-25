@@ -1,6 +1,5 @@
 // lib/screens/settings_screen.dart
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +16,8 @@ import 'resources_screen.dart';
 import 'sage_settings_screen.dart';
 
 // ── Option constants ──────────────────────────────────────────────────────────
+
+Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 typedef _StrOpt = ({String id, String label});
 
@@ -324,458 +325,274 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
-      child: CustomScrollView(
-        slivers: [
-          CupertinoSliverNavigationBar(
-            largeTitle: const Text('Settings'),
-            backgroundColor: JournalColors.bgBase.withOpacity(0.9),
-            border: const Border(
-                bottom: BorderSide(color: JournalColors.border, width: 0.5)),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // ── Account card ─────────────────────────────────────
-                if (user != null) ...[
-                  GlassCard(
-                    child: Row(children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [
-                            JournalColors.accent,
-                            JournalColors.accent2
-                          ]),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            (user['username'] as String? ?? '?')[0]
-                                .toUpperCase(),
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(user['username'] as String? ?? '',
-                                  style: const TextStyle(
-                                      color: JournalColors.textPrimary,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text(user['email'] as String? ?? '',
-                                  style: const TextStyle(
-                                      color: JournalColors.textSecondary,
-                                      fontSize: 14)),
-                            ]),
-                      ),
-                    ]),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                // ── PROFILE ──────────────────────────────────────────
-                const _SectionLabel('PROFILE'),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _MemoryProfileScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.person_crop_circle_fill,
-                    label: 'Memory Profile',
-                    subtitle: 'Name, situation, topics & goals',
-                  ),
+      child: Stack(
+        children: [
+          const Positioned.fill(child: _SettingsBackdrop()),
+          CustomScrollView(
+            slivers: [
+              CupertinoSliverNavigationBar(
+                largeTitle: const Text('Settings'),
+                backgroundColor: _withAlpha(JournalColors.bgBase, 0.9),
+                border: const Border(
+                  bottom: BorderSide(color: JournalColors.border, width: 0.5),
                 ),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _ChangePasswordScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.lock_fill,
-                    label: 'Change Password',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _ApiKeyScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.link,
-                    label: 'API Key',
-                    subtitle: 'For iPhone Shortcut uploads',
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // ── AI ────────────────────────────────────────────────
-                const _SectionLabel('AI'),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _AIProviderScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.command,
-                    label: 'AI Provider',
-                    subtitle: 'Anthropic, OpenAI, or local model',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _ToneScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.chat_bubble_fill,
-                    label: 'Reflection Tone',
-                    subtitle: 'Voice used for insights & summaries',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const SageSettingsScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.sparkles,
-                    label: 'Sage Settings',
-                    subtitle: 'Voice, memory, playback, and personality',
-                  ),
-                ),
-                if (_reflectLoaded) ...[
-                  const SizedBox(height: 8),
-                  GlassCard(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 4),
-                      child: Row(children: [
-                        const Icon(CupertinoIcons.bolt_fill,
-                            color: JournalColors.accent, size: 18),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Auto-Reflect',
-                                    style: TextStyle(
-                                        color: JournalColors.textPrimary,
-                                        fontSize: 15)),
-                                SizedBox(height: 2),
-                                Text('Generate reflections automatically',
-                                    style: TextStyle(
-                                        color: JournalColors.textMuted,
-                                        fontSize: 12)),
-                              ]),
-                        ),
-                        CupertinoSwitch(
-                          value: _autoReflect,
-                          onChanged: _toggleReflectMode,
-                          activeColor: JournalColors.accent,
-                        ),
-                      ]),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    _SettingsHero(
+                      username: user?['username'] as String?,
+                      email: user?['email'] as String?,
+                      biometricAvailable: _biometricAvailable,
+                      biometricEnabled: _biometricEnabled,
+                      reflectLoaded: _reflectLoaded,
+                      autoReflect: _autoReflect,
+                      securityLoaded: _securityLoaded,
+                      twoFAEnabled: _twoFAEnabled,
                     ),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-
-                // ── SECURITY ──────────────────────────────────────────
-                const _SectionLabel('SECURITY'),
-                const SizedBox(height: 8),
-                if (_biometricAvailable) ...[
-                  GlassCard(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 4),
-                      child: Row(children: [
-                        const Icon(CupertinoIcons.person_crop_circle,
-                            color: JournalColors.accent, size: 18),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Face ID',
-                                    style: TextStyle(
-                                        color: JournalColors.textPrimary,
-                                        fontSize: 15)),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _biometricEnabled
-                                      ? 'Enabled — sign in without password'
-                                      : 'Sign in next time to enable',
-                                  style: const TextStyle(
-                                      color: JournalColors.textMuted,
-                                      fontSize: 12),
-                                ),
-                              ]),
+                    const SizedBox(height: 22),
+                    const _SectionLabel(
+                      'Account',
+                      subtitle: 'Profile details and sign-in tools.',
+                    ),
+                    const SizedBox(height: 10),
+                    _SettingsSectionCard(
+                      accentColor: JournalColors.accent,
+                      children: [
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.person_crop_circle_fill,
+                          iconColor: JournalColors.accent,
+                          label: 'Memory Profile',
+                          subtitle: 'Name, situation, topics, and goals.',
+                          onTap: () => _push(const _MemoryProfileScreen()),
                         ),
-                        if (_biometricEnabled)
-                          GestureDetector(
-                            onTap: _disableBiometrics,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.10),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: Colors.red.withOpacity(0.25)),
-                              ),
-                              child: const Text('Disable',
-                                  style: TextStyle(
-                                      color: Colors.red,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                          )
-                        else
-                          GestureDetector(
-                            onTap: () => _enableBiometrics(
-                                context, user?['username'] as String? ?? ''),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: JournalColors.accent.withOpacity(0.10),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color:
-                                        JournalColors.accent.withOpacity(0.30)),
-                              ),
-                              child: const Text('Enable',
-                                  style: TextStyle(
-                                      color: JournalColors.accent,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.lock_fill,
+                          iconColor: JournalColors.info,
+                          label: 'Change Password',
+                          subtitle: 'Update your password.',
+                          onTap: () => _push(const _ChangePasswordScreen()),
+                        ),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.link,
+                          iconColor: JournalColors.accent2,
+                          label: 'API Key',
+                          subtitle: 'For iPhone Shortcut uploads.',
+                          onTap: () => _push(const _ApiKeyScreen()),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    const _SectionLabel(
+                      'AI',
+                      subtitle: 'Provider, tone, and assistant behavior.',
+                    ),
+                    const SizedBox(height: 10),
+                    _SettingsSectionCard(
+                      accentColor: JournalColors.accent2,
+                      children: [
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.command,
+                          iconColor: JournalColors.accent2,
+                          label: 'AI Provider',
+                          subtitle: 'Anthropic, OpenAI, or local model.',
+                          onTap: () => _push(const _AIProviderScreen()),
+                        ),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.chat_bubble_fill,
+                          iconColor: JournalColors.info,
+                          label: 'Reflection Tone',
+                          subtitle: 'Voice used for insights and summaries.',
+                          onTap: () => _push(const _ToneScreen()),
+                        ),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.sparkles,
+                          iconColor: JournalColors.accent,
+                          label: 'Sage Settings',
+                          subtitle: 'Voice, memory, playback, and personality.',
+                          onTap: () => _push(const SageSettingsScreen()),
+                        ),
+                        if (_reflectLoaded) ...[
+                          const _SectionDivider(),
+                          _SettingsSwitchRow(
+                            icon: CupertinoIcons.bolt_fill,
+                            iconColor: JournalColors.severity,
+                            label: 'Auto-Reflect',
+                            subtitle:
+                                'Generate reflections automatically after new entries.',
+                            value: _autoReflect,
+                            onChanged: _toggleReflectMode,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    const _SectionLabel(
+                      'Security',
+                      subtitle: 'Access controls and account recovery.',
+                    ),
+                    const SizedBox(height: 10),
+                    _SettingsSectionCard(
+                      accentColor: JournalColors.info,
+                      children: [
+                        if (_biometricAvailable) ...[
+                          _SettingsActionRow(
+                            icon: CupertinoIcons.person_crop_circle,
+                            iconColor: JournalColors.info,
+                            label: 'Face ID',
+                            subtitle: _biometricEnabled
+                                ? 'Enabled for faster sign-in.'
+                                : 'Save credentials after sign-in to enable it.',
+                            trailing: _InlineActionButton(
+                              label: _biometricEnabled ? 'Disable' : 'Enable',
+                              color: _biometricEnabled
+                                  ? JournalColors.danger
+                                  : JournalColors.accent,
+                              onTap: _biometricEnabled
+                                  ? _disableBiometrics
+                                  : () => _enableBiometrics(
+                                        context,
+                                        user?['username'] as String? ?? '',
+                                      ),
                             ),
                           ),
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                GlassCard(
-                  onTap: () => _push(const _SessionsScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.device_laptop,
-                    label: 'Active Sessions',
-                    subtitle: 'Devices with an active login',
-                  ),
-                ),
-                if (_securityLoaded) ...[
-                  const SizedBox(height: 8),
-                  // ── Recovery Questions ──────────────────────────────
-                  GlassCard(
-                    onTap: () async {
-                      await _push(_RecoveryQuestionsScreen(
-                          hasExisting: _hasRecoveryQuestions));
-                      _loadSecurityStatus();
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 4),
-                      child: Row(children: [
-                        const Icon(CupertinoIcons.question_circle_fill,
-                            color: JournalColors.accent, size: 18),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Recovery Questions',
-                                    style: TextStyle(
-                                        color: JournalColors.textPrimary,
-                                        fontSize: 15)),
-                                SizedBox(height: 2),
-                                Text('Reset your password without email access',
-                                    style: TextStyle(
-                                        color: JournalColors.textMuted,
-                                        fontSize: 12)),
-                              ]),
+                          const _SectionDivider(),
+                        ],
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.device_laptop,
+                          iconColor: JournalColors.accent,
+                          label: 'Active Sessions',
+                          subtitle: 'Devices with an active login.',
+                          onTap: () => _push(const _SessionsScreen()),
                         ),
-                        _hasRecoveryQuestions
-                            ? Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFF10b981).withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                      color: const Color(0xFF10b981)
-                                          .withOpacity(0.30)),
+                        if (_securityLoaded) ...[
+                          const _SectionDivider(),
+                          _SettingsActionRow(
+                            icon: CupertinoIcons.question_circle_fill,
+                            iconColor: JournalColors.severity,
+                            label: 'Recovery Questions',
+                            subtitle:
+                                'Reset your password without email access.',
+                            trailing: _StatusBadge(
+                              label:
+                                  _hasRecoveryQuestions ? 'Set up' : 'Not set',
+                              color: _hasRecoveryQuestions
+                                  ? JournalColors.success
+                                  : JournalColors.severity,
+                            ),
+                            onTap: () async {
+                              await _push(
+                                _RecoveryQuestionsScreen(
+                                  hasExisting: _hasRecoveryQuestions,
                                 ),
-                                child: const Text('✓ SET UP',
-                                    style: TextStyle(
-                                        color: Color(0xFF10b981),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.8)),
-                              )
-                            : Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFFf59e0b).withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                      color: const Color(0xFFf59e0b)
-                                          .withOpacity(0.30)),
-                                ),
-                                child: const Text('⚠ NOT SET UP',
-                                    style: TextStyle(
-                                        color: Color(0xFFf59e0b),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.8)),
-                              ),
-                      ]),
+                              );
+                              _loadSecurityStatus();
+                            },
+                          ),
+                          const _SectionDivider(),
+                          _SettingsActionRow(
+                            icon: CupertinoIcons.shield_lefthalf_fill,
+                            iconColor: JournalColors.success,
+                            label: 'Two-Factor Authentication',
+                            subtitle:
+                                'Google Authenticator, Authy, or any TOTP app.',
+                            trailing: _StatusBadge(
+                              label: _twoFAEnabled ? 'Enabled' : 'Disabled',
+                              color: _twoFAEnabled
+                                  ? JournalColors.success
+                                  : JournalColors.textMuted,
+                            ),
+                            onTap: () async {
+                              await _push(_TwoFAScreen(enabled: _twoFAEnabled));
+                              _loadSecurityStatus();
+                            },
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  // ── Two-Factor Authentication ───────────────────────
-                  GlassCard(
-                    onTap: () async {
-                      await _push(_TwoFAScreen(enabled: _twoFAEnabled));
-                      _loadSecurityStatus();
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 4),
-                      child: Row(children: [
-                        const Icon(CupertinoIcons.shield_lefthalf_fill,
-                            color: JournalColors.accent, size: 18),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Two-Factor Authentication',
-                                    style: TextStyle(
-                                        color: JournalColors.textPrimary,
-                                        fontSize: 15)),
-                                SizedBox(height: 2),
-                                Text(
-                                    'Google Authenticator, Authy, or any TOTP app',
-                                    style: TextStyle(
-                                        color: JournalColors.textMuted,
-                                        fontSize: 12)),
-                              ]),
+                    const SizedBox(height: 22),
+                    const _SectionLabel(
+                      'Journal',
+                      subtitle: 'Entry capture and support access.',
+                    ),
+                    const SizedBox(height: 10),
+                    _SettingsSectionCard(
+                      accentColor: JournalColors.orange,
+                      children: [
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.chat_bubble_2_fill,
+                          iconColor: JournalColors.orange,
+                          label: 'Text Journal',
+                          subtitle: 'Journal via SMS from your phone.',
+                          onTap: () => _push(const _SmsScreen()),
                         ),
-                        _twoFAEnabled
-                            ? Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFF10b981).withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                      color: const Color(0xFF10b981)
-                                          .withOpacity(0.30)),
-                                ),
-                                child: const Text('● ENABLED',
-                                    style: TextStyle(
-                                        color: Color(0xFF10b981),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.8)),
-                              )
-                            : Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: JournalColors.bgSurface,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border:
-                                      Border.all(color: JournalColors.border),
-                                ),
-                                child: const Text('◎ DISABLED',
-                                    style: TextStyle(
-                                        color: JournalColors.textMuted,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.8)),
-                              ),
-                      ]),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.heart_fill,
+                          iconColor: JournalColors.danger,
+                          label: 'Resources',
+                          subtitle: 'Personalized support tools and services.',
+                          onTap: () => _push(const ResourcesScreen()),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-
-                // ── JOURNAL ───────────────────────────────────────────
-                const _SectionLabel('JOURNAL'),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const _SmsScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.chat_bubble_2_fill,
-                    label: 'Text Journal',
-                    subtitle: 'Journal via SMS from your phone',
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // ── SUPPORT ───────────────────────────────────────────
-                const _SectionLabel('SUPPORT'),
-                const SizedBox(height: 8),
-                GlassCard(
-                  onTap: () => _push(const ResourcesScreen()),
-                  child: _NavRow(
-                    icon: CupertinoIcons.heart_fill,
-                    label: 'Resources',
-                    subtitle: 'Personalized support tools and services',
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // ── APP ───────────────────────────────────────────────
-                const _SectionLabel('APP'),
-                const SizedBox(height: 8),
-                GlassCard(
-                  child: Column(children: const [
-                    _InfoRow(
-                        icon: CupertinoIcons.globe,
-                        label: 'Server',
-                        value: 'journal.williamthomas.name'),
-                    Divider(color: JournalColors.border, height: 1),
-                    _InfoRow(
-                        icon: CupertinoIcons.lock_shield_fill,
-                        label: 'Auth',
-                        value: 'JWT + Secure Cookie'),
-                    Divider(color: JournalColors.border, height: 1),
-                    _InfoRow(
-                        icon: CupertinoIcons.app_badge,
-                        label: 'Version',
-                        value: '1.0.0'),
+                    const SizedBox(height: 22),
+                    const _SectionLabel(
+                      'App',
+                      subtitle: 'System details and session controls.',
+                    ),
+                    const SizedBox(height: 10),
+                    const _SettingsSectionCard(
+                      accentColor: JournalColors.textSecondary,
+                      children: [
+                        _SettingsInfoRow(
+                          icon: CupertinoIcons.globe,
+                          iconColor: JournalColors.info,
+                          label: 'Server',
+                          value: 'journal.williamthomas.name',
+                        ),
+                        _SectionDivider(),
+                        _SettingsInfoRow(
+                          icon: CupertinoIcons.lock_shield_fill,
+                          iconColor: JournalColors.accent,
+                          label: 'Auth',
+                          value: 'JWT + Secure Cookie',
+                        ),
+                        _SectionDivider(),
+                        _SettingsInfoRow(
+                          icon: CupertinoIcons.app_badge,
+                          iconColor: JournalColors.textSecondary,
+                          label: 'Version',
+                          value: '1.0.0',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    AdaptiveButton(
+                      style: AdaptiveButtonStyle.prominentGlass,
+                      onPressed: () => _confirmLogout(context),
+                      label: 'Sign Out',
+                    ),
+                    const SizedBox(height: 10),
+                    const Center(
+                      child: Text(
+                        'Journal Intelligence · iOS App',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                   ]),
                 ),
-
-                const SizedBox(height: 24),
-
-                // ── Sign out ──────────────────────────────────────────
-                AdaptiveButton(
-                  style: AdaptiveButtonStyle.prominentGlass,
-                  onPressed: () => _confirmLogout(context),
-                  label: 'Sign Out',
-                ),
-                const SizedBox(height: 8),
-                const Center(
-                  child: Text(
-                    'Journal Intelligence · iOS App',
-                    style:
-                        TextStyle(color: JournalColors.textMuted, fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 40),
-              ]),
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3668,82 +3485,675 @@ class _FieldLabel extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+  const _SectionLabel(this.text, {this.subtitle});
   final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          color: JournalColors.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
-      );
-}
-
-class _NavRow extends StatelessWidget {
-  const _NavRow({
-    required this.icon,
-    required this.label,
-    this.subtitle,
-  });
-  final IconData icon;
-  final String label;
   final String? subtitle;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-        child: Row(children: [
-          Icon(icon, color: JournalColors.accent, size: 18),
-          const SizedBox(width: 14),
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: JournalColors.textPrimary, fontSize: 15)),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(subtitle!,
-                    style: const TextStyle(
-                        color: JournalColors.textMuted, fontSize: 12)),
-              ],
-            ]),
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: const BoxDecoration(
+              color: JournalColors.accent,
+              shape: BoxShape.circle,
+            ),
           ),
-          const Icon(CupertinoIcons.chevron_right,
-              color: JournalColors.textMuted, size: 14),
-        ]),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text.toUpperCase(),
+                  style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       );
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
+class _SettingsBackdrop extends StatelessWidget {
+  const _SettingsBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF080914),
+                    JournalColors.bgBase,
+                    Color(0xFF05060D),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 92,
+            left: -44,
+            child: _GlowOrb(
+              size: 190,
+              color: _withAlpha(JournalColors.accent, 0.18),
+            ),
+          ),
+          Positioned(
+            top: 230,
+            right: -32,
+            child: _GlowOrb(
+              size: 150,
+              color: _withAlpha(JournalColors.info, 0.14),
+            ),
+          ),
+          Positioned(
+            bottom: 140,
+            left: 20,
+            child: _GlowOrb(
+              size: 120,
+              color: _withAlpha(JournalColors.accent2, 0.10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlowOrb extends StatelessWidget {
+  const _GlowOrb({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [color, _withAlpha(color, 0)],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsHero extends StatelessWidget {
+  const _SettingsHero({
+    required this.username,
+    required this.email,
+    required this.biometricAvailable,
+    required this.biometricEnabled,
+    required this.reflectLoaded,
+    required this.autoReflect,
+    required this.securityLoaded,
+    required this.twoFAEnabled,
+  });
+
+  final String? username;
+  final String? email;
+  final bool biometricAvailable;
+  final bool biometricEnabled;
+  final bool reflectLoaded;
+  final bool autoReflect;
+  final bool securityLoaded;
+  final bool twoFAEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = username?.trim().isNotEmpty == true ? username! : 'You';
+    final initials = displayName[0].toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: JournalColors.borderBright),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _withAlpha(JournalColors.bgCard, 0.97),
+            _withAlpha(const Color(0xFF11142A), 0.94),
+            _withAlpha(const Color(0xFF191122), 0.90),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: JournalColors.accentGlow,
+            blurRadius: 28,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    colors: [
+                      _withAlpha(JournalColors.accent, 0.34),
+                      _withAlpha(JournalColors.accent2, 0.22),
+                    ],
+                  ),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ACCOUNT SETTINGS',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Manage account, privacy, and assistant preferences.',
+                      style: TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        height: 1.18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _withAlpha(Colors.white, 0.04),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _withAlpha(Colors.white, 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (email?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    email!,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Use this screen to update credentials, tune assistant behavior, and review security status.',
+                  style: TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _HeroMetric(
+                label: 'Face ID',
+                value: biometricAvailable
+                    ? (biometricEnabled ? 'Enabled' : 'Available')
+                    : 'Unavailable',
+                color: biometricEnabled
+                    ? JournalColors.success
+                    : JournalColors.info,
+              ),
+              _HeroMetric(
+                label: 'Auto-Reflect',
+                value:
+                    reflectLoaded ? (autoReflect ? 'On' : 'Off') : 'Checking',
+                color: autoReflect
+                    ? JournalColors.accent
+                    : JournalColors.textSecondary,
+              ),
+              _HeroMetric(
+                label: '2FA',
+                value: securityLoaded
+                    ? (twoFAEnabled ? 'Enabled' : 'Off')
+                    : 'Checking',
+                color: twoFAEnabled
+                    ? JournalColors.success
+                    : JournalColors.severity,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 104),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: _withAlpha(color, 0.10),
+        border: Border.all(color: _withAlpha(color, 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: _withAlpha(color, 0.92),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSectionCard extends StatelessWidget {
+  const _SettingsSectionCard({
+    required this.children,
+    required this.accentColor,
+  });
+
+  final List<Widget> children;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: JournalColors.bgCard,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _withAlpha(accentColor, 0.22)),
+        boxShadow: [
+          BoxShadow(
+            color: _withAlpha(accentColor, 0.10),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      color: _withAlpha(Colors.white, 0.06),
+    );
+  }
+}
+
+class _SettingsActionRow extends StatelessWidget {
+  const _SettingsActionRow({
     required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _withAlpha(iconColor, 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 19),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          trailing ??
+              const Icon(
+                CupertinoIcons.chevron_right,
+                color: JournalColors.textMuted,
+                size: 14,
+              ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: content,
+    );
+  }
+}
+
+class _SettingsSwitchRow extends StatelessWidget {
+  const _SettingsSwitchRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _withAlpha(iconColor, 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 19),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Transform.scale(
+            scale: 0.94,
+            child: CupertinoSwitch(
+              value: value,
+              onChanged: onChanged,
+              activeTrackColor: JournalColors.accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineActionButton extends StatelessWidget {
+  const _InlineActionButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _withAlpha(color, 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _withAlpha(color, 0.28)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _withAlpha(color, 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _withAlpha(color, 0.24)),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsInfoRow extends StatelessWidget {
+  const _SettingsInfoRow({
+    required this.icon,
+    required this.iconColor,
     required this.label,
     required this.value,
   });
+
   final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-        child: Row(children: [
-          Icon(icon, color: JournalColors.accent, size: 18),
-          const SizedBox(width: 14),
-          Text(label,
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _withAlpha(iconColor, 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 19),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Text(
+              label,
               style: const TextStyle(
-                  color: JournalColors.textPrimary, fontSize: 15)),
-          const Spacer(),
-          Text(value,
+                color: JournalColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
               style: const TextStyle(
-                  color: JournalColors.textMuted, fontSize: 14)),
-        ]),
-      );
+                color: JournalColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Pill extends StatelessWidget {
