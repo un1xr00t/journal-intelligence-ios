@@ -13,14 +13,16 @@ import 'ask_journal_screen.dart';
 import 'more_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.initialTab = 0});
+
+  final int initialTab;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
 
   static const _screens = [
     TodayScreen(),
@@ -29,6 +31,20 @@ class _HomeShellState extends State<HomeShell> {
     AskJournalScreen(),
     MoreScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialTab.clamp(0, _screens.length - 1);
+  }
+
+  @override
+  void didUpdateWidget(HomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _selectedIndex = widget.initialTab.clamp(0, _screens.length - 1);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -26,6 +26,38 @@ class JournalApp extends StatefulWidget {
 }
 
 class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
+  int? _tabForRoute(String? routeName) {
+    return switch (routeName) {
+      '/today' => 0,
+      '/timeline' => 1,
+      '/write' => 2,
+      '/ask' || '/intelligence' || '/sage' => 3,
+      '/more' || '/settings' => 4,
+      _ => null,
+    };
+  }
+
+  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
+    final tab = _tabForRoute(settings.name);
+    if (tab == null) return null;
+
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: Consumer<AuthProvider>(
+          builder: (context, auth, _) {
+            return switch (auth.state) {
+              AuthState.unknown => const SplashScreen(),
+              AuthState.authenticated => HomeShell(initialTab: tab),
+              AuthState.unauthenticated => const LoginScreen(),
+            };
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,13 +86,14 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
       title: 'Journal Intelligence',
       theme: AppTheme.dark,
       debugShowCheckedModeBanner: false,
+      onGenerateRoute: _onGenerateRoute,
       home: DefaultTextStyle.merge(
         style: const TextStyle(decoration: TextDecoration.none),
         child: Consumer<AuthProvider>(
           builder: (context, auth, _) {
             return switch (auth.state) {
-              AuthState.unknown         => const SplashScreen(),
-              AuthState.authenticated   => const HomeShell(),
+              AuthState.unknown => const SplashScreen(),
+              AuthState.authenticated => const HomeShell(),
               AuthState.unauthenticated => const LoginScreen(),
             };
           },

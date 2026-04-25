@@ -40,6 +40,9 @@ ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
 ios/Podfile.lock
 ios/Runner*
+!ios/Runner/
+ios/Runner/*
+!ios/Runner/Info.plist
 
 # Symbolication related
 app.*.symbols
