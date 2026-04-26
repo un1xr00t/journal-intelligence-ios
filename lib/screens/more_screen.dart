@@ -64,7 +64,7 @@ class MoreScreen extends StatelessWidget {
             icon: CupertinoIcons.sparkles,
             iconColor: JournalColors.accent,
             badge: 'New',
-            builder: (_) => const SageScreen(),
+            builder: (_) => const SageScreen(autoStartGreeting: false),
           ),
           _Item(
             label: 'Ask My Journal',
@@ -328,7 +328,7 @@ class MoreScreen extends StatelessWidget {
                           builder: (ctx) => DefaultTextStyle.merge(
                             style: const TextStyle(
                                 decoration: TextDecoration.none),
-                            child: const SageScreen(),
+                            child: const SageScreen(autoStartGreeting: false),
                           ),
                         ),
                       ),

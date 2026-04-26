@@ -105,6 +105,18 @@ that is useful. Be explicit when an image is blurry, cropped, too small, or
 otherwise uncertain.
 ''';
 
+const _kSageDefaultWelcomeMessage = '''
+I’m here and I’ve got your context loaded.
+
+Ask me to:
+- spot patterns
+- think through a situation
+- sanity-check what happened
+- turn chaos into a plan
+
+You can also drop in a screenshot, file, or rough thought and we’ll work from there.
+''';
+
 const _kSageKnowledgeChips = <({String label, String prompt})>[
   (
     label: 'Journal entries & mood trends',
@@ -925,7 +937,12 @@ $sessionToneInstruction
   }
 
   void _seedInitialAssistantMessageIfNeeded() {
-    final seed = widget.initialAssistantMessage?.trim() ?? '';
+    final explicitSeed = widget.initialAssistantMessage?.trim() ?? '';
+    final seed = explicitSeed.isNotEmpty
+        ? explicitSeed
+        : !widget.autoStartGreeting
+            ? _kSageDefaultWelcomeMessage
+            : '';
     if (_seededInitialAssistantMessage || seed.isEmpty || !mounted) return;
     _seededInitialAssistantMessage = true;
     setState(() {
