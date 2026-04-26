@@ -411,15 +411,130 @@ String _imageMediaTypeForExtension(String extension) {
   }
 }
 
+String _labelForSageSessionTone(String tone) {
+  switch (tone) {
+    case 'best_friend':
+      return 'Best Friend';
+    case 'coach':
+      return 'Coach';
+    case 'mentor':
+      return 'Mentor';
+    case 'inner_critic':
+      return 'Inner Critic';
+    case 'chaos_agent':
+      return 'Chaos Agent';
+    case 'therapist':
+    default:
+      return 'Therapist';
+  }
+}
+
+SageSettings _settingsForSageSessionTone(
+  SageSettings base,
+  String? tone,
+) {
+  switch (tone) {
+    case 'best_friend':
+      return base.copyWith(
+        warmth: 'close',
+        directness: 'gentle',
+        allowSwearing: true,
+      );
+    case 'coach':
+      return base.copyWith(
+        warmth: 'warm',
+        directness: 'direct',
+        allowSwearing: base.allowSwearing,
+      );
+    case 'mentor':
+      return base.copyWith(
+        warmth: 'warm',
+        directness: 'direct',
+        allowSwearing: false,
+      );
+    case 'inner_critic':
+      return base.copyWith(
+        warmth: 'calm',
+        directness: 'blunt',
+        allowSwearing: true,
+      );
+    case 'chaos_agent':
+      return base.copyWith(
+        warmth: 'close',
+        directness: 'blunt',
+        allowSwearing: true,
+      );
+    case 'therapist':
+      return base.copyWith(
+        warmth: 'calm',
+        directness: 'gentle',
+        allowSwearing: false,
+      );
+    default:
+      return base;
+  }
+}
+
+String _promptInstructionForSageSessionTone(String? tone) {
+  switch (tone) {
+    case 'best_friend':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Best Friend tone.
+For this session only, sound warm, familiar, validating, and conversational.
+Keep it grounded in the user's real data and still be honest when something is off.
+''';
+    case 'coach':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Coach tone.
+For this session only, sound motivating, forward-moving, and practical.
+Turn insight into next steps without getting preachy or generic.
+''';
+    case 'mentor':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Mentor tone.
+For this session only, sound steady, wise, and long-view.
+Offer perspective and pattern recognition without becoming distant or vague.
+''';
+    case 'inner_critic':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Inner Critic tone.
+For this session only, be sharper, more challenging, and more unsparing than usual.
+Stay accurate and useful. Push hard on avoidance, but do not become cruel or insulting.
+''';
+    case 'chaos_agent':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Chaos Agent tone.
+For this session only, sound bold, unconventional, irreverent, and pattern-breaking.
+Use surprise, edge, and blunt honesty when it helps, but keep the advice coherent and anchored to real context.
+''';
+    case 'therapist':
+      return '''
+[TEMPORARY HANDOFF TONE]
+This Sage session started from a living summary in the Therapist tone.
+For this session only, sound measured, reflective, and emotionally attuned.
+Name patterns carefully, slow the pace a little, and avoid unnecessary sharpness.
+''';
+    default:
+      return '';
+  }
+}
+
 class SageScreen extends StatefulWidget {
   const SageScreen({
     super.key,
     this.initialAssistantMessage,
     this.autoStartGreeting = true,
+    this.sessionToneOverride,
   });
 
   final String? initialAssistantMessage;
   final bool autoStartGreeting;
+  final String? sessionToneOverride;
 
   @override
   State<SageScreen> createState() => _SageScreenState();
@@ -744,8 +859,12 @@ class _SageScreenState extends State<SageScreen> {
   }
 
   String _buildContextPayload(String contextString) {
+    final sessionSettings =
+        _settingsForSageSessionTone(_settings, widget.sessionToneOverride);
     final memoryContext = _profile.buildMemoryContext(_memoryItems);
     final expandedContext = _expandedContextString?.trim() ?? '';
+    final sessionToneInstruction =
+        _promptInstructionForSageSessionTone(widget.sessionToneOverride);
     return '''
 $contextString
 
@@ -756,7 +875,9 @@ $memoryContext
 [SYSTEM INSTRUCTION]
 $_kSageSystemPrompt
 
-${_settings.toPromptInstruction()}
+${sessionSettings.toPromptInstruction()}
+
+$sessionToneInstruction
 ''';
   }
 
@@ -1815,6 +1936,7 @@ Return JSON only.
                   ttsErrorMessageId: _ttsErrorMessageId,
                   ttsErrorText: _ttsErrorText,
                   settings: _settings,
+                  sessionToneOverride: widget.sessionToneOverride,
                   profileLoading: _profileLoading,
                   memoryCount: _memoryItems.length,
                   onNewChat: _clearChat,
@@ -2317,6 +2439,7 @@ class _SageThread extends StatelessWidget {
     required this.ttsErrorMessageId,
     required this.ttsErrorText,
     required this.settings,
+    required this.sessionToneOverride,
     required this.profileLoading,
     required this.memoryCount,
     required this.onNewChat,
@@ -2338,6 +2461,7 @@ class _SageThread extends StatelessWidget {
   final String? ttsErrorMessageId;
   final String? ttsErrorText;
   final SageSettings settings;
+  final String? sessionToneOverride;
   final bool profileLoading;
   final int memoryCount;
   final Future<void> Function() onNewChat;
@@ -2428,6 +2552,7 @@ class _SageThread extends StatelessWidget {
               children: [
                 _SageIntroCard(
                   settings: settings,
+                  sessionToneOverride: sessionToneOverride,
                   profileLoading: profileLoading,
                   memoryCount: memoryCount,
                   onNewChat: onNewChat,
@@ -2480,18 +2605,26 @@ class _SageThread extends StatelessWidget {
 class _SageIntroCard extends StatelessWidget {
   const _SageIntroCard({
     required this.settings,
+    required this.sessionToneOverride,
     required this.profileLoading,
     required this.memoryCount,
     required this.onNewChat,
   });
 
   final SageSettings settings;
+  final String? sessionToneOverride;
   final bool profileLoading;
   final int memoryCount;
   final Future<void> Function() onNewChat;
 
   @override
   Widget build(BuildContext context) {
+    final sessionSettings =
+        _settingsForSageSessionTone(settings, sessionToneOverride);
+    final toneLabel = sessionToneOverride == null
+        ? null
+        : _labelForSageSessionTone(sessionToneOverride!);
+
     return GlassCard(
       padding: const EdgeInsets.all(0),
       child: Container(
@@ -2545,8 +2678,10 @@ class _SageIntroCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            const Text(
-              'Sage responds with your current journal context plus your saved Sage settings and private memory notes from this device.',
+            Text(
+              toneLabel == null
+                  ? 'Sage responds with your current journal context plus your saved Sage settings and private memory notes from this device.'
+                  : 'This handoff is temporarily using the $toneLabel living-summary tone for this Sage session while keeping your saved Sage settings unchanged.',
               style: TextStyle(
                 color: JournalColors.textSecondary,
                 fontSize: 13,
@@ -2561,14 +2696,18 @@ class _SageIntroCard extends StatelessWidget {
                 _MetaPill(
                   label: profileLoading
                       ? 'Loading profile…'
-                      : 'Voice ${settings.voiceId}',
+                      : 'Voice ${sessionSettings.voiceId}',
                 ),
                 _MetaPill(
                   label: profileLoading
                       ? '…'
                       : '$memoryCount saved ${memoryCount == 1 ? 'memory' : 'memories'}',
                 ),
-                _MetaPill(label: '${settings.warmth} / ${settings.directness}'),
+                _MetaPill(
+                  label:
+                      '${sessionSettings.warmth} / ${sessionSettings.directness}',
+                ),
+                if (toneLabel != null) _MetaPill(label: '$toneLabel handoff'),
               ],
             ),
             const SizedBox(height: 14),

@@ -198,6 +198,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
   Future<void> _openSummaryInSage() async {
     final insight = _masterSummary?['insight']?.toString().trim() ?? '';
     if (insight.isEmpty) return;
+    final sessionTone =
+        (_summaryTone ?? _masterSummary?['tone']?.toString())?.trim();
 
     if (_summarySpeaking || _summaryTtsLoading) {
       _summaryTtsRequestCounter += 1;
@@ -220,6 +222,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
           child: SageScreen(
             initialAssistantMessage: insight,
             autoStartGreeting: false,
+            sessionToneOverride:
+                sessionTone?.isEmpty == true ? null : sessionTone,
           ),
         ),
       ),
