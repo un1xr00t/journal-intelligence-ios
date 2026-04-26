@@ -2682,7 +2682,7 @@ class _SageIntroCard extends StatelessWidget {
               toneLabel == null
                   ? 'Sage responds with your current journal context plus your saved Sage settings and private memory notes from this device.'
                   : 'This handoff is temporarily using the $toneLabel living-summary tone for this Sage session while keeping your saved Sage settings unchanged.',
-              style: TextStyle(
+              style: const TextStyle(
                 color: JournalColors.textSecondary,
                 fontSize: 13,
                 height: 1.45,
@@ -3419,7 +3419,7 @@ class _SageInputBar extends StatelessWidget {
         children: [
           if (attachments.isNotEmpty) ...[
             SizedBox(
-              height: 116,
+              height: 120,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: attachments.length,
@@ -3432,71 +3432,140 @@ class _SageInputBar extends StatelessWidget {
                     children: [
                       Container(
                         width: isImage ? 108 : 94,
+                        height: 112,
                         decoration: BoxDecoration(
                           color: _withAlpha(JournalColors.bgCardAlt, 0.94),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: JournalColors.borderBright),
+                          boxShadow: isImage
+                              ? [
+                                  BoxShadow(
+                                    color: _withAlpha(
+                                      JournalColors.bgBase,
+                                      0.28,
+                                    ),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ]
+                              : null,
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(17),
-                          child: Padding(
-                            padding: const EdgeInsets.all(9),
-                            child: Column(
-                              children: [
-                                if (isImage && attachment.path.isNotEmpty)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.file(
-                                      File(attachment.path),
-                                      width: 74,
-                                      height: 74,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          _AttachmentIcon(
+                          child: isImage
+                              ? Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    if (attachment.path.isNotEmpty)
+                                      Image.file(
+                                        File(attachment.path),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            _AttachmentIcon(
+                                          isImage: isImage,
+                                          size: 108,
+                                          iconSize: 28,
+                                        ),
+                                      )
+                                    else
+                                      _AttachmentIcon(
                                         isImage: isImage,
-                                        size: 74,
-                                        iconSize: 22,
+                                        size: 108,
+                                        iconSize: 28,
                                       ),
-                                    ),
-                                  )
-                                else
-                                  _AttachmentIcon(
-                                    isImage: isImage,
-                                    size: 40,
-                                    iconSize: 16,
-                                  ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  attachment.displayExtension,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: JournalColors.accent,
-                                    fontSize: isImage ? 11 : 9,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (!isImage) ...[
-                                  const SizedBox(height: 3),
-                                  Expanded(
-                                    child: Center(
-                                      child: Text(
-                                        attachment.name,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: JournalColors.textSecondary,
-                                          fontSize: 10,
-                                          height: 1.25,
+                                    Positioned.fill(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              _withAlpha(
+                                                JournalColors.bgBase,
+                                                0,
+                                              ),
+                                              _withAlpha(
+                                                JournalColors.bgBase,
+                                                0.74,
+                                              ),
+                                            ],
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                          ),
                                         ),
                                       ),
                                     ),
+                                    Positioned(
+                                      left: 8,
+                                      bottom: 8,
+                                      child: _AttachmentBadge(
+                                        label: attachment.displayExtension,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: Container(
+                                        width: 26,
+                                        height: 26,
+                                        decoration: BoxDecoration(
+                                          color: _withAlpha(
+                                            JournalColors.bgBase,
+                                            0.72,
+                                          ),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: JournalColors.borderBright,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          CupertinoIcons
+                                              .arrow_up_left_arrow_down_right,
+                                          color: JournalColors.textPrimary,
+                                          size: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Padding(
+                                  padding: const EdgeInsets.all(9),
+                                  child: Column(
+                                    children: [
+                                      _AttachmentIcon(
+                                        isImage: isImage,
+                                        size: 40,
+                                        iconSize: 16,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        attachment.displayExtension,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: JournalColors.accent,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Expanded(
+                                        child: Center(
+                                          child: Text(
+                                            attachment.name,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color:
+                                                  JournalColors.textSecondary,
+                                              fontSize: 10,
+                                              height: 1.25,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ],
-                            ),
-                          ),
+                                ),
                         ),
                       ),
                       Positioned(
