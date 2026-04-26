@@ -193,6 +193,216 @@ Future<void> _showCasePhotoLightbox(
   );
 }
 
+String _photoExtensionLabel(String filename) {
+  final trimmed = filename.trim();
+  final dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex >= 0 && dotIndex < trimmed.length - 1) {
+    return trimmed.substring(dotIndex + 1).toUpperCase();
+  }
+  return 'PHOTO';
+}
+
+class _PhotoTypeBadge extends StatelessWidget {
+  const _PhotoTypeBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgBase, 0.78),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoExpandButton extends StatelessWidget {
+  const _PhotoExpandButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgBase, 0.76),
+        shape: BoxShape.circle,
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: const Icon(
+        CupertinoIcons.arrow_up_left_arrow_down_right,
+        color: JournalColors.textPrimary,
+        size: 14,
+      ),
+    );
+  }
+}
+
+class _DetectivePhotoTile extends StatelessWidget {
+  const _DetectivePhotoTile({
+    required this.filename,
+    this.localPath,
+    this.remotePath,
+    this.size = 96,
+    this.onTap,
+    this.onDelete,
+    this.showExpandIcon = false,
+    this.statusColor,
+  }) : assert(localPath != null || remotePath != null);
+
+  final String filename;
+  final String? localPath;
+  final String? remotePath;
+  final double size;
+  final VoidCallback? onTap;
+  final VoidCallback? onDelete;
+  final bool showExpandIcon;
+  final Color? statusColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tile = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: JournalColors.borderBright),
+        boxShadow: [
+          BoxShadow(
+            color: _withAlpha(JournalColors.bgBase, 0.34),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(17),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (localPath != null && localPath!.isNotEmpty)
+              Image.file(
+                File(localPath!),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Icon(
+                    CupertinoIcons.photo,
+                    color: JournalColors.textMuted,
+                    size: 24,
+                  ),
+                ),
+              )
+            else if (remotePath != null && remotePath!.isNotEmpty)
+              _AuthImage(path: remotePath!)
+            else
+              const Center(
+                child: Icon(
+                  CupertinoIcons.photo,
+                  color: JournalColors.textMuted,
+                  size: 24,
+                ),
+              ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _withAlpha(JournalColors.bgBase, 0),
+                      _withAlpha(JournalColors.bgBase, 0.72),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: _PhotoTypeBadge(
+                label: _photoExtensionLabel(filename),
+              ),
+            ),
+            if (statusColor != null)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: JournalColors.bgBase,
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            if (showExpandIcon)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: _PhotoExpandButton(),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        if (onTap != null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: tile,
+          )
+        else
+          tile,
+        if (onDelete != null)
+          Positioned(
+            top: -4,
+            right: -4,
+            child: GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgBase, 0.92),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: const Icon(
+                  CupertinoIcons.xmark,
+                  size: 12,
+                  color: JournalColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _CasePhotoLightbox extends StatelessWidget {
   const _CasePhotoLightbox({
     required this.imagePath,
@@ -1328,65 +1538,26 @@ class _LogTabState extends State<_LogTab> {
                           ),
                           if (_pendingPhotos.isNotEmpty) ...[
                             const SizedBox(height: 14),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children:
-                                    _pendingPhotos.asMap().entries.map((entry) {
-                                  final i = entry.key;
-                                  final f = entry.value;
-                                  return Container(
-                                    margin: const EdgeInsets.only(right: 8),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: _withAlpha(
-                                          JournalColors.accent, 0.10),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: _withAlpha(
-                                            JournalColors.accent, 0.24),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          CupertinoIcons.paperclip,
-                                          color: JournalColors.accent,
-                                          size: 14,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                              maxWidth: 140),
-                                          child: Text(
-                                            f.name,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color:
-                                                  JournalColors.textSecondary,
-                                              fontSize: 11,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        GestureDetector(
-                                          onTap: () => setState(
-                                            () => _pendingPhotos =
-                                                List.from(_pendingPhotos)
-                                                  ..removeAt(i),
-                                          ),
-                                          child: const Icon(
-                                            CupertinoIcons.xmark_circle_fill,
-                                            color: JournalColors.textMuted,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ],
+                            SizedBox(
+                              height: 104,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _pendingPhotos.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 12),
+                                itemBuilder: (_, i) {
+                                  final file = _pendingPhotos[i];
+                                  return _DetectivePhotoTile(
+                                    filename: file.name,
+                                    localPath: file.path,
+                                    size: 96,
+                                    onDelete: () => setState(
+                                      () => _pendingPhotos =
+                                          List.from(_pendingPhotos)
+                                            ..removeAt(i),
                                     ),
                                   );
-                                }).toList(),
+                                },
                               ),
                             ),
                           ],
@@ -1410,8 +1581,8 @@ class _LogTabState extends State<_LogTab> {
                               GestureDetector(
                                 onTap: _pickingPhotos ? null : _pickPhotos,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 11),
+                                  width: 52,
+                                  height: 52,
                                   decoration: BoxDecoration(
                                     color: _pendingPhotos.isNotEmpty
                                         ? _withAlpha(JournalColors.accent, 0.14)
@@ -1424,30 +1595,49 @@ class _LogTabState extends State<_LogTab> {
                                           : JournalColors.border,
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                  child: Stack(
+                                    alignment: Alignment.center,
                                     children: [
                                       _pickingPhotos
                                           ? const CupertinoActivityIndicator(
-                                              radius: 8)
+                                              radius: 9)
                                           : Icon(
                                               CupertinoIcons.paperclip,
-                                              size: 16,
+                                              size: 20,
                                               color: _pendingPhotos.isNotEmpty
                                                   ? JournalColors.accent
                                                   : JournalColors.textMuted,
                                             ),
-                                      if (_pendingPhotos.isNotEmpty) ...[
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '${_pendingPhotos.length}',
-                                          style: const TextStyle(
-                                            color: JournalColors.accent,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
+                                      if (_pendingPhotos.isNotEmpty)
+                                        Positioned(
+                                          top: 6,
+                                          right: 5,
+                                          child: Container(
+                                            constraints: const BoxConstraints(
+                                              minWidth: 18,
+                                            ),
+                                            height: 18,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: JournalColors.accent,
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '${_pendingPhotos.length}',
+                                                style: const TextStyle(
+                                                  color:
+                                                      JournalColors.textPrimary,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ],
                                     ],
                                   ),
                                 ),
@@ -2116,8 +2306,8 @@ class _EntryCardState extends State<_EntryCard>
                                           ),
                                         if (photos.isNotEmpty)
                                           Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
+                                            spacing: 12,
+                                            runSpacing: 12,
                                             children: photos.map<Widget>((p) {
                                               final photoId =
                                                   p['id'].toString();
@@ -2140,76 +2330,24 @@ class _EntryCardState extends State<_EntryCard>
                                                   : status == 'failed'
                                                       ? JournalColors.danger
                                                       : JournalColors.severity;
-                                              return Stack(
-                                                children: [
-                                                  GestureDetector(
-                                                    behavior:
-                                                        HitTestBehavior.opaque,
-                                                    onTap: () =>
-                                                        _showCasePhotoLightbox(
-                                                      context,
-                                                      imagePath: imageUrl,
-                                                      title: filename,
-                                                      analysis: photoAnalysis,
-                                                      analysisLabel:
-                                                          p['analysis_label']
-                                                              as String?,
-                                                    ),
-                                                    child: ClipRRect(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              12),
-                                                      child: SizedBox(
-                                                        width: 80,
-                                                        height: 80,
-                                                        child: _AuthImage(
-                                                            path: imageUrl),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Positioned(
-                                                    bottom: 4,
-                                                    left: 4,
-                                                    child: Container(
-                                                      width: 7,
-                                                      height: 7,
-                                                      decoration: BoxDecoration(
-                                                        color: statusColor,
-                                                        shape: BoxShape.circle,
-                                                        border: Border.all(
-                                                            color: JournalColors
-                                                                .bgCard,
-                                                            width: 1),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Positioned(
-                                                    top: 3,
-                                                    right: 3,
-                                                    child: GestureDetector(
-                                                      onTap: () =>
-                                                          widget.onDeletePhoto(
-                                                              photoId),
-                                                      child: Container(
-                                                        width: 18,
-                                                        height: 18,
-                                                        decoration:
-                                                            const BoxDecoration(
-                                                          color:
-                                                              Color(0xCC000000),
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                        child: const Icon(
-                                                          CupertinoIcons.xmark,
-                                                          size: 10,
-                                                          color: CupertinoColors
-                                                              .white,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                              return _DetectivePhotoTile(
+                                                filename: filename,
+                                                remotePath: imageUrl,
+                                                size: 96,
+                                                statusColor: statusColor,
+                                                showExpandIcon: true,
+                                                onTap: () =>
+                                                    _showCasePhotoLightbox(
+                                                  context,
+                                                  imagePath: imageUrl,
+                                                  title: filename,
+                                                  analysis: photoAnalysis,
+                                                  analysisLabel:
+                                                      p['analysis_label']
+                                                          as String?,
+                                                ),
+                                                onDelete: () => widget
+                                                    .onDeletePhoto(photoId),
                                               );
                                             }).toList(),
                                           ),

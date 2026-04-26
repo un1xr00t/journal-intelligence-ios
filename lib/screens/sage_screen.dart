@@ -3419,7 +3419,7 @@ class _SageInputBar extends StatelessWidget {
         children: [
           if (attachments.isNotEmpty) ...[
             SizedBox(
-              height: 112,
+              height: 116,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: attachments.length,
