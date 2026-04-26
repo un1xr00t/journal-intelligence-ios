@@ -1,13 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
+import 'sage_screen.dart';
 
 class TimelineScreen extends StatefulWidget {
   const TimelineScreen({super.key});
@@ -28,7 +34,9 @@ class _TimelineScreenState extends State<TimelineScreen> {
   ];
 
   final _api = ApiService();
+  final _sageProfile = SageProfileService();
   final _scroll = ScrollController();
+  final _summaryAudioPlayer = AudioPlayer();
 
   List<Map<String, dynamic>> _entries = [];
   bool _loading = true;
@@ -41,10 +49,23 @@ class _TimelineScreenState extends State<TimelineScreen> {
   bool _summaryLoading = true;
   String? _summaryTone;
   bool _checkingSummaryTone = false;
+  bool _summarySpeaking = false;
+  bool _summaryTtsLoading = false;
+  bool _summaryTtsSequenceActive = false;
+  int _summaryTtsRequestCounter = 0;
+  String? _summaryTtsError;
 
   @override
   void initState() {
     super.initState();
+    _summaryAudioPlayer.onPlayerComplete.listen((_) {
+      if (mounted && !_summaryTtsSequenceActive) {
+        setState(() {
+          _summarySpeaking = false;
+          _summaryTtsLoading = false;
+        });
+      }
+    });
     _load();
     _loadSummary();
     _scroll.addListener(_onScroll);
@@ -52,6 +73,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   @override
   void dispose() {
+    _summaryAudioPlayer.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -171,6 +193,238 @@ class _TimelineScreenState extends State<TimelineScreen> {
       });
     }
     await _loadSummary(force: true);
+  }
+
+  Future<void> _openSummaryInSage() async {
+    final insight = _masterSummary?['insight']?.toString().trim() ?? '';
+    if (insight.isEmpty) return;
+
+    if (_summarySpeaking || _summaryTtsLoading) {
+      _summaryTtsRequestCounter += 1;
+      await _summaryAudioPlayer.stop();
+      if (mounted) {
+        setState(() {
+          _summarySpeaking = false;
+          _summaryTtsLoading = false;
+          _summaryTtsSequenceActive = false;
+        });
+      }
+    }
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: SageScreen(
+            initialAssistantMessage: insight,
+            autoStartGreeting: false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleSummarySpeak() async {
+    final insight = _masterSummary?['insight']?.toString().trim() ?? '';
+    if (insight.isEmpty || _summaryLoading || _summaryTtsLoading) return;
+
+    if (_summarySpeaking) {
+      _summaryTtsRequestCounter += 1;
+      await _summaryAudioPlayer.stop();
+      if (!mounted) return;
+      setState(() {
+        _summarySpeaking = false;
+        _summaryTtsLoading = false;
+        _summaryTtsSequenceActive = false;
+      });
+      return;
+    }
+
+    final requestId = ++_summaryTtsRequestCounter;
+    setState(() {
+      _summaryTtsLoading = true;
+      _summarySpeaking = false;
+      _summaryTtsError = null;
+    });
+
+    try {
+      await _summaryAudioPlayer.stop();
+      final voiceSettings = await _api.getVoiceSettings();
+      final hasVoiceKey = voiceSettings['has_voice_key'] == true;
+      final usingOpenAi = voiceSettings['using_openai'] == true;
+      if (!hasVoiceKey && !usingOpenAi) {
+        throw Exception(
+          'Voice requires an OpenAI API key. Add one in Settings → Voice, or switch AI provider to OpenAI.',
+        );
+      }
+
+      final chunks = _speechChunks(insight);
+      if (chunks.isEmpty) throw Exception('No text to speak.');
+      final sageSettings = await _sageProfile.loadSettings();
+
+      if (!mounted) return;
+      setState(() {
+        _summaryTtsLoading = false;
+        _summarySpeaking = true;
+      });
+      _summaryTtsSequenceActive = true;
+
+      for (final chunk in chunks) {
+        if (requestId != _summaryTtsRequestCounter) return;
+        if (!mounted) return;
+        setState(() => _summaryTtsLoading = true);
+        final bytes = await _api.voiceSpeak(
+          text: chunk,
+          voiceId: sageSettings.voiceId,
+        );
+        if (bytes.isEmpty) throw Exception('No audio returned.');
+        if (requestId != _summaryTtsRequestCounter) return;
+        if (!mounted) return;
+        setState(() => _summaryTtsLoading = false);
+        await _summaryAudioPlayer.play(
+          BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
+        );
+        await _waitForSummaryAudioToFinish();
+      }
+
+      if (requestId != _summaryTtsRequestCounter) return;
+      _summaryTtsSequenceActive = false;
+      if (!mounted) return;
+      setState(() {
+        _summarySpeaking = false;
+        _summaryTtsLoading = false;
+      });
+    } catch (e) {
+      if (requestId != _summaryTtsRequestCounter) return;
+      _summaryTtsSequenceActive = false;
+      if (!mounted) return;
+      setState(() {
+        _summaryTtsLoading = false;
+        _summarySpeaking = false;
+        _summaryTtsError = _parseTtsError(e);
+      });
+    }
+  }
+
+  Future<void> _waitForSummaryAudioToFinish() {
+    final completer = Completer<void>();
+    StreamSubscription<void>? completeSub;
+    StreamSubscription<PlayerState>? stateSub;
+
+    void finish() {
+      if (completer.isCompleted) return;
+      completeSub?.cancel();
+      stateSub?.cancel();
+      completer.complete();
+    }
+
+    completeSub = _summaryAudioPlayer.onPlayerComplete.listen((_) => finish());
+    stateSub = _summaryAudioPlayer.onPlayerStateChanged.listen((state) {
+      if (state == PlayerState.stopped || state == PlayerState.disposed) {
+        finish();
+      }
+    });
+
+    return completer.future.timeout(
+      const Duration(minutes: 3),
+      onTimeout: () {
+        finish();
+      },
+    );
+  }
+
+  List<String> _speechChunks(String raw) {
+    final cleaned = raw
+        .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+        .replaceAll(RegExp(r'[*_`>#~-]+'), ' ')
+        .replaceAll(RegExp(r'\[[^\]]+\]\([^)]+\)'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) return const [];
+
+    const maxChunkChars = 2800;
+    const maxChunkBytes = 3500;
+    final chunks = <String>[];
+    var remaining = cleaned;
+
+    while (remaining.isNotEmpty) {
+      if (remaining.length <= maxChunkChars &&
+          utf8.encode(remaining).length <= maxChunkBytes) {
+        chunks.add(remaining);
+        break;
+      }
+
+      var hardLimit = 0;
+      var bytes = 0;
+      for (var i = 0; i < remaining.length; i++) {
+        bytes += utf8.encode(remaining[i]).length;
+        if (i >= maxChunkChars || bytes >= maxChunkBytes) break;
+        hardLimit = i + 1;
+      }
+
+      if (hardLimit <= 0) hardLimit = remaining.length.clamp(0, maxChunkChars);
+
+      var splitAt = remaining.lastIndexOf(RegExp(r'[.!?]\s'), hardLimit);
+      if (splitAt < hardLimit * 0.45) {
+        splitAt = remaining.lastIndexOf(RegExp(r'[,;:]\s'), hardLimit);
+      }
+      if (splitAt < hardLimit * 0.45) {
+        splitAt = remaining.lastIndexOf(' ', hardLimit);
+      }
+      if (splitAt < hardLimit * 0.45) splitAt = hardLimit;
+
+      chunks.add(remaining.substring(0, splitAt).trim());
+      remaining = remaining.substring(splitAt).trim();
+    }
+
+    return chunks.where((chunk) => chunk.isNotEmpty).toList();
+  }
+
+  String _parseTtsError(dynamic e) {
+    if (e is Exception) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      if (message.isNotEmpty) {
+        return 'Couldn’t generate audio: $message';
+      }
+    }
+    if (e is DioException) {
+      final data = e.response?.data;
+      final decoded = _decodeTtsErrorData(data);
+      if (decoded != null && decoded.isNotEmpty) {
+        return 'Couldn’t generate audio: $decoded';
+      }
+      final status = e.response?.statusCode;
+      if (status == 400) {
+        return 'Couldn’t generate audio. Check Settings → Voice.';
+      }
+      if (status == 502 || status == 504) {
+        return 'Couldn’t generate audio. The voice service timed out or failed upstream.';
+      }
+    }
+    return 'Couldn’t generate audio. Try again, or shorten the summary.';
+  }
+
+  String? _decodeTtsErrorData(dynamic data) {
+    dynamic decoded = data;
+    if (data is List<int>) {
+      try {
+        decoded = utf8.decode(data);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (decoded is Map) {
+      final detail = decoded['detail']?.toString().trim();
+      if (detail?.isNotEmpty == true) return detail;
+    }
+    if (decoded is String) {
+      final detailMatch =
+          RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(decoded);
+      return detailMatch?.group(1) ?? decoded.trim();
+    }
+    return null;
   }
 
   void _checkSummaryToneAfterBuild() {
@@ -464,6 +718,11 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   summary: _masterSummary,
                   loading: _summaryLoading,
                   onRefresh: _regenerateSummary,
+                  onToggleSpeak: _toggleSummarySpeak,
+                  onContinueInSage: _openSummaryInSage,
+                  speaking: _summarySpeaking,
+                  ttsLoading: _summaryTtsLoading,
+                  ttsError: _summaryTtsError,
                 ),
               );
             }
@@ -832,11 +1091,21 @@ class _MasterSummaryCard extends StatefulWidget {
     required this.summary,
     required this.loading,
     required this.onRefresh,
+    required this.onToggleSpeak,
+    required this.onContinueInSage,
+    required this.speaking,
+    required this.ttsLoading,
+    required this.ttsError,
   });
 
   final Map<String, dynamic>? summary;
   final bool loading;
   final Future<void> Function() onRefresh;
+  final Future<void> Function() onToggleSpeak;
+  final Future<void> Function() onContinueInSage;
+  final bool speaking;
+  final bool ttsLoading;
+  final String? ttsError;
 
   @override
   State<_MasterSummaryCard> createState() => _MasterSummaryCardState();
@@ -987,22 +1256,52 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
                       ),
                     ],
                   ),
-                  if (cached) ...[
-                    const SizedBox(height: 12),
-                    const Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _SummaryMetaPill(
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (cached)
+                        const _SummaryMetaPill(
                           icon: CupertinoIcons.check_mark_circled,
                           label: 'cached',
                           accent: JournalColors.textMuted,
                         ),
-                      ],
+                      _SummaryActionPill(
+                        icon: widget.ttsLoading
+                            ? null
+                            : widget.speaking
+                                ? CupertinoIcons.stop_fill
+                                : CupertinoIcons.speaker_2_fill,
+                        label: widget.ttsLoading
+                            ? 'Generating…'
+                            : widget.speaking
+                                ? 'Stop'
+                                : 'Listen',
+                        accent: JournalColors.accent,
+                        loading: widget.ttsLoading,
+                        onTap: widget.onToggleSpeak,
+                      ),
+                      _SummaryActionPill(
+                        icon: CupertinoIcons.chat_bubble_2_fill,
+                        label: 'Continue in Sage',
+                        accent: JournalColors.info,
+                        onTap: widget.onContinueInSage,
+                      ),
+                    ],
+                  ),
+                  if (widget.ttsError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.ttsError!,
+                      style: const TextStyle(
+                        color: JournalColors.danger,
+                        fontSize: 12,
+                        height: 1.45,
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                  ] else
-                    const SizedBox(height: 18),
+                  ],
+                  const SizedBox(height: 16),
                   Text(
                     insight,
                     style: const TextStyle(
@@ -1069,6 +1368,55 @@ class _MasterSummaryCardState extends State<_MasterSummaryCard> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SummaryActionPill extends StatelessWidget {
+  const _SummaryActionPill({
+    required this.label,
+    required this.accent,
+    required this.onTap,
+    this.icon,
+    this.loading = false,
+  });
+
+  final IconData? icon;
+  final String label;
+  final Color accent;
+  final Future<void> Function() onTap;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: loading ? null : () => onTap(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: accent.withValues(alpha: 0.08),
+          border: Border.all(color: accent.withValues(alpha: 0.22)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading)
+              CupertinoActivityIndicator(color: accent, radius: 6)
+            else if (icon != null)
+              Icon(icon, color: accent, size: 13),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: accent,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

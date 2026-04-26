@@ -412,7 +412,14 @@ String _imageMediaTypeForExtension(String extension) {
 }
 
 class SageScreen extends StatefulWidget {
-  const SageScreen({super.key});
+  const SageScreen({
+    super.key,
+    this.initialAssistantMessage,
+    this.autoStartGreeting = true,
+  });
+
+  final String? initialAssistantMessage;
+  final bool autoStartGreeting;
 
   @override
   State<SageScreen> createState() => _SageScreenState();
@@ -448,6 +455,7 @@ class _SageScreenState extends State<SageScreen> {
   int _messageCounter = 0;
   int _ttsRequestCounter = 0;
   bool _ttsSequenceActive = false;
+  bool _seededInitialAssistantMessage = false;
 
   bool get _canSend =>
       !_replyLoading &&
@@ -467,7 +475,10 @@ class _SageScreenState extends State<SageScreen> {
       }
     });
     _loadSageProfile();
-    _loadContextAndStart();
+    _loadContextAndStart(
+      autoStartGreeting:
+          widget.initialAssistantMessage == null && widget.autoStartGreeting,
+    );
   }
 
   @override
@@ -779,6 +790,7 @@ ${_settings.toPromptInstruction()}
         _expandedContextString = expandedContextString;
         _contextLoading = false;
       });
+      _seedInitialAssistantMessageIfNeeded();
       if (autoStartGreeting && _settings.autoGreeting) {
         await _send(text: '[SESSION_START]', hiddenUserMessage: true);
       }
@@ -789,6 +801,18 @@ ${_settings.toPromptInstruction()}
         _contextError = 'Couldn’t reach the server. Check your connection.';
       });
     }
+  }
+
+  void _seedInitialAssistantMessageIfNeeded() {
+    final seed = widget.initialAssistantMessage?.trim() ?? '';
+    if (_seededInitialAssistantMessage || seed.isEmpty || !mounted) return;
+    _seededInitialAssistantMessage = true;
+    setState(() {
+      _messages = [
+        _SageMessage.assistant(_nextMessageId(), seed),
+      ];
+    });
+    _scrollDown();
   }
 
   Future<String> _loadExpandedSageContext() async {
@@ -1072,6 +1096,44 @@ ${available.join('\n\n')}
     return 'sage_${DateTime.now().microsecondsSinceEpoch}_$_messageCounter';
   }
 
+  List<Map<String, dynamic>> _buildApiRequestMessages(
+    List<_SageMessage> priorMessages,
+    _SageMessage outgoing,
+  ) {
+    final baseMessages = [
+      ...priorMessages.map((message) => message.toApiMessage()),
+      outgoing.toApiMessage(),
+    ];
+    if (priorMessages.isEmpty) return baseMessages;
+
+    final latest = Map<String, dynamic>.from(baseMessages.last);
+    final latestContent = latest['content']?.toString().trim() ?? '';
+    final transcript = priorMessages
+        .where((message) => message.text.trim().isNotEmpty)
+        .map((message) {
+      final speaker = message.role == 'assistant' ? 'Sage' : 'User';
+      return '$speaker: ${message.text.trim()}';
+    }).join('\n\n');
+
+    if (transcript.isEmpty || latestContent.isEmpty) return baseMessages;
+
+    latest['content'] = '''
+[CURRENT CHAT THREAD]
+This is the conversation already in progress in this same Sage session.
+Treat it as prior turns you can directly continue from.
+
+$transcript
+
+[NEW USER MESSAGE TO ANSWER]
+$latestContent
+''';
+
+    return [
+      ...baseMessages.take(baseMessages.length - 1),
+      latest,
+    ];
+  }
+
   Future<void> _send({
     String? text,
     bool hiddenUserMessage = false,
@@ -1109,10 +1171,7 @@ ${available.join('\n\n')}
     });
     _scrollDown();
 
-    final requestMessages = [
-      ...priorMessages.map((message) => message.toApiMessage()),
-      outgoing.toApiMessage(),
-    ];
+    final requestMessages = _buildApiRequestMessages(priorMessages, outgoing);
 
     try {
       final response = await _api.sendFloatchatMessage(
