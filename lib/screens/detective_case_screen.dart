@@ -13,6 +13,7 @@ import 'package:flutter/material.dart' show Colors, Divider;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/detective_entry_draft.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -638,7 +639,12 @@ class _HeroMetric extends StatelessWidget {
 
 class DetectiveCaseScreen extends StatefulWidget {
   final Map<String, dynamic> caseData;
-  const DetectiveCaseScreen({super.key, required this.caseData});
+  final DetectiveEntryDraft? initialDraft;
+  const DetectiveCaseScreen({
+    super.key,
+    required this.caseData,
+    this.initialDraft,
+  });
 
   @override
   State<DetectiveCaseScreen> createState() => _DetectiveCaseScreenState();
@@ -1171,6 +1177,7 @@ class _DetectiveCaseScreenState extends State<DetectiveCaseScreen> {
           caseId: _caseId,
           entries: _entries,
           loading: _loadingEntries,
+          initialDraft: widget.initialDraft,
           onAdd: _addEntry,
           onUpdate: _updateEntry,
           onDelete: _deleteEntry,
@@ -1223,6 +1230,7 @@ class _LogTab extends StatefulWidget {
   final String caseId;
   final List<Map<String, dynamic>> entries;
   final bool loading;
+  final DetectiveEntryDraft? initialDraft;
   final Future<Map<String, dynamic>?> Function(String, String, String) onAdd;
   final Future<void> Function(String, Map<String, dynamic>) onUpdate;
   final Future<void> Function(String) onDelete;
@@ -1235,6 +1243,7 @@ class _LogTab extends StatefulWidget {
     required this.caseId,
     required this.entries,
     required this.loading,
+    required this.initialDraft,
     required this.onAdd,
     required this.onUpdate,
     required this.onDelete,
@@ -1268,12 +1277,41 @@ class _LogTabState extends State<_LogTab> {
   // Per-entry upload/synthesize state
   final Map<String, bool> _uploadingFor = {};
   final Map<String, bool> _synthesizingFor = {};
+  bool _draftApplied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyInitialDraft(widget.initialDraft);
+  }
 
   @override
   void dispose() {
     _ctrl.dispose();
     _editCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LogTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_draftApplied && widget.initialDraft != oldWidget.initialDraft) {
+      _applyInitialDraft(widget.initialDraft);
+    }
+  }
+
+  void _applyInitialDraft(DetectiveEntryDraft? draft) {
+    if (_draftApplied || draft == null) return;
+    final content = draft.content.trim();
+    if (content.isEmpty) return;
+    _ctrl.text = content;
+    if (_kEntryTypes.contains(draft.entryType)) {
+      _type = draft.entryType;
+    }
+    if (_kSeverities.contains(draft.severity)) {
+      _severity = draft.severity;
+    }
+    _draftApplied = true;
   }
 
   Future<void> _pickPhotos() async {
@@ -1512,6 +1550,33 @@ class _LogTabState extends State<_LogTab> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
+                          if (widget.initialDraft != null && _draftApplied) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: _withAlpha(JournalColors.accent, 0.1),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: JournalColors.borderBright,
+                                ),
+                              ),
+                              child: Text(
+                                widget.initialDraft!.sourceLabel
+                                            ?.trim()
+                                            .isNotEmpty ==
+                                        true
+                                    ? '${widget.initialDraft!.sourceLabel} is loaded below and ready to submit.'
+                                    : 'Sage dropped a prepared note below so you can review it and fire it into the case.',
+                                style: const TextStyle(
+                                  color: JournalColors.textSecondary,
+                                  fontSize: 12,
+                                  height: 1.45,
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 14),
                           CupertinoTextField(
                             controller: _ctrl,

@@ -5,13 +5,20 @@
 
 import 'package:flutter/cupertino.dart';
 
+import '../models/detective_entry_draft.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/glass_card.dart';
 import 'detective_case_screen.dart';
 
 class DetectiveScreen extends StatefulWidget {
-  const DetectiveScreen({super.key});
+  const DetectiveScreen({
+    super.key,
+    this.pendingEntryDraft,
+    this.autoSelectSingleCase = false,
+  });
+
+  final DetectiveEntryDraft? pendingEntryDraft;
+  final bool autoSelectSingleCase;
 
   @override
   State<DetectiveScreen> createState() => _DetectiveScreenState();
@@ -20,7 +27,7 @@ class DetectiveScreen extends StatefulWidget {
 class _DetectiveScreenState extends State<DetectiveScreen> {
   final _api = ApiService();
 
-  bool? _hasAccess;         // null = loading
+  bool? _hasAccess; // null = loading
   List<Map<String, dynamic>> _cases = [];
   bool _loadingCases = true;
   bool _creating = false;
@@ -44,12 +51,32 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
   }
 
   Future<void> _loadCases() async {
-    setState(() { _loadingCases = true; _error = null; });
+    setState(() {
+      _loadingCases = true;
+      _error = null;
+    });
     try {
       final res = await _api.detectiveGetCases();
-      if (mounted) setState(() { _cases = List<Map<String, dynamic>>.from(res); _loadingCases = false; });
+      final nextCases = List<Map<String, dynamic>>.from(res);
+      if (!mounted) return;
+      final shouldAutoOpen = widget.autoSelectSingleCase &&
+          _cases.isEmpty &&
+          nextCases.length == 1;
+      setState(() {
+        _cases = nextCases;
+        _loadingCases = false;
+      });
+      if (shouldAutoOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openCase(nextCases.first);
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loadingCases = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _loadingCases = false;
+        });
     }
   }
 
@@ -60,7 +87,8 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
       if (!mounted) return;
       setState(() => _cases = [newCase, ..._cases]);
       _openCase(newCase);
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       if (mounted) setState(() => _creating = false);
     }
   }
@@ -69,8 +97,9 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
     final caseId = c['id'].toString();
     try {
       await _api.detectiveDeleteCase(caseId);
-      if (mounted) setState(() =>
-        _cases = _cases.where((x) => x['id'].toString() != caseId).toList());
+      if (mounted)
+        setState(() => _cases =
+            _cases.where((x) => x['id'].toString() != caseId).toList());
     } catch (e) {
       if (mounted) _loadCases(); // re-fetch so dismissed tile reappears
     }
@@ -82,7 +111,10 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
       CupertinoPageRoute(
         builder: (_) => DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
-          child: DetectiveCaseScreen(caseData: c),
+          child: DetectiveCaseScreen(
+            caseData: c,
+            initialDraft: widget.pendingEntryDraft,
+          ),
         ),
       ),
     ).then((_) => _loadCases()); // refresh list on return
@@ -157,14 +189,40 @@ class _DetectiveScreenState extends State<DetectiveScreen> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                 sliver: SliverToBoxAdapter(
-                  child: Text(
-                    '${_cases.length} CASE${_cases.length == 1 ? '' : 'S'}',
-                    style: const TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.1,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_cases.length} CASE${_cases.length == 1 ? '' : 'S'}',
+                        style: const TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      if (widget.pendingEntryDraft != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: JournalColors.bgSurface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: JournalColors.borderBright,
+                            ),
+                          ),
+                          child: const Text(
+                            'Choose a case and Sage will drop the prepared evidence note straight into the new entry box.',
+                            style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 13,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -232,10 +290,14 @@ class _CaseTileState extends State<_CaseTile>
 
   Color get _statusColor {
     switch (widget.caseData['status']) {
-      case 'active':   return const Color(0xFF22C55E);
-      case 'closed':   return JournalColors.textMuted;
-      case 'archived': return const Color(0xFFF59E0B);
-      default:         return JournalColors.textMuted;
+      case 'active':
+        return const Color(0xFF22C55E);
+      case 'closed':
+        return JournalColors.textMuted;
+      case 'archived':
+        return const Color(0xFFF59E0B);
+      default:
+        return JournalColors.textMuted;
     }
   }
 
@@ -248,15 +310,18 @@ class _CaseTileState extends State<_CaseTile>
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Delete Case'),
         content: Text(
-          'Delete "${widget.caseData['title']}"? This cannot be undone.'),
+            'Delete "${widget.caseData['title']}"? This cannot be undone.'),
         actions: [
           CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () { Navigator.pop(context); widget.onDelete(); },
-            child: const Text('Delete')),
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onDelete();
+              },
+              child: const Text('Delete')),
           CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
         ],
       ),
     );
@@ -454,14 +519,17 @@ class _CreateCaseSheetState extends State<_CreateCaseSheet> {
             autofocus: true,
             placeholder: 'Case name…',
             placeholderStyle: const TextStyle(color: JournalColors.textMuted),
-            style: const TextStyle(color: JournalColors.textPrimary, fontSize: 15),
+            style:
+                const TextStyle(color: JournalColors.textPrimary, fontSize: 15),
             decoration: BoxDecoration(
               color: JournalColors.bgCard,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: JournalColors.borderBright),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            onSubmitted: (v) { if (v.trim().isNotEmpty) widget.onSubmit(v.trim()); },
+            onSubmitted: (v) {
+              if (v.trim().isNotEmpty) widget.onSubmit(v.trim());
+            },
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -475,7 +543,8 @@ class _CreateCaseSheetState extends State<_CreateCaseSheet> {
                     },
               borderRadius: BorderRadius.circular(12),
               child: widget.creating
-                  ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                  ? const CupertinoActivityIndicator(
+                      color: CupertinoColors.white)
                   : const Text('Create Case'),
             ),
           ),
@@ -551,7 +620,8 @@ class _EmptyState extends StatelessWidget {
             const Text(
               'Create your first case to start building an investigation.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: JournalColors.textMuted, fontSize: 14, height: 1.6),
+              style: TextStyle(
+                  color: JournalColors.textMuted, fontSize: 14, height: 1.6),
             ),
             const SizedBox(height: 24),
             CupertinoButton(
@@ -584,7 +654,8 @@ class _ErrorView extends StatelessWidget {
               color: JournalColors.textMuted, size: 40),
           const SizedBox(height: 12),
           Text(error,
-              style: const TextStyle(color: JournalColors.textMuted, fontSize: 13)),
+              style: const TextStyle(
+                  color: JournalColors.textMuted, fontSize: 13)),
           const SizedBox(height: 16),
           CupertinoButton(
             onPressed: onRetry,

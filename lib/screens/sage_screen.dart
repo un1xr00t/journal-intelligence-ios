@@ -12,6 +12,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../models/detective_entry_draft.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
@@ -583,6 +584,7 @@ class _SageScreenState extends State<SageScreen> {
   int _ttsRequestCounter = 0;
   bool _ttsSequenceActive = false;
   bool _seededInitialAssistantMessage = false;
+  String? _actionPrefillLabel;
 
   bool get _canSend =>
       !_replyLoading &&
@@ -1819,8 +1821,17 @@ Return JSON only.
     return null;
   }
 
-  Future<void> _openAction(Map<String, dynamic> action) async {
-    final destination = _screenForAction(action);
+  Future<void> _openActionFromMessage(
+    Map<String, dynamic> action,
+    _SageMessage? sourceMessage,
+  ) async {
+    final detectiveDraft = sourceMessage == null
+        ? null
+        : await _buildDetectiveDraftForAction(action, sourceMessage);
+    final destination = _screenForAction(
+      action,
+      detectiveDraft: detectiveDraft,
+    );
     if (destination == null) return;
 
     if (!mounted) return;
@@ -1835,8 +1846,195 @@ Return JSON only.
     );
   }
 
-  Widget? _screenForAction(Map<String, dynamic> action) {
-    final fields = <String>[
+  Future<DetectiveEntryDraft?> _buildDetectiveDraftForAction(
+    Map<String, dynamic> action,
+    _SageMessage sourceMessage,
+  ) async {
+    if (!_shouldPrefillDetectiveAction(action)) return null;
+
+    final fields = _actionFields(action);
+    final label = _actionLabel(action);
+    final assistantText = sourceMessage.text.trim();
+    if (assistantText.isEmpty) return null;
+    if (_contextString == null) {
+      return _fallbackDetectiveDraft(
+        assistantText,
+        label: label,
+        fields: fields,
+      );
+    }
+
+    final prompt = '''
+Return strict JSON only:
+{"content":"...", "entry_type":"observation", "severity":"medium"}
+
+Turn this Sage reply into a detective case log entry draft that is ready to paste and submit.
+
+Rules:
+- Preserve the most important factual claim or prediction from Sage.
+- Write like an evidence note, not like a pep talk.
+- Keep it specific and useful.
+- Use short bullets only if they make the note clearer.
+- Allowed entry_type values: note, observation, statement, admission, contradiction, timeline
+- Allowed severity values: critical, high, medium, low, info
+
+Action label: $label
+Action fields: $fields
+
+Sage reply:
+$assistantText
+''';
+
+    final generated = await _runActionPrefillRequest(
+      loadingLabel: label,
+      prompt: prompt,
+    );
+    return _parseDetectiveDraft(
+          generated,
+          sourceLabel: label,
+        ) ??
+        _fallbackDetectiveDraft(
+          assistantText,
+          label: label,
+          fields: fields,
+        );
+  }
+
+  Future<String?> _runActionPrefillRequest({
+    required String loadingLabel,
+    required String prompt,
+  }) async {
+    if (!mounted) return null;
+
+    setState(() => _actionPrefillLabel = loadingLabel);
+
+    try {
+      final response = await _api.sendFloatchatMessage(
+        messages: [
+          {
+            'role': 'user',
+            'content': prompt,
+          },
+        ],
+        contextString: _buildContextPayload(_contextString!),
+      );
+      return response['reply']?.toString();
+    } catch (_) {
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _actionPrefillLabel = null);
+      }
+    }
+  }
+
+  DetectiveEntryDraft? _parseDetectiveDraft(
+    String? rawReply, {
+    required String sourceLabel,
+  }) {
+    if (rawReply == null || rawReply.trim().isEmpty) return null;
+    final cleaned = rawReply.split('---ACTIONS---').first.trim();
+    try {
+      final decoded = jsonDecode(cleaned);
+      if (decoded is! Map) return null;
+      final content = decoded['content']?.toString().trim() ?? '';
+      if (content.isEmpty) return null;
+      return DetectiveEntryDraft(
+        content: content,
+        entryType: _normalizeDetectiveEntryType(
+          decoded['entry_type']?.toString(),
+        ),
+        severity: _normalizeDetectiveSeverity(
+          decoded['severity']?.toString(),
+        ),
+        sourceLabel: sourceLabel,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DetectiveEntryDraft _fallbackDetectiveDraft(
+    String assistantText, {
+    required String label,
+    required String fields,
+  }) {
+    final paragraphs = assistantText
+        .split(RegExp(r'\n\s*\n'))
+        .map((chunk) => chunk.trim())
+        .where((chunk) => chunk.isNotEmpty)
+        .toList();
+    final excerpt =
+        (paragraphs.isNotEmpty ? paragraphs.first : assistantText).trim();
+    final entryType = fields.contains('contradiction')
+        ? 'contradiction'
+        : fields.contains('timeline')
+            ? 'timeline'
+            : fields.contains('statement')
+                ? 'statement'
+                : 'observation';
+    final severity = fields.contains('critical')
+        ? 'critical'
+        : fields.contains('high')
+            ? 'high'
+            : fields.contains('low')
+                ? 'low'
+                : 'medium';
+
+    return DetectiveEntryDraft(
+      content: 'Sage action: $label\n\n$excerpt',
+      entryType: entryType,
+      severity: severity,
+      sourceLabel: label,
+    );
+  }
+
+  bool _shouldPrefillDetectiveAction(Map<String, dynamic> action) {
+    final fields = _actionFields(action);
+    final mentionsDetectiveSurface = fields.contains('detective') ||
+        fields.contains('evidence') ||
+        fields.contains('case') ||
+        fields.contains('contradiction');
+    final soundsLikeInjection = fields.contains('add ') ||
+        fields.startsWith('add ') ||
+        fields.contains('save ') ||
+        fields.contains('log ') ||
+        fields.contains('inject') ||
+        fields.contains('entry') ||
+        fields.contains('note') ||
+        fields.contains('prediction');
+    return mentionsDetectiveSurface && soundsLikeInjection;
+  }
+
+  bool _shouldAutoSelectSingleCase(Map<String, dynamic> action) {
+    final fields = _actionFields(action);
+    return fields.contains('detective') ||
+        fields.contains('evidence') ||
+        fields.contains('case') ||
+        fields.contains('prediction');
+  }
+
+  String _normalizeDetectiveEntryType(String? raw) {
+    const allowed = {
+      'note',
+      'observation',
+      'statement',
+      'admission',
+      'contradiction',
+      'timeline',
+    };
+    final normalized = raw?.trim().toLowerCase() ?? '';
+    return allowed.contains(normalized) ? normalized : 'observation';
+  }
+
+  String _normalizeDetectiveSeverity(String? raw) {
+    const allowed = {'critical', 'high', 'medium', 'low', 'info'};
+    final normalized = raw?.trim().toLowerCase() ?? '';
+    return allowed.contains(normalized) ? normalized : 'medium';
+  }
+
+  String _actionFields(Map<String, dynamic> action) {
+    return <String>[
       action['tool']?.toString() ?? '',
       action['route']?.toString() ?? '',
       action['screen']?.toString() ?? '',
@@ -1847,6 +2045,24 @@ Return JSON only.
       action['name']?.toString() ?? '',
       action['description']?.toString() ?? '',
     ].join(' ').toLowerCase();
+  }
+
+  String _actionLabel(Map<String, dynamic> action) {
+    final label = action['label']?.toString().trim();
+    final title = action['title']?.toString().trim();
+    final name = action['name']?.toString().trim();
+    if (label != null && label.isNotEmpty) return label;
+    if (title != null && title.isNotEmpty) return title;
+    if (name != null && name.isNotEmpty) return name;
+    return 'this Sage action';
+  }
+
+  Widget? _screenForAction(
+    Map<String, dynamic> action, {
+    DetectiveEntryDraft? detectiveDraft,
+  }) {
+    final fields = _actionFields(action);
+    final shouldAutoSelectSingleCase = _shouldAutoSelectSingleCase(action);
 
     if (fields.contains('war room') || fields.contains('war_room')) {
       return const WarRoomScreen();
@@ -1855,13 +2071,22 @@ Return JSON only.
         fields.contains('proof_vault') ||
         fields.contains('/evidence') ||
         fields.contains('evidence vault')) {
+      if (detectiveDraft != null) {
+        return DetectiveScreen(
+          pendingEntryDraft: detectiveDraft,
+          autoSelectSingleCase: true,
+        );
+      }
       return const ProofVaultScreen();
     }
     if (fields.contains('budget')) {
       return const BudgetPlannerScreen();
     }
     if (fields.contains('detective')) {
-      return const DetectiveScreen();
+      return DetectiveScreen(
+        pendingEntryDraft: detectiveDraft,
+        autoSelectSingleCase: shouldAutoSelectSingleCase,
+      );
     }
     if (fields.contains('exit plan') || fields.contains('exit_plan')) {
       return const ExitPlanScreen();
@@ -1945,7 +2170,7 @@ Return JSON only.
                   replyError: _replyError,
                   messages: _messages,
                   onRetryContext: _loadContextAndStart,
-                  onActionTap: _openAction,
+                  onActionTap: _openActionFromMessage,
                   resolveActions: _resolvableActions,
                   onToggleSpeak: _toggleSpeak,
                   speakingMessageId: _speakingMessageId,
@@ -1975,6 +2200,33 @@ Return JSON only.
               ),
             ],
           ),
+          if (_actionPrefillLabel != null)
+            Positioned.fill(
+              child: ColoredBox(
+                color: _withAlpha(JournalColors.bgBase, 0.72),
+                child: Center(
+                  child: GlassCard(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CupertinoActivityIndicator(),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            'Preparing $_actionPrefillLabel…',
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -2469,7 +2721,7 @@ class _SageThread extends StatelessWidget {
   final String? replyError;
   final List<_SageMessage> messages;
   final Future<void> Function({bool forceRefresh}) onRetryContext;
-  final Future<void> Function(Map<String, dynamic>) onActionTap;
+  final Future<void> Function(Map<String, dynamic>, _SageMessage) onActionTap;
   final List<Map<String, dynamic>> Function(List<Map<String, dynamic>>)
       resolveActions;
   final Future<void> Function(_SageMessage) onToggleSpeak;
@@ -2581,7 +2833,7 @@ class _SageThread extends StatelessWidget {
                     child: _MessageBubble(
                       message: message,
                       actions: resolveActions(message.actions),
-                      onActionTap: onActionTap,
+                      onActionTap: (action, _) => onActionTap(action, message),
                       onToggleSpeak: onToggleSpeak,
                       speaking: speakingMessageId == message.id,
                       ttsLoading: ttsLoadingMessageId == message.id,
@@ -2841,7 +3093,7 @@ class _MessageBubble extends StatelessWidget {
 
   final _SageMessage message;
   final List<Map<String, dynamic>> actions;
-  final Future<void> Function(Map<String, dynamic>) onActionTap;
+  final Future<void> Function(Map<String, dynamic>, _SageMessage) onActionTap;
   final Future<void> Function(_SageMessage) onToggleSpeak;
   final bool speaking;
   final bool ttsLoading;
@@ -3038,7 +3290,7 @@ class _MessageBubble extends StatelessWidget {
                                 : 'Open';
 
                     return GestureDetector(
-                      onTap: () => onActionTap(action),
+                      onTap: () => onActionTap(action, message),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
