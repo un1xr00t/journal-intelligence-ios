@@ -1112,8 +1112,22 @@ class ApiService {
     await _authedDelete('/api/admin/sessions/$userId');
   }
 
-  Future<Map<String, dynamic>> getAdminAiUsage() async {
-    final res = await _authedGet('/api/admin/ai-usage');
+  Future<Map<String, dynamic>> getAdminAiUsage({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final queryParameters = <String, dynamic>{};
+    if (startDate != null && startDate.isNotEmpty) {
+      queryParameters['start_date'] = startDate;
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      queryParameters['end_date'] = endDate;
+    }
+
+    final res = await _authedGet(
+      '/api/admin/ai-usage',
+      queryParameters: queryParameters.isEmpty ? null : queryParameters,
+    );
     return Map<String, dynamic>.from(res.data as Map);
   }
 

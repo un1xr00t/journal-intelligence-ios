@@ -1,6 +1,7 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -19,6 +20,11 @@ const _kAdminTabs = [
   'AI Spend',
 ];
 
+const _kSpendRangeAll = 'all';
+const _kSpendRangeThisMonth = 'this_month';
+const _kSpendRangeLastMonth = 'last_month';
+const _kSpendRangeCustom = 'custom';
+
 const Map<String, String> _kFeatureLabels = {
   'extraction': 'Entry extraction',
   'daily_summary': 'Daily summary',
@@ -34,20 +40,25 @@ const Map<String, String> _kFeatureLabels = {
 };
 
 const Map<String, ({double input, double output})> _kModelPricing = {
+  'claude-opus-4': (input: 15.0, output: 75.0),
   'claude-opus-4-6': (input: 5.0, output: 25.0),
   'claude-opus-4-5-20251101': (input: 5.0, output: 25.0),
   'claude-opus-4-5': (input: 5.0, output: 25.0),
+  'claude-sonnet-4': (input: 3.0, output: 15.0),
   'claude-sonnet-4-6': (input: 3.0, output: 15.0),
   'claude-sonnet-4-5': (input: 3.0, output: 15.0),
   'claude-sonnet-4-20250514': (input: 3.0, output: 15.0),
   'claude-sonnet-4-5-20250514': (input: 3.0, output: 15.0),
+  'claude-haiku-4': (input: 1.0, output: 5.0),
   'claude-haiku-4-5': (input: 1.0, output: 5.0),
   'claude-haiku-4-5-20251001': (input: 1.0, output: 5.0),
   'claude-opus-4-1': (input: 15.0, output: 75.0),
   'claude-sonnet-4-1': (input: 3.0, output: 15.0),
   'claude-3-7-sonnet-20250219': (input: 3.0, output: 15.0),
+  'claude-3-5-sonnet': (input: 3.0, output: 15.0),
   'claude-3-5-sonnet-20241022': (input: 3.0, output: 15.0),
   'claude-3-5-sonnet-20240620': (input: 3.0, output: 15.0),
+  'claude-3-5-haiku': (input: 0.8, output: 4.0),
   'claude-3-5-haiku-20241022': (input: 0.8, output: 4.0),
   'claude-3-opus-20240229': (input: 15.0, output: 75.0),
   'claude-3-sonnet-20240229': (input: 3.0, output: 15.0),
@@ -62,6 +73,27 @@ const Map<String, ({double input, double output})> _kModelPricing = {
   'gpt-4.1-nano': (input: 0.1, output: 0.4),
   'gpt-4-turbo': (input: 10.0, output: 30.0),
   'gpt-4-turbo-preview': (input: 10.0, output: 30.0),
+};
+
+const Map<String, String> _kModelAliases = {
+  'openai/gpt-4o': 'gpt-4o',
+  'openai/gpt-4o-mini': 'gpt-4o-mini',
+  'openai/gpt-4.1': 'gpt-4.1',
+  'openai/gpt-4.1-mini': 'gpt-4.1-mini',
+  'openai/gpt-4.1-nano': 'gpt-4.1-nano',
+  'anthropic/claude-opus-4': 'claude-opus-4',
+  'anthropic/claude-opus-4-1': 'claude-opus-4-1',
+  'anthropic/claude-opus-4-5': 'claude-opus-4-5',
+  'anthropic/claude-opus-4-6': 'claude-opus-4-6',
+  'anthropic/claude-sonnet-4': 'claude-sonnet-4',
+  'anthropic/claude-sonnet-4-1': 'claude-sonnet-4-1',
+  'anthropic/claude-sonnet-4-5': 'claude-sonnet-4-5',
+  'anthropic/claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'anthropic/claude-haiku-4': 'claude-haiku-4',
+  'anthropic/claude-haiku-4-5': 'claude-haiku-4-5',
+  'anthropic/claude-3-7-sonnet-20250219': 'claude-3-7-sonnet-20250219',
+  'anthropic/claude-3-5-sonnet': 'claude-3-5-sonnet',
+  'anthropic/claude-3-5-haiku': 'claude-3-5-haiku',
 };
 
 class AdminScreen extends StatefulWidget {
@@ -80,6 +112,7 @@ class _AdminScreenState extends State<AdminScreen> {
   final _inviteLabelCtrl = TextEditingController();
 
   Map<String, dynamic>? _masterSummary;
+  Map<String, dynamic>? _adminOverviewUsage;
   Map<String, dynamic>? _aiUsage;
   List<Map<String, dynamic>> _users = const [];
   List<Map<String, dynamic>> _invites = const [];
@@ -89,6 +122,7 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _addingUser = false;
   bool _creatingInvite = false;
   bool _runningDetection = false;
+  bool _loadingSpendUsage = false;
 
   String? _error;
   String? _addUserError;
@@ -97,9 +131,12 @@ class _AdminScreenState extends State<AdminScreen> {
   String? _inviteCopyKey;
   String _newUserRole = 'viewer';
   String _inviteExpiry = '30d';
+  String _spendRange = _kSpendRangeAll;
   int _tabIndex = 0;
 
   Map<String, dynamic>? _inviteResult;
+  DateTime? _customSpendStart;
+  DateTime? _customSpendEnd;
 
   @override
   void initState() {
@@ -130,10 +167,15 @@ class _AdminScreenState extends State<AdminScreen> {
     }
 
     try {
+      final spendQuery = _currentSpendQuery();
       final results = await Future.wait([
         _api.getMasterSummary(),
         _api.getAdminUsers(),
         _api.getAdminAiUsage(),
+        _api.getAdminAiUsage(
+          startDate: spendQuery.startDate,
+          endDate: spendQuery.endDate,
+        ),
         _api.getAdminInvites(),
       ]);
 
@@ -143,8 +185,9 @@ class _AdminScreenState extends State<AdminScreen> {
         _users = (results[1] as List)
             .map((item) => Map<String, dynamic>.from(item as Map))
             .toList();
-        _aiUsage = results[2] as Map<String, dynamic>;
-        _invites = (results[3] as List)
+        _adminOverviewUsage = results[2] as Map<String, dynamic>;
+        _aiUsage = results[3] as Map<String, dynamic>;
+        _invites = (results[4] as List)
             .map((item) => Map<String, dynamic>.from(item as Map))
             .toList();
         _loading = false;
@@ -158,6 +201,191 @@ class _AdminScreenState extends State<AdminScreen> {
         _refreshing = false;
       });
     }
+  }
+
+  ({String? startDate, String? endDate}) _currentSpendQuery() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    switch (_spendRange) {
+      case _kSpendRangeThisMonth:
+        final start = DateTime(now.year, now.month, 1);
+        return (
+          startDate: _apiDate(start),
+          endDate: _apiDate(today),
+        );
+      case _kSpendRangeLastMonth:
+        final start = DateTime(now.year, now.month - 1, 1);
+        final end = DateTime(now.year, now.month, 0);
+        return (
+          startDate: _apiDate(start),
+          endDate: _apiDate(end),
+        );
+      case _kSpendRangeCustom:
+        return (
+          startDate:
+              _customSpendStart != null ? _apiDate(_customSpendStart!) : null,
+          endDate: _customSpendEnd != null ? _apiDate(_customSpendEnd!) : null,
+        );
+      default:
+        return (startDate: null, endDate: null);
+    }
+  }
+
+  String _apiDate(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
+
+  String _spendRangeLabel() {
+    final now = DateTime.now();
+    switch (_spendRange) {
+      case _kSpendRangeThisMonth:
+        return 'This month';
+      case _kSpendRangeLastMonth:
+        return DateFormat('MMMM yyyy')
+            .format(DateTime(now.year, now.month - 1, 1));
+      case _kSpendRangeCustom:
+        if (_customSpendStart == null || _customSpendEnd == null) {
+          return 'Custom range';
+        }
+        final formatter = DateFormat('MMM d, yyyy');
+        return '${formatter.format(_customSpendStart!)} - ${formatter.format(_customSpendEnd!)}';
+      default:
+        return 'All time';
+    }
+  }
+
+  Future<void> _loadSpendUsage() async {
+    final query = _currentSpendQuery();
+    setState(() => _loadingSpendUsage = true);
+    try {
+      final usage = await _api.getAdminAiUsage(
+        startDate: query.startDate,
+        endDate: query.endDate,
+      );
+      if (!mounted) return;
+      setState(() {
+        _aiUsage = usage;
+        _loadingSpendUsage = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingSpendUsage = false);
+      _showNotice(
+        title: 'Couldn’t load usage',
+        message: _parseError(e),
+      );
+    }
+  }
+
+  Future<void> _selectSpendRange(String range) async {
+    if (range == _kSpendRangeCustom) {
+      await _pickCustomSpendRange();
+      return;
+    }
+    if (_spendRange == range) return;
+    setState(() => _spendRange = range);
+    await _loadSpendUsage();
+  }
+
+  Future<void> _pickCustomSpendRange() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initialStart =
+        _customSpendStart ?? DateTime(now.year, now.month, 1);
+    final pickedStart = await _showDatePickerSheet(
+      initialDate: initialStart,
+      maximumDate: today,
+    );
+    if (pickedStart == null || !mounted) return;
+
+    final normalizedStart =
+        DateTime(pickedStart.year, pickedStart.month, pickedStart.day);
+    final initialEnd = _customSpendEnd != null &&
+            !_customSpendEnd!.isBefore(normalizedStart)
+        ? _customSpendEnd!
+        : normalizedStart;
+    final pickedEnd = await _showDatePickerSheet(
+      initialDate: initialEnd,
+      minimumDate: normalizedStart,
+      maximumDate: today,
+    );
+    if (pickedEnd == null || !mounted) return;
+
+    setState(() {
+      _spendRange = _kSpendRangeCustom;
+      _customSpendStart = normalizedStart;
+      _customSpendEnd = DateTime(pickedEnd.year, pickedEnd.month, pickedEnd.day);
+    });
+    await _loadSpendUsage();
+  }
+
+  Future<DateTime?> _showDatePickerSheet({
+    required DateTime initialDate,
+    DateTime? minimumDate,
+    DateTime? maximumDate,
+  }) {
+    var selected = initialDate;
+    return showCupertinoModalPopup<DateTime>(
+      context: context,
+      builder: (context) => Container(
+        height: 320,
+        decoration: const BoxDecoration(
+          color: JournalColors.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+              child: Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: JournalColors.textSecondary),
+                    ),
+                  ),
+                  const Spacer(),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.pop(context, selected),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(
+                        color: JournalColors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoTheme(
+                data: const CupertinoThemeData(
+                  brightness: Brightness.dark,
+                  primaryColor: JournalColors.accent,
+                  textTheme: CupertinoTextThemeData(
+                    dateTimePickerTextStyle: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 21,
+                    ),
+                  ),
+                ),
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.date,
+                  initialDateTime: initialDate,
+                  minimumDate: minimumDate,
+                  maximumDate: maximumDate,
+                  onDateTimeChanged: (value) => selected = value,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _parseError(dynamic e) {
@@ -406,41 +634,177 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   double? _costForRow(Map<String, dynamic> row) {
-    final models = row['models']?.toString();
-    if (models == null || models.trim().isEmpty) return null;
+    final explicitCost = _readCost(row);
+    if (explicitCost != null) return explicitCost;
 
-    final parsedModels = models
-        .split(',')
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    if (parsedModels.length != 1) return null;
+    final modelRows = _extractModelRows(row);
+    if (modelRows.isNotEmpty) {
+      return _sumExactModelCosts(modelRows);
+    }
 
-    final pricing = _kModelPricing[parsedModels.first];
-    if (pricing == null) return null;
-
-    final input = _readInt(row['total_input']);
-    final output = _readInt(row['total_output']);
-    return ((input ?? 0) / 1000000) * pricing.input +
-        ((output ?? 0) / 1000000) * pricing.output;
+    final models = _parseModels(row['models']);
+    if (models.length != 1) return null;
+    return _estimateCostForModel(
+      models.first,
+      input: row['total_input'] ?? row['input_tokens'],
+      output: row['total_output'] ?? row['output_tokens'],
+    );
   }
 
   bool get _hasUnknownPricing {
-    final rows = (_aiUsage?['per_user'] as List?) ?? const [];
-    for (final item in rows) {
-      final row = Map<String, dynamic>.from(item as Map);
-      if (_costForRow(row) == null &&
-          (row['models']?.toString().trim().isNotEmpty ?? false)) {
-        return true;
-      }
-    }
-    return false;
+    return _resolveDisplayedTotalCost(allowPartial: false) == null &&
+        _resolveDisplayedTotalCost(allowPartial: true) != null;
   }
 
   int? _readInt(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.round();
     if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  double? _readDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  double? _readCost(Map<String, dynamic> row) {
+    for (final key in const [
+      'estimated_cost',
+      'estimated_cost_usd',
+      'total_cost',
+      'total_cost_usd',
+      'cost',
+      'cost_usd',
+    ]) {
+      final value = _readDouble(row[key]);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  List<String> _parseModels(dynamic raw) {
+    Iterable<String> values;
+    if (raw is List) {
+      values = raw.map((item) => item.toString());
+    } else {
+      final text = raw?.toString() ?? '';
+      values = text.split(',');
+    }
+
+    return values
+        .map(_normalizeModelName)
+        .whereType<String>()
+        .toSet()
+        .toList();
+  }
+
+  String? _normalizeModelName(String raw) {
+    var value = raw.trim().toLowerCase();
+    if (value.isEmpty) return null;
+
+    value = value
+        .replaceFirst(RegExp(r'^(model|models)\s*:\s*'), '')
+        .replaceFirst(RegExp(r'^provider\s*:\s*'), '');
+
+    final providerPrefix = RegExp(r'^(openai|anthropic)\s+').firstMatch(value);
+    if (providerPrefix != null) {
+      final provider = providerPrefix.group(1)!;
+      value = '$provider/${value.substring(providerPrefix.end)}';
+    }
+
+    value = value.replaceAll(' ', '');
+
+    if (value.contains('/')) {
+      final parts = value.split('/');
+      if (parts.length >= 2) {
+        value = '${parts.first}/${parts.last}';
+      }
+    }
+
+    return _kModelAliases[value] ?? value;
+  }
+
+  List<Map<String, dynamic>> _extractModelRows(Map<String, dynamic> row) {
+    for (final key in const ['by_model', 'model_breakdown', 'models_breakdown']) {
+      final value = row[key];
+      if (value is List) {
+        return value
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+    }
+    return const [];
+  }
+
+  double? _estimateCostForModel(
+    String model, {
+    required dynamic input,
+    required dynamic output,
+  }) {
+    final pricing = _kModelPricing[model];
+    if (pricing == null) return null;
+    final inputTokens = _readInt(input) ?? 0;
+    final outputTokens = _readInt(output) ?? 0;
+    return (inputTokens / 1000000) * pricing.input +
+        (outputTokens / 1000000) * pricing.output;
+  }
+
+  double? _sumExactModelCosts(List<Map<String, dynamic>> rows) {
+    var total = 0.0;
+    for (final row in rows) {
+      final explicitCost = _readCost(row);
+      if (explicitCost != null) {
+        total += explicitCost;
+        continue;
+      }
+
+      final model = _normalizeModelName(
+        row['model']?.toString() ?? row['models']?.toString() ?? '',
+      );
+      if (model == null) return null;
+
+      final cost = _estimateCostForModel(
+        model,
+        input: row['total_input'] ?? row['input_tokens'],
+        output: row['total_output'] ?? row['output_tokens'],
+      );
+      if (cost == null) return null;
+      total += cost;
+    }
+    return total;
+  }
+
+  double? _resolveDisplayedTotalCost({required bool allowPartial}) {
+    final usage = _aiUsage;
+    if (usage == null) return null;
+
+    final totals = (usage['totals'] as Map?)?.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ) ??
+        const <String, dynamic>{};
+    final explicitTotal = _readCost(totals);
+    if (explicitTotal != null) return explicitTotal;
+
+    final modelRows = _extractModelRows(usage);
+    if (modelRows.isNotEmpty) {
+      return _sumExactModelCosts(modelRows);
+    }
+
+    final perUser = ((usage['per_user'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    if (perUser.isEmpty) return null;
+
+    final costs = perUser.map(_costForRow).toList();
+    final knownTotal =
+        costs.whereType<double>().fold<double>(0, (sum, value) => sum + value);
+    if (costs.every((value) => value != null)) return knownTotal;
+    if (allowPartial && knownTotal > 0) return knownTotal;
     return null;
   }
 
@@ -601,7 +965,8 @@ class _AdminScreenState extends State<AdminScreen> {
             userCount: _users.length,
             inviteCount: _invites.length,
             totalCalls:
-                _readInt((_aiUsage?['totals'] as Map?)?['total_calls']) ?? 0,
+                _readInt((_adminOverviewUsage?['totals'] as Map?)?['total_calls']) ??
+                    0,
             isRefreshing: _refreshing,
           ),
           const SizedBox(height: 18),
@@ -1146,21 +1511,111 @@ class _AdminScreenState extends State<AdminScreen> {
         .toList();
 
     final totalTokens = _readInt(totals['total_tokens']) ?? 0;
-    final knownCostRows = perUser
-        .map(_costForRow)
-        .whereType<double>()
-        .fold<double>(0, (sum, value) => sum + value);
-    final allCostsKnown =
-        perUser.isNotEmpty && perUser.every((row) => _costForRow(row) != null);
+    final exactTotalCost = _resolveDisplayedTotalCost(allowPartial: false);
+    final displayedCost =
+        exactTotalCost ?? _resolveDisplayedTotalCost(allowPartial: true);
 
     return Column(
       children: [
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    'Range',
+                    style: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_loadingSpendUsage)
+                    const Row(
+                      children: [
+                        CupertinoActivityIndicator(
+                          radius: 7,
+                          color: JournalColors.accent,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Updating',
+                          style: TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Keep the spend view focused with a quick preset or a custom date range.',
+                style: TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _SpendRangeChip(
+                    label: 'All time',
+                    selected: _spendRange == _kSpendRangeAll,
+                    onTap: _loadingSpendUsage
+                        ? null
+                        : () => _selectSpendRange(_kSpendRangeAll),
+                  ),
+                  _SpendRangeChip(
+                    label: 'This month',
+                    selected: _spendRange == _kSpendRangeThisMonth,
+                    onTap: _loadingSpendUsage
+                        ? null
+                        : () => _selectSpendRange(_kSpendRangeThisMonth),
+                  ),
+                  _SpendRangeChip(
+                    label: 'Last month',
+                    selected: _spendRange == _kSpendRangeLastMonth,
+                    onTap: _loadingSpendUsage
+                        ? null
+                        : () => _selectSpendRange(_kSpendRangeLastMonth),
+                  ),
+                  _SpendRangeChip(
+                    label: _spendRange == _kSpendRangeCustom
+                        ? 'Edit custom'
+                        : 'Custom',
+                    selected: _spendRange == _kSpendRangeCustom,
+                    onTap:
+                        _loadingSpendUsage ? null : () => _pickCustomSpendRange(),
+                    icon: CupertinoIcons.calendar,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _spendRangeLabel(),
+                style: const TextStyle(
+                  color: JournalColors.accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         if (_hasUnknownPricing)
           const Padding(
             padding: EdgeInsets.only(bottom: 14),
             child: _InlineNotice(
               message:
-                  'Some models have unknown pricing, so estimated cost is partial.',
+                  'Some usage rows do not include exact model pricing, so the total shown is only a partial estimate.',
               color: JournalColors.severity,
             ),
           ),
@@ -1170,7 +1625,7 @@ class _AdminScreenState extends State<AdminScreen> {
           children: [
             _SpendStatCard(
               label: 'Est. total cost',
-              value: allCostsKnown ? _formatCost(knownCostRows) : '?',
+              value: _formatCost(displayedCost),
               color: JournalColors.accent,
             ),
             _SpendStatCard(
@@ -2294,6 +2749,77 @@ class _SpendUserRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SpendRangeChip extends StatelessWidget {
+  const _SpendRangeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? _withAlpha(JournalColors.accent, 0.18)
+              : _withAlpha(JournalColors.bgSurface, 0.92),
+          border: Border.all(
+            color: selected
+                ? JournalColors.borderBright
+                : JournalColors.border,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: _withAlpha(JournalColors.accentGlow, 0.55),
+                    blurRadius: 18,
+                    spreadRadius: 0.5,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 15,
+                color: selected
+                    ? JournalColors.textPrimary
+                    : JournalColors.textSecondary,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: selected
+                    ? JournalColors.textPrimary
+                    : JournalColors.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
