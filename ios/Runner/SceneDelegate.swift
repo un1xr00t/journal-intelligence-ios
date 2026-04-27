@@ -2,6 +2,9 @@ import Flutter
 import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
+  private static let launchRouteActivityType =
+    "name.williamthomas.journalIntelligence.route"
+  private static let launchRouteUserInfoKey = "route"
   private let speechRecognitionService = SpeechRecognitionService()
   private let launchRouteStreamHandler = LaunchRouteStreamHandler()
   private var voiceChannelsConfigured = false
@@ -21,6 +24,7 @@ class SceneDelegate: FlutterSceneDelegate {
     super.scene(scene, willConnectTo: session, options: connectionOptions)
     configureVoiceChannelsIfNeeded()
     handleURLContexts(connectionOptions.urlContexts)
+    handleUserActivities(connectionOptions.userActivities)
   }
 
   override func sceneDidBecomeActive(_ scene: UIScene) {
@@ -34,6 +38,11 @@ class SceneDelegate: FlutterSceneDelegate {
   ) {
     super.scene(scene, openURLContexts: URLContexts)
     handleURLContexts(URLContexts)
+  }
+
+  override func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    super.scene(scene, continue: userActivity)
+    handleUserActivity(userActivity)
   }
 
   private func configureVoiceChannelsIfNeeded() {
@@ -93,5 +102,20 @@ class SceneDelegate: FlutterSceneDelegate {
     for context in contexts {
       launchRouteStreamHandler.emit(url: context.url)
     }
+  }
+
+  private func handleUserActivities(_ userActivities: Set<NSUserActivity>) {
+    for userActivity in userActivities {
+      handleUserActivity(userActivity)
+    }
+  }
+
+  private func handleUserActivity(_ userActivity: NSUserActivity) {
+    guard userActivity.activityType == Self.launchRouteActivityType,
+          let route = userActivity.userInfo?[Self.launchRouteUserInfoKey] as? String else {
+      return
+    }
+
+    launchRouteStreamHandler.emit(route: route)
   }
 }

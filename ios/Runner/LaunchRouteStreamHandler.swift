@@ -17,15 +17,19 @@ final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
   }
 
   func emit(url: URL) {
-    let route = url.absoluteString
-    guard !route.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    emit(route: url.absoluteString)
+  }
+
+  func emit(route: String) {
+    let trimmedRoute = route.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedRoute.isEmpty else {
       return
     }
 
     if let eventSink {
-      eventSink(route)
+      eventSink(trimmedRoute)
     } else {
-      pendingRoutes.append(route)
+      pendingRoutes.append(trimmedRoute)
     }
   }
 

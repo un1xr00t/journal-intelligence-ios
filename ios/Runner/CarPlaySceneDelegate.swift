@@ -3,7 +3,11 @@ import UIKit
 
 @available(iOS 13.0, *)
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+  private static let launchRouteActivityType =
+    "name.williamthomas.journalIntelligence.route"
+  private static let launchRouteUserInfoKey = "route"
   private weak var interfaceController: CPInterfaceController?
+  private weak var templateScene: CPTemplateApplicationScene?
 
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
@@ -11,6 +15,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     to window: CPWindow
   ) {
     self.interfaceController = interfaceController
+    self.templateScene = templateApplicationScene
     interfaceController.setRootTemplate(makeRootTemplate(), animated: true)
   }
 
@@ -21,6 +26,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
   ) {
     if self.interfaceController === interfaceController {
       self.interfaceController = nil
+      self.templateScene = nil
     }
   }
 
@@ -76,6 +82,27 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
   }
 
   private func openRoute(_ route: String) {
+    let userActivity = NSUserActivity(activityType: Self.launchRouteActivityType)
+    userActivity.title = "Open Journal Route"
+    userActivity.userInfo = [Self.launchRouteUserInfoKey: route]
+    userActivity.targetContentIdentifier = route
+
+    let options = UIScene.ActivationRequestOptions()
+    options.requestingScene = templateScene
+
+    let targetSession = UIApplication.shared.connectedScenes
+      .first(where: { $0.session.role == .windowApplication })?.session
+
+    UIApplication.shared.requestSceneSessionActivation(
+      targetSession,
+      userActivity: userActivity,
+      options: options
+    ) { [weak self] _ in
+      self?.openRouteFallback(route)
+    }
+  }
+
+  private func openRouteFallback(_ route: String) {
     guard let url = URL(string: "journalintelligence://\(route)") else { return }
     UIApplication.shared.open(url, options: [:], completionHandler: nil)
   }
