@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
@@ -196,6 +197,9 @@ const _kSupportedSageImageExtensions = <String>{
 
 const _kMaxSageFileChars = 12000;
 const _kMaxSageImageBytes = 12 * 1024 * 1024;
+const _kAnthropicImageMaxBytes = 5 * 1024 * 1024;
+const _kAnthropicImageTargetBytes = 4500000;
+const _kAnthropicImageMaxDimension = 1568;
 const _kSeededSummaryTranscriptMaxChars = 900;
 const _kSeededSummaryTranscriptMaxBytes = 1200;
 
@@ -424,6 +428,94 @@ String _imageMediaTypeForExtension(String extension) {
     default:
       return 'image/jpeg';
   }
+}
+
+class _NormalizedSageImage {
+  const _NormalizedSageImage({
+    required this.bytes,
+    required this.extension,
+    required this.mediaType,
+  });
+
+  final Uint8List bytes;
+  final String extension;
+  final String mediaType;
+}
+
+Future<_NormalizedSageImage?> _normalizeSageImageBytes({
+  required Uint8List bytes,
+  required String extension,
+}) async {
+  if (bytes.isEmpty) return null;
+  if (bytes.length <= _kAnthropicImageTargetBytes) {
+    return _NormalizedSageImage(
+      bytes: bytes,
+      extension: extension,
+      mediaType: _imageMediaTypeForExtension(extension),
+    );
+  }
+
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return null;
+
+  var working = img.bakeOrientation(decoded);
+  if (working.width > _kAnthropicImageMaxDimension ||
+      working.height > _kAnthropicImageMaxDimension) {
+    if (working.width >= working.height) {
+      working = img.copyResize(
+        working,
+        width: _kAnthropicImageMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    } else {
+      working = img.copyResize(
+        working,
+        height: _kAnthropicImageMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    }
+  }
+
+  Uint8List encoded(List<int> data) => Uint8List.fromList(data);
+
+  Uint8List resizedBytes = Uint8List(0);
+  for (final quality in [85, 80, 75, 70, 65, 60, 55]) {
+    resizedBytes = encoded(img.encodeJpg(working, quality: quality));
+    if (resizedBytes.length <= _kAnthropicImageTargetBytes) {
+      return _NormalizedSageImage(
+        bytes: resizedBytes,
+        extension: 'jpg',
+        mediaType: 'image/jpeg',
+      );
+    }
+  }
+
+  var attempts = 0;
+  while (resizedBytes.length > _kAnthropicImageTargetBytes && attempts < 6) {
+    attempts += 1;
+    final nextWidth = (working.width * 0.85).floor().clamp(1, working.width);
+    final nextHeight = (working.height * 0.85).floor().clamp(1, working.height);
+    if (nextWidth == working.width && nextHeight == working.height) {
+      break;
+    }
+    working = img.copyResize(
+      working,
+      width: nextWidth,
+      height: nextHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+    resizedBytes = encoded(img.encodeJpg(working, quality: 75));
+  }
+
+  if (resizedBytes.isEmpty || resizedBytes.length > _kAnthropicImageMaxBytes) {
+    return null;
+  }
+
+  return _NormalizedSageImage(
+    bytes: resizedBytes,
+    extension: 'jpg',
+    mediaType: 'image/jpeg',
+  );
 }
 
 String _labelForSageSessionTone(String tone) {
@@ -855,7 +947,7 @@ class _SageScreenState extends State<SageScreen> {
       builder: (_) => CupertinoAlertDialog(
         title: const Text('Image Too Large'),
         content: Text(
-          'Sage can resize most images on the server, but very large uploads need a smaller export or screenshot first.\n\nSkipped: $shown$extra',
+          'Sage now shrinks oversized images before upload, but some files are still too large or too hard to decode cleanly. Try a smaller export or screenshot first.\n\nSkipped: $shown$extra',
         ),
         actions: [
           CupertinoDialogAction(
@@ -980,7 +1072,7 @@ $sessionToneInstruction
     const suffix = ' [summary trimmed for follow-up]';
     final suffixBytes = utf8.encode(suffix).length;
     final safeByteBudget = _kSeededSummaryTranscriptMaxBytes - suffixBytes;
-    final safeCharBudget = _kSeededSummaryTranscriptMaxChars - suffix.length;
+    const safeCharBudget = _kSeededSummaryTranscriptMaxChars - suffix.length;
     final buffer = StringBuffer();
     var bytes = 0;
     var chars = 0;
@@ -2575,14 +2667,25 @@ class _SageFileDraft {
         onOversizedImage?.call(file.name);
         return null;
       }
+      final normalized = await _normalizeSageImageBytes(
+        bytes: bytes,
+        extension: ext,
+      );
+      if (normalized == null) {
+        onOversizedImage?.call(file.name);
+        return null;
+      }
+      final normalizedName = normalized.extension == ext || ext.isEmpty
+          ? file.name
+          : '${file.name.replaceFirst(RegExp(r'\.[^.]+$'), '')}.${normalized.extension}';
 
       return _SageFileDraft(
-        name: file.name,
+        name: normalizedName,
         path: path,
-        extension: ext,
-        imageBase64: base64Encode(bytes),
-        imageMediaType: _imageMediaTypeForExtension(ext),
-        imageByteSize: bytes.length,
+        extension: normalized.extension,
+        imageBase64: base64Encode(normalized.bytes),
+        imageMediaType: normalized.mediaType,
+        imageByteSize: normalized.bytes.length,
       );
     }
 
@@ -2612,14 +2715,25 @@ class _SageFileDraft {
       onOversizedImage?.call(file.name);
       return null;
     }
+    final normalized = await _normalizeSageImageBytes(
+      bytes: bytes,
+      extension: ext,
+    );
+    if (normalized == null) {
+      onOversizedImage?.call(file.name);
+      return null;
+    }
+    final normalizedName = normalized.extension == ext || ext.isEmpty
+        ? file.name
+        : '${file.name.replaceFirst(RegExp(r'\.[^.]+$'), '')}.${normalized.extension}';
 
     return _SageFileDraft(
-      name: file.name,
+      name: normalizedName,
       path: file.path,
-      extension: ext,
-      imageBase64: base64Encode(bytes),
-      imageMediaType: _imageMediaTypeForExtension(ext),
-      imageByteSize: bytes.length,
+      extension: normalized.extension,
+      imageBase64: base64Encode(normalized.bytes),
+      imageMediaType: normalized.mediaType,
+      imageByteSize: normalized.bytes.length,
     );
   }
 

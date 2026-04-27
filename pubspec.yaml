@@ -43,6 +43,7 @@ dependencies:
   # File picker — Day One import + attachments
   file_picker: ^8.1.2
   archive: ^3.6.1
+  image: ^4.3.0
 
   # PDF export sharing
   share_plus: ^10.0.0
