@@ -11,7 +11,9 @@ import '../widgets/glass_card.dart';
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 class WriteScreen extends StatefulWidget {
-  const WriteScreen({super.key});
+  const WriteScreen({super.key, this.initialText});
+
+  final String? initialText;
 
   @override
   State<WriteScreen> createState() => _WriteScreenState();
@@ -43,6 +45,10 @@ class _WriteScreenState extends State<WriteScreen> {
   @override
   void initState() {
     super.initState();
+    final initialText = widget.initialText?.trim();
+    if (initialText != null && initialText.isNotEmpty) {
+      _ctrl.text = initialText;
+    }
     _focusNode.addListener(() => setState(() {}));
   }
 

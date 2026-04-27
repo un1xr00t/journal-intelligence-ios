@@ -1873,12 +1873,18 @@ Return JSON only.
     Map<String, dynamic> action,
     _SageMessage? sourceMessage,
   ) async {
+    final route = _actionRoute(action);
     final detectiveDraft = sourceMessage == null
         ? null
         : await _buildDetectiveDraftForAction(action, sourceMessage);
+    final writeDraft = sourceMessage == null
+        ? null
+        : await _buildWriteDraftForAction(action, sourceMessage, route: route);
     final destination = _screenForAction(
       action,
+      route: route,
       detectiveDraft: detectiveDraft,
+      writeDraft: writeDraft,
     );
     if (destination == null) return;
 
@@ -1948,6 +1954,61 @@ $assistantText
         );
   }
 
+  Future<String?> _buildWriteDraftForAction(
+    Map<String, dynamic> action,
+    _SageMessage sourceMessage, {
+    required String? route,
+  }) async {
+    if (route != '/write') return null;
+
+    final label = _actionLabel(action);
+    final fields = _actionFields(action);
+    final assistantText = sourceMessage.text.trim();
+    if (assistantText.isEmpty) return null;
+    if (_contextString == null) {
+      return _fallbackWriteDraft(
+        label: label,
+        fields: fields,
+        assistantText: assistantText,
+      );
+    }
+
+    final prompt = '''
+Return strict JSON only:
+{"text":"..."}
+
+Turn this Sage reply into a first-person journal draft that is ready to keep editing in the Write screen.
+
+Rules:
+- The draft must sound like the user writing, not Sage talking to them.
+- Keep the emotional truth and key details from Sage's reply.
+- Write as something the user could continue from directly.
+- If the action sounds like "process", "work through", or "journal about" a feeling, make the opening lines reflective and first-person.
+- Never refer to Sage, the assistant, "this action", or "the reply above".
+- Do not frame it like advice. Frame it like lived experience and reflection.
+- No title.
+- No markdown.
+- Keep it concise but substantial.
+
+Action label: $label
+Action fields: $fields
+
+Sage reply:
+$assistantText
+''';
+
+    final generated = await _runActionPrefillRequest(
+      loadingLabel: label,
+      prompt: prompt,
+    );
+    return _parseJsonTextField(generated, field: 'text') ??
+        _fallbackWriteDraft(
+          label: label,
+          fields: fields,
+          assistantText: assistantText,
+        );
+  }
+
   Future<String?> _runActionPrefillRequest({
     required String loadingLabel,
     required String prompt,
@@ -2000,6 +2061,89 @@ $assistantText
     } catch (_) {
       return null;
     }
+  }
+
+  String? _parseJsonTextField(
+    String? rawReply, {
+    required String field,
+  }) {
+    if (rawReply == null || rawReply.trim().isEmpty) return null;
+    final cleaned = rawReply.split('---ACTIONS---').first.trim();
+    try {
+      final decoded = jsonDecode(cleaned);
+      if (decoded is! Map) return null;
+      final value = decoded[field]?.toString().trim();
+      if (value == null || value.isEmpty) return null;
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _fallbackWriteDraft({
+    required String label,
+    required String fields,
+    required String assistantText,
+  }) {
+    final excerpt = assistantText
+        .split(RegExp(r'\n\s*\n'))
+        .map((chunk) => chunk.trim())
+        .where((chunk) => chunk.isNotEmpty)
+        .take(2)
+        .join('\n\n');
+
+    if (fields.contains('frustration') ||
+        fields.contains('angry') ||
+        fields.contains('upset') ||
+        fields.contains('process')) {
+      return '''
+I'm frustrated right now, and I want to get honest about why.
+
+What happened:
+
+What I felt in my body the moment it hit:
+
+What actually hurt me about it:
+
+What I wish had happened instead:
+
+What I need to remember so I don't minimize this later:
+
+$excerpt
+''';
+    }
+
+    if (fields.contains('grief') ||
+        fields.contains('sad') ||
+        fields.contains('hurt')) {
+      return '''
+I'm trying to be honest about what is hurting right now.
+
+What happened:
+
+What feels hardest to admit:
+
+What this brought up for me:
+
+What I need compassion for instead of judgment:
+
+$excerpt
+''';
+    }
+
+    return '''
+I want to put this into my own words and see what is actually true for me.
+
+What happened:
+
+What I'm feeling:
+
+What stands out most to me:
+
+What I need next:
+
+$excerpt
+''';
   }
 
   DetectiveEntryDraft _fallbackDetectiveDraft(
@@ -2105,12 +2249,50 @@ $assistantText
     return 'this Sage action';
   }
 
+  String? _actionRoute(Map<String, dynamic> action) {
+    final route = action['route']?.toString().trim().toLowerCase();
+    if (route == null || route.isEmpty) return null;
+    return route.startsWith('/') ? route : '/$route';
+  }
+
   Widget? _screenForAction(
     Map<String, dynamic> action, {
+    String? route,
     DetectiveEntryDraft? detectiveDraft,
+    String? writeDraft,
   }) {
     final fields = _actionFields(action);
     final shouldAutoSelectSingleCase = _shouldAutoSelectSingleCase(action);
+
+    switch (route) {
+      case '/war-room':
+        return const WarRoomScreen();
+      case '/exit-plan':
+        return const ExitPlanScreen();
+      case '/evidence':
+        if (detectiveDraft != null) {
+          return DetectiveScreen(
+            pendingEntryDraft: detectiveDraft,
+            autoSelectSingleCase: true,
+          );
+        }
+        return const ProofVaultScreen();
+      case '/detective':
+        return DetectiveScreen(
+          pendingEntryDraft: detectiveDraft,
+          autoSelectSingleCase: shouldAutoSelectSingleCase,
+        );
+      case '/write':
+        return WriteScreen(initialText: writeDraft);
+      case '/patterns':
+      case '/contradictions':
+        return const EarlyWarningScreen();
+      case '/mental-health':
+      case '/nervous':
+        return const MentalHealthScreen();
+      case '/people-intel':
+        return const DetectiveScreen();
+    }
 
     if (fields.contains('war room') || fields.contains('war_room')) {
       return const WarRoomScreen();
@@ -2160,7 +2342,7 @@ $assistantText
       return const TimelineScreen();
     }
     if (fields.contains('write')) {
-      return const WriteScreen();
+      return WriteScreen(initialText: writeDraft);
     }
     if (fields.contains('early warning') ||
         fields.contains('early_warning') ||
