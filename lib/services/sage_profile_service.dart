@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class SageSettings {
   const SageSettings({
     required this.voiceId,
+    required this.toneMode,
     required this.autoGreeting,
     required this.autoRemember,
     required this.allowSwearing,
@@ -15,6 +16,7 @@ class SageSettings {
 
   static const defaults = SageSettings(
     voiceId: 'shimmer',
+    toneMode: 'standard',
     autoGreeting: true,
     autoRemember: true,
     allowSwearing: true,
@@ -24,6 +26,7 @@ class SageSettings {
   );
 
   final String voiceId;
+  final String toneMode;
   final bool autoGreeting;
   final bool autoRemember;
   final bool allowSwearing;
@@ -33,6 +36,7 @@ class SageSettings {
 
   Map<String, dynamic> toJson() => {
         'voice_id': voiceId,
+        'tone_mode': toneMode,
         'auto_greeting': autoGreeting,
         'auto_remember': autoRemember,
         'allow_swearing': allowSwearing,
@@ -44,6 +48,7 @@ class SageSettings {
   factory SageSettings.fromJson(Map<String, dynamic> json) {
     return SageSettings(
       voiceId: json['voice_id']?.toString() ?? defaults.voiceId,
+      toneMode: json['tone_mode']?.toString() ?? defaults.toneMode,
       autoGreeting: json['auto_greeting'] as bool? ?? defaults.autoGreeting,
       autoRemember: json['auto_remember'] as bool? ?? defaults.autoRemember,
       allowSwearing: json['allow_swearing'] as bool? ?? defaults.allowSwearing,
@@ -56,6 +61,7 @@ class SageSettings {
 
   SageSettings copyWith({
     String? voiceId,
+    String? toneMode,
     bool? autoGreeting,
     bool? autoRemember,
     bool? allowSwearing,
@@ -65,6 +71,7 @@ class SageSettings {
   }) {
     return SageSettings(
       voiceId: voiceId ?? this.voiceId,
+      toneMode: toneMode ?? this.toneMode,
       autoGreeting: autoGreeting ?? this.autoGreeting,
       autoRemember: autoRemember ?? this.autoRemember,
       allowSwearing: allowSwearing ?? this.allowSwearing,
@@ -78,12 +85,24 @@ class SageSettings {
     final swearing = allowSwearing
         ? 'Swearing is allowed when it genuinely fits the moment.'
         : 'Do not swear.';
+    final toneInstruction = toneMode == 'unhinged'
+        ? '''
+Mode: unhinged
+This is chaos-agent-v2 energy for Sage. Be brutally honest, call out avoidance fast, and challenge excuses without softening every edge.
+You can use sharper language, dark humor, and pressure when it helps the user face reality, but stay accurate, useful, and grounded in the real context.
+Do not become degrading, abusive, or pointlessly cruel. The goal is to wake the user up, not just roast them.
+'''
+        : '''
+Mode: standard
+Stay warm, direct, grounded, and emotionally intelligent.
+''';
     return '''
 [SAGE SETTINGS]
 Warmth: $warmth
 Directness: $directness
 $swearing
 Web search: ${webSearchEnabled ? 'ENABLED' : 'DISABLED'}
+$toneInstruction
 ''';
   }
 }

@@ -21,6 +21,19 @@ const _kWarmthOptions = <({String id, String label})>[
   (id: 'close', label: 'Close'),
 ];
 
+const _kToneModeOptions = <({String id, String label, String desc})>[
+  (
+    id: 'standard',
+    label: 'Standard',
+    desc: 'Grounded, direct, emotionally intelligent'
+  ),
+  (
+    id: 'unhinged',
+    label: 'Unhinged',
+    desc: 'Chaos agent v2. Sharper, meaner, less patient with excuses'
+  ),
+];
+
 const _kDirectnessOptions = <({String id, String label})>[
   (id: 'gentle', label: 'Gentle'),
   (id: 'direct', label: 'Direct'),
@@ -255,6 +268,78 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                                           style: const TextStyle(
                                             color: JournalColors.textMuted,
                                             fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    active
+                                        ? CupertinoIcons
+                                            .check_mark_circled_solid
+                                        : CupertinoIcons.circle,
+                                    color: active
+                                        ? JournalColors.accent
+                                        : JournalColors.textMuted,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionLabel('TONE'),
+                  const SizedBox(height: 8),
+                  GlassCard(
+                    child: Column(
+                      children: _kToneModeOptions.map((mode) {
+                        final active = _settings.toneMode == mode.id;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: GestureDetector(
+                            onTap: () => _saveSettings(
+                              _settings.copyWith(toneMode: mode.id),
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? _withAlpha(JournalColors.accent, 0.14)
+                                    : JournalColors.bgSurface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: active
+                                      ? JournalColors.borderBright
+                                      : JournalColors.border,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          mode.label,
+                                          style: TextStyle(
+                                            color: active
+                                                ? JournalColors.textPrimary
+                                                : JournalColors.textSecondary,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          mode.desc,
+                                          style: const TextStyle(
+                                            color: JournalColors.textMuted,
+                                            fontSize: 12,
+                                            height: 1.4,
                                           ),
                                         ),
                                       ],

@@ -2967,6 +2967,12 @@ class _SageIntroCard extends StatelessWidget {
                       ? 'Loading profile…'
                       : 'Voice ${sessionSettings.voiceId}',
                 ),
+                if (!profileLoading)
+                  _MetaPill(
+                    label: sessionSettings.toneMode == 'unhinged'
+                        ? 'Tone unhinged'
+                        : 'Tone standard',
+                  ),
                 _MetaPill(
                   label: profileLoading
                       ? '…'
