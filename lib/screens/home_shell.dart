@@ -5,6 +5,10 @@
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/launch_intent_provider.dart';
+import 'carplay_companion_screen.dart';
 
 import 'today_screen.dart';
 import 'write_screen.dart';
@@ -23,6 +27,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   late int _selectedIndex;
+  LaunchIntentProvider? _launchIntent;
+  int _lastHandledIntentVersion = 0;
+  bool _carPlayCompanionVisible = false;
 
   static const _screens = [
     TodayScreen(),
@@ -39,11 +46,70 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final launchIntent = context.read<LaunchIntentProvider>();
+    if (_launchIntent == launchIntent) return;
+
+    _launchIntent?.removeListener(_handleLaunchIntentChange);
+    _launchIntent = launchIntent;
+    _launchIntent?.addListener(_handleLaunchIntentChange);
+    _handleLaunchIntentChange();
+  }
+
+  @override
   void didUpdateWidget(HomeShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTab != widget.initialTab) {
       _selectedIndex = widget.initialTab.clamp(0, _screens.length - 1);
     }
+  }
+
+  @override
+  void dispose() {
+    _launchIntent?.removeListener(_handleLaunchIntentChange);
+    super.dispose();
+  }
+
+  void _handleLaunchIntentChange() {
+    final launchIntent = _launchIntent;
+    if (launchIntent == null || !launchIntent.hasPendingIntent) return;
+
+    final version = launchIntent.intentVersion;
+    final pendingTab = launchIntent.pendingTab;
+    if (version == _lastHandledIntentVersion || pendingTab == null) return;
+
+    final nextTab = pendingTab.clamp(0, _screens.length - 1);
+    _lastHandledIntentVersion = version;
+
+    if (mounted && _selectedIndex != nextTab) {
+      setState(() => _selectedIndex = nextTab);
+    }
+
+    if (launchIntent.shouldOpenCarPlayCompanion && !_carPlayCompanionVisible) {
+      final focus = launchIntent.companionFocus ?? 'hub';
+      launchIntent.markHandled(version);
+      _openCarPlayCompanion(focus);
+      return;
+    }
+
+    launchIntent.markHandled(version);
+  }
+
+  void _openCarPlayCompanion(String focus) {
+    _carPlayCompanionVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _carPlayCompanionVisible = false;
+        return;
+      }
+      await Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder: (_) => CarPlayCompanionScreen(initialFocus: focus),
+        ),
+      );
+      _carPlayCompanionVisible = false;
+    });
   }
 
   @override
@@ -55,6 +121,7 @@ class _HomeShellState extends State<HomeShell> {
         onTap: (i) {
           FocusManager.instance.primaryFocus?.unfocus();
           setState(() => _selectedIndex = i);
+          context.read<LaunchIntentProvider>().setActiveTab(i);
         },
         items: [
           AdaptiveNavigationDestination(

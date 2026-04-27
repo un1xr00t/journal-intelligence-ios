@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
+import 'providers/launch_intent_provider.dart';
+import 'services/launch_route_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/splash_screen.dart';
@@ -11,8 +13,11 @@ import 'theme/app_theme.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => LaunchIntentProvider()),
+      ],
       child: const JournalApp(),
     ),
   );
@@ -26,46 +31,39 @@ class JournalApp extends StatefulWidget {
 }
 
 class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
-  int? _tabForRoute(String? routeName) {
-    return switch (routeName) {
-      '/today' => 0,
-      '/timeline' => 1,
-      '/write' => 2,
-      '/ask' || '/intelligence' || '/sage' => 3,
-      '/more' || '/settings' => 4,
-      _ => null,
-    };
-  }
+  final _launchRouteService = LaunchRouteService();
 
-  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
-    final tab = _tabForRoute(settings.name);
-    if (tab == null) return null;
-
-    return MaterialPageRoute(
-      settings: settings,
-      builder: (_) => DefaultTextStyle.merge(
-        style: const TextStyle(decoration: TextDecoration.none),
-        child: Consumer<AuthProvider>(
-          builder: (context, auth, _) {
-            return switch (auth.state) {
-              AuthState.unknown => const SplashScreen(),
-              AuthState.authenticated => HomeShell(initialTab: tab),
-              AuthState.unauthenticated => const LoginScreen(),
-            };
-          },
-        ),
-      ),
-    );
+  Future<bool> _handleExternalRoute(String? route) async {
+    if (!mounted) return false;
+    return context.read<LaunchIntentProvider>().registerRoute(route);
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Attempt session restore on cold boot
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final launchIntent = context.read<LaunchIntentProvider>();
+      launchIntent.registerRoute(
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+      );
       context.read<AuthProvider>().init();
     });
+
+    _launchRouteService.routes.listen((route) {
+      _handleExternalRoute(route);
+    });
+  }
+
+  @override
+  Future<bool> didPushRoute(String route) {
+    return _handleExternalRoute(route);
+  }
+
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) {
+    return _handleExternalRoute(routeInformation.uri.toString());
   }
 
   @override
@@ -86,14 +84,14 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
       title: 'Journal Intelligence',
       theme: AppTheme.dark,
       debugShowCheckedModeBanner: false,
-      onGenerateRoute: _onGenerateRoute,
       home: DefaultTextStyle.merge(
         style: const TextStyle(decoration: TextDecoration.none),
-        child: Consumer<AuthProvider>(
-          builder: (context, auth, _) {
+        child: Consumer2<AuthProvider, LaunchIntentProvider>(
+          builder: (context, auth, launchIntent, _) {
             return switch (auth.state) {
               AuthState.unknown => const SplashScreen(),
-              AuthState.authenticated => const HomeShell(),
+              AuthState.authenticated =>
+                HomeShell(initialTab: launchIntent.activeTab),
               AuthState.unauthenticated => const LoginScreen(),
             };
           },

@@ -35,10 +35,14 @@
 	<string>Allow Journal Intelligence to take photos for journal entries.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sign in to Journal Intelligence with Face ID</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Allow Journal Intelligence to capture voice journal entries.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow Journal Intelligence to choose photos for journal entries.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Allow Journal Intelligence to save photos captured for journal entries.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Allow Journal Intelligence to turn your voice into journal text.</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
@@ -64,6 +68,17 @@
 					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
+				</dict>
+			</array>
+			<key>UIWindowSceneSessionRoleCarTemplateApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>CPTemplateApplicationScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>carplay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
 				</dict>
 			</array>
 		</dict>
