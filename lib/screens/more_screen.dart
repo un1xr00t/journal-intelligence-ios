@@ -64,7 +64,7 @@ class MoreScreen extends StatelessWidget {
             icon: CupertinoIcons.sparkles,
             iconColor: JournalColors.accent,
             badge: 'New',
-            builder: (_) => const SageScreen(autoStartGreeting: false),
+            builder: (_) => const SageScreen(handoff: SageHandoff.standard()),
           ),
           _Item(
             label: 'Ask My Journal',
@@ -322,16 +322,7 @@ class MoreScreen extends StatelessWidget {
                       subtitle: 'Your personal assistant',
                       color: JournalColors.accent,
                       icon: CupertinoIcons.sparkles,
-                      onTap: () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (ctx) => DefaultTextStyle.merge(
-                            style: const TextStyle(
-                                decoration: TextDecoration.none),
-                            child: const SageScreen(autoStartGreeting: false),
-                          ),
-                        ),
-                      ),
+                      onTap: () => pushSageScreen(context),
                     ),
                   ),
                   const SizedBox(width: 12),

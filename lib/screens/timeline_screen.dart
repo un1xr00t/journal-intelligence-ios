@@ -218,18 +218,11 @@ class _TimelineScreenState extends State<TimelineScreen> {
     }
 
     if (!mounted) return;
-    await Navigator.push(
+    await pushSageScreen(
       context,
-      CupertinoPageRoute(
-        builder: (_) => DefaultTextStyle.merge(
-          style: const TextStyle(decoration: TextDecoration.none),
-          child: SageScreen(
-            initialAssistantMessage: insight,
-            autoStartGreeting: false,
-            sessionToneOverride:
-                sessionTone?.isEmpty == true ? null : sessionTone,
-          ),
-        ),
+      handoff: SageHandoff.livingSummary(
+        insight,
+        sessionToneOverride: sessionTone?.isEmpty == true ? null : sessionTone,
       ),
     );
   }
@@ -414,11 +407,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
     required String truncatedSuffix,
   }) {
     final rawInsight = _masterSummary?['insight']?.toString() ?? '';
-    final cleaned = rawInsight
-        .split('---ACTIONS---')
-        .first
-        .replaceAll('\u0000', '')
-        .trim();
+    final cleaned =
+        rawInsight.split('---ACTIONS---').first.replaceAll('\u0000', '').trim();
     if (cleaned.isEmpty) return '';
     return _truncateUtf8Text(
       cleaned,

@@ -16,6 +16,7 @@ class LaunchIntentProvider extends ChangeNotifier {
   bool get hasPendingIntent => _intentVersion != _handledVersion;
   bool get shouldOpenCarPlayCompanion =>
       hasPendingIntent && routePath == '/carplay';
+  bool get shouldOpenSage => hasPendingIntent && routePath == '/sage';
 
   bool registerRoute(String? rawRoute) {
     final normalizedRoute = _normalizeRoute(rawRoute);

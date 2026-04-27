@@ -15,6 +15,7 @@ import 'write_screen.dart';
 import 'timeline_screen.dart';
 import 'ask_journal_screen.dart';
 import 'more_screen.dart';
+import 'sage_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, this.initialTab = 0});
@@ -30,6 +31,7 @@ class _HomeShellState extends State<HomeShell> {
   LaunchIntentProvider? _launchIntent;
   int _lastHandledIntentVersion = 0;
   bool _carPlayCompanionVisible = false;
+  bool _sageVisible = false;
 
   static const _screens = [
     TodayScreen(),
@@ -93,6 +95,12 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
+    if (launchIntent.shouldOpenSage && !_sageVisible) {
+      launchIntent.markHandled(version);
+      _openSage();
+      return;
+    }
+
     launchIntent.markHandled(version);
   }
 
@@ -109,6 +117,18 @@ class _HomeShellState extends State<HomeShell> {
         ),
       );
       _carPlayCompanionVisible = false;
+    });
+  }
+
+  void _openSage() {
+    _sageVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _sageVisible = false;
+        return;
+      }
+      await pushSageScreen(context);
+      _sageVisible = false;
     });
   }
 

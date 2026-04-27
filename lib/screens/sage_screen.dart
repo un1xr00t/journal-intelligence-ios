@@ -631,17 +631,85 @@ Name patterns carefully, slow the pace a little, and avoid unnecessary sharpness
   }
 }
 
-class SageScreen extends StatefulWidget {
-  const SageScreen({
-    super.key,
+class SageHandoff {
+  const SageHandoff({
     this.initialAssistantMessage,
+    this.prefillText,
+    this.autoSendPrefill = false,
     this.autoStartGreeting = true,
+    this.showDefaultWelcome = false,
     this.sessionToneOverride,
   });
 
+  const SageHandoff.standard()
+      : initialAssistantMessage = null,
+        prefillText = null,
+        autoSendPrefill = false,
+        autoStartGreeting = false,
+        showDefaultWelcome = true,
+        sessionToneOverride = null;
+
+  SageHandoff.livingSummary(
+    String insight, {
+    this.sessionToneOverride,
+  })  : initialAssistantMessage = insight,
+        prefillText = null,
+        autoSendPrefill = false,
+        autoStartGreeting = false,
+        showDefaultWelcome = false;
+
   final String? initialAssistantMessage;
+  final String? prefillText;
+  final bool autoSendPrefill;
   final bool autoStartGreeting;
+  final bool showDefaultWelcome;
   final String? sessionToneOverride;
+
+  String get seededAssistantMessage => initialAssistantMessage?.trim() ?? '';
+
+  String get normalizedPrefill => prefillText?.trim() ?? '';
+
+  bool get hasSeededAssistantMessage => seededAssistantMessage.isNotEmpty;
+
+  bool get hasPrefill => normalizedPrefill.isNotEmpty;
+
+  bool get shouldAutoStartGreeting =>
+      autoStartGreeting && !hasSeededAssistantMessage && !hasPrefill;
+
+  bool get shouldShowDefaultWelcome =>
+      !hasSeededAssistantMessage && showDefaultWelcome;
+
+  bool get shouldAutoSendPrefill => autoSendPrefill && hasPrefill;
+
+  SageHandoff forNewChat() => SageHandoff(
+        autoStartGreeting: false,
+        showDefaultWelcome: true,
+        sessionToneOverride: sessionToneOverride,
+      );
+}
+
+Future<T?> pushSageScreen<T>(
+  BuildContext context, {
+  SageHandoff handoff = const SageHandoff.standard(),
+}) {
+  return Navigator.push<T>(
+    context,
+    CupertinoPageRoute(
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: SageScreen(handoff: handoff),
+      ),
+    ),
+  );
+}
+
+class SageScreen extends StatefulWidget {
+  const SageScreen({
+    super.key,
+    this.handoff = const SageHandoff.standard(),
+  });
+
+  final SageHandoff handoff;
 
   @override
   State<SageScreen> createState() => _SageScreenState();
@@ -678,7 +746,10 @@ class _SageScreenState extends State<SageScreen> {
   int _ttsRequestCounter = 0;
   bool _ttsSequenceActive = false;
   bool _seededInitialAssistantMessage = false;
+  bool _appliedInitialPrefill = false;
+  bool _sentInitialPrefill = false;
   String? _actionPrefillLabel;
+  late SageHandoff _handoff;
 
   bool get _canSend =>
       !_replyLoading &&
@@ -688,6 +759,7 @@ class _SageScreenState extends State<SageScreen> {
   @override
   void initState() {
     super.initState();
+    _handoff = widget.handoff;
     _composerCtrl.addListener(_handleComposerChanged);
     _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted && !_ttsSequenceActive) {
@@ -699,8 +771,7 @@ class _SageScreenState extends State<SageScreen> {
     });
     _loadSageProfile();
     _loadContextAndStart(
-      autoStartGreeting:
-          widget.initialAssistantMessage == null && widget.autoStartGreeting,
+      autoStartGreeting: _handoff.shouldAutoStartGreeting,
     );
   }
 
@@ -968,11 +1039,11 @@ class _SageScreenState extends State<SageScreen> {
 
   String _buildContextPayload(String contextString) {
     final sessionSettings =
-        _settingsForSageSessionTone(_settings, widget.sessionToneOverride);
+        _settingsForSageSessionTone(_settings, _handoff.sessionToneOverride);
     final memoryContext = _profile.buildMemoryContext(_memoryItems);
     final expandedContext = _expandedContextString?.trim() ?? '';
     final sessionToneInstruction =
-        _promptInstructionForSageSessionTone(widget.sessionToneOverride);
+        _promptInstructionForSageSessionTone(_handoff.sessionToneOverride);
     return '''
 $contextString
 
@@ -1020,6 +1091,12 @@ $sessionToneInstruction
         _contextLoading = false;
       });
       _seedInitialAssistantMessageIfNeeded();
+      _applyInitialPrefillIfNeeded();
+      if (_handoff.shouldAutoSendPrefill && !_sentInitialPrefill) {
+        _sentInitialPrefill = true;
+        await _send(text: _handoff.normalizedPrefill);
+        return;
+      }
       if (autoStartGreeting && _settings.autoGreeting) {
         await _send(text: '[SESSION_START]', hiddenUserMessage: true);
       }
@@ -1033,10 +1110,10 @@ $sessionToneInstruction
   }
 
   void _seedInitialAssistantMessageIfNeeded() {
-    final explicitSeed = widget.initialAssistantMessage?.trim() ?? '';
+    final explicitSeed = _handoff.seededAssistantMessage;
     final seed = explicitSeed.isNotEmpty
         ? explicitSeed
-        : !widget.autoStartGreeting
+        : _handoff.shouldShowDefaultWelcome
             ? _kSageDefaultWelcomeMessage
             : '';
     if (_seededInitialAssistantMessage || seed.isEmpty || !mounted) return;
@@ -1054,6 +1131,22 @@ $sessionToneInstruction
       ];
     });
     _scrollDown();
+  }
+
+  void _applyInitialPrefillIfNeeded() {
+    final prefill = _handoff.normalizedPrefill;
+    if (_appliedInitialPrefill || prefill.isEmpty) return;
+    _appliedInitialPrefill = true;
+    if (_handoff.shouldAutoSendPrefill) return;
+    _composerCtrl.value = TextEditingValue(
+      text: prefill,
+      selection: TextSelection.collapsed(offset: prefill.length),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   String _prepareSeededSummaryForTranscript(String raw) {
@@ -1580,13 +1673,19 @@ Return JSON only.
     await _audioPlayer.stop();
     if (mounted) {
       setState(() {
+        _handoff = _handoff.forNewChat();
+        _seededInitialAssistantMessage = false;
+        _appliedInitialPrefill = false;
+        _sentInitialPrefill = false;
+        _composerCtrl.clear();
         _speakingMessageId = null;
         _ttsLoadingMessageId = null;
         _ttsErrorMessageId = null;
         _ttsErrorText = null;
       });
     }
-    await _loadContextAndStart(autoStartGreeting: false);
+    await _loadContextAndStart(
+        autoStartGreeting: _handoff.shouldAutoStartGreeting);
   }
 
   List<Map<String, dynamic>> _messagesForSave() {
@@ -2500,7 +2599,7 @@ $excerpt
                   ttsErrorMessageId: _ttsErrorMessageId,
                   ttsErrorText: _ttsErrorText,
                   settings: _settings,
-                  sessionToneOverride: widget.sessionToneOverride,
+                  sessionToneOverride: _handoff.sessionToneOverride,
                   profileLoading: _profileLoading,
                   memoryCount: _memoryItems.length,
                   onNewChat: _clearChat,
