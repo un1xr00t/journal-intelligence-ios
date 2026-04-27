@@ -24,6 +24,10 @@ class TimelineScreen extends StatefulWidget {
 
 class _TimelineScreenState extends State<TimelineScreen> {
   static const int _pageSize = 20;
+  static const int _summarySpeechMaxChars = 1400;
+  static const int _summarySpeechMaxBytes = 1800;
+  static const int _summarySageMaxChars = 2400;
+  static const int _summarySageMaxBytes = 3200;
   static const List<String> _summaryTones = [
     'therapist',
     'best_friend',
@@ -196,7 +200,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Future<void> _openSummaryInSage() async {
-    final insight = _masterSummary?['insight']?.toString().trim() ?? '';
+    final insight = _prepareSummaryForSage();
     if (insight.isEmpty) return;
     final sessionTone =
         (_summaryTone ?? _masterSummary?['tone']?.toString())?.trim();
@@ -231,7 +235,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Future<void> _toggleSummarySpeak() async {
-    final insight = _masterSummary?['insight']?.toString().trim() ?? '';
+    final insight = _prepareSummaryForSpeech();
     if (insight.isEmpty || _summaryLoading || _summaryTtsLoading) return;
 
     if (_summarySpeaking) {
@@ -386,13 +390,79 @@ class _TimelineScreenState extends State<TimelineScreen> {
     return chunks.where((chunk) => chunk.isNotEmpty).toList();
   }
 
-  String _parseTtsError(dynamic e) {
-    if (e is Exception) {
-      final message = e.toString().replaceFirst('Exception: ', '').trim();
-      if (message.isNotEmpty) {
-        return 'Couldn’t generate audio: $message';
-      }
+  String _prepareSummaryForSpeech() {
+    return _prepareSummaryText(
+      maxChars: _summarySpeechMaxChars,
+      maxBytes: _summarySpeechMaxBytes,
+      truncatedSuffix:
+          '\n\n[Audio preview trimmed. Open Continue in Sage for the full insight.]',
+    );
+  }
+
+  String _prepareSummaryForSage() {
+    return _prepareSummaryText(
+      maxChars: _summarySageMaxChars,
+      maxBytes: _summarySageMaxBytes,
+      truncatedSuffix:
+          '\n\n[Timeline note: this insight was trimmed slightly before handoff so the Sage follow-up can continue reliably.]',
+    );
+  }
+
+  String _prepareSummaryText({
+    required int maxChars,
+    required int maxBytes,
+    required String truncatedSuffix,
+  }) {
+    final rawInsight = _masterSummary?['insight']?.toString() ?? '';
+    final cleaned = rawInsight
+        .split('---ACTIONS---')
+        .first
+        .replaceAll('\u0000', '')
+        .trim();
+    if (cleaned.isEmpty) return '';
+    return _truncateUtf8Text(
+      cleaned,
+      maxChars: maxChars,
+      maxBytes: maxBytes,
+      truncatedSuffix: truncatedSuffix,
+    );
+  }
+
+  String _truncateUtf8Text(
+    String text, {
+    required int maxChars,
+    required int maxBytes,
+    required String truncatedSuffix,
+  }) {
+    if (text.length <= maxChars && utf8.encode(text).length <= maxBytes) {
+      return text;
     }
+
+    final suffix = truncatedSuffix.trim();
+    final suffixBytes = utf8.encode('\n\n$suffix').length;
+    final safeByteBudget = math.max(0, maxBytes - suffixBytes);
+    final safeCharBudget = math.max(0, maxChars - suffix.length);
+    final buffer = StringBuffer();
+    var bytes = 0;
+    var chars = 0;
+
+    for (final rune in text.runes) {
+      final char = String.fromCharCode(rune);
+      final charBytes = utf8.encode(char).length;
+      if (chars + 1 > safeCharBudget || bytes + charBytes > safeByteBudget) {
+        break;
+      }
+      buffer.write(char);
+      chars += 1;
+      bytes += charBytes;
+    }
+
+    final trimmed = buffer.toString().trimRight();
+    if (trimmed.isEmpty) return text.substring(0, math.min(text.length, 400));
+    return '$trimmed\n\n$suffix';
+  }
+
+  String _parseTtsError(dynamic e) {
     if (e is DioException) {
       final data = e.response?.data;
       final decoded = _decodeTtsErrorData(data);
@@ -405,6 +475,15 @@ class _TimelineScreenState extends State<TimelineScreen> {
       }
       if (status == 502 || status == 504) {
         return 'Couldn’t generate audio. The voice service timed out or failed upstream.';
+      }
+      if (status != null) {
+        return 'Couldn’t generate audio. Server returned $status.';
+      }
+    }
+    if (e is Exception) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      if (message.isNotEmpty) {
+        return 'Couldn’t generate audio: $message';
       }
     }
     return 'Couldn’t generate audio. Try again, or shorten the summary.';

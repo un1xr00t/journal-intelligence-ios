@@ -196,6 +196,8 @@ const _kSupportedSageImageExtensions = <String>{
 
 const _kMaxSageFileChars = 12000;
 const _kMaxSageImageBytes = 12 * 1024 * 1024;
+const _kSeededSummaryTranscriptMaxChars = 900;
+const _kSeededSummaryTranscriptMaxBytes = 1200;
 
 String _extensionForName(String filename) {
   final dot = filename.lastIndexOf('.');
@@ -947,12 +949,55 @@ $sessionToneInstruction
             : '';
     if (_seededInitialAssistantMessage || seed.isEmpty || !mounted) return;
     _seededInitialAssistantMessage = true;
+    final transcriptSeed = explicitSeed.isNotEmpty
+        ? _prepareSeededSummaryForTranscript(explicitSeed)
+        : null;
     setState(() {
       _messages = [
-        _SageMessage.assistant(_nextMessageId(), seed),
+        _SageMessage.assistant(
+          _nextMessageId(),
+          seed,
+          transcriptTextOverride: transcriptSeed,
+        ),
       ];
     });
     _scrollDown();
+  }
+
+  String _prepareSeededSummaryForTranscript(String raw) {
+    final cleaned = raw
+        .split('---ACTIONS---')
+        .first
+        .replaceAll('\u0000', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) return '';
+    if (cleaned.length <= _kSeededSummaryTranscriptMaxChars &&
+        utf8.encode(cleaned).length <= _kSeededSummaryTranscriptMaxBytes) {
+      return cleaned;
+    }
+
+    const suffix = ' [summary trimmed for follow-up]';
+    final suffixBytes = utf8.encode(suffix).length;
+    final safeByteBudget = _kSeededSummaryTranscriptMaxBytes - suffixBytes;
+    final safeCharBudget = _kSeededSummaryTranscriptMaxChars - suffix.length;
+    final buffer = StringBuffer();
+    var bytes = 0;
+    var chars = 0;
+
+    for (final rune in cleaned.runes) {
+      final char = String.fromCharCode(rune);
+      final charBytes = utf8.encode(char).length;
+      if (chars + 1 > safeCharBudget || bytes + charBytes > safeByteBudget) {
+        break;
+      }
+      buffer.write(char);
+      chars += 1;
+      bytes += charBytes;
+    }
+
+    final trimmed = buffer.toString().trimRight();
+    return trimmed.isEmpty ? suffix.trim() : '$trimmed$suffix';
   }
 
   Future<String> _loadExpandedSageContext() async {
@@ -1249,10 +1294,10 @@ ${available.join('\n\n')}
     final latest = Map<String, dynamic>.from(baseMessages.last);
     final latestContent = latest['content']?.toString().trim() ?? '';
     final transcript = priorMessages
-        .where((message) => message.text.trim().isNotEmpty)
+        .where((message) => message.transcriptText.trim().isNotEmpty)
         .map((message) {
       final speaker = message.role == 'assistant' ? 'Sage' : 'User';
-      return '$speaker: ${message.text.trim()}';
+      return '$speaker: ${message.transcriptText.trim()}';
     }).join('\n\n');
 
     if (transcript.isEmpty || latestContent.isEmpty) return baseMessages;
@@ -1768,12 +1813,6 @@ Return JSON only.
   }
 
   String _parseTtsError(dynamic e) {
-    if (e is Exception) {
-      final message = e.toString().replaceFirst('Exception: ', '').trim();
-      if (message.isNotEmpty) {
-        return 'Couldn’t generate audio: $message';
-      }
-    }
     if (e is DioException) {
       final data = e.response?.data;
       final decoded = _decodeTtsErrorData(data);
@@ -1786,6 +1825,15 @@ Return JSON only.
       }
       if (status == 502 || status == 504) {
         return 'Couldn’t generate audio. The voice service timed out or failed upstream.';
+      }
+      if (status != null) {
+        return 'Couldn’t generate audio. Server returned $status.';
+      }
+    }
+    if (e is Exception) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      if (message.isNotEmpty) {
+        return 'Couldn’t generate audio: $message';
       }
     }
     final parsed = _parseError(e);
@@ -2238,6 +2286,7 @@ class _SageMessage {
     this.id,
     required this.role,
     required this.text,
+    this.transcriptTextOverride,
     this.actions = const [],
     this.attachments = const [],
   });
@@ -2256,17 +2305,20 @@ class _SageMessage {
   const _SageMessage.assistant(
     String id,
     String text, {
+    String? transcriptTextOverride,
     List<Map<String, dynamic>> actions = const [],
   }) : this(
           id: id,
           role: 'assistant',
           text: text,
+          transcriptTextOverride: transcriptTextOverride,
           actions: actions,
         );
 
   final String? id;
   final String role;
   final String text;
+  final String? transcriptTextOverride;
   final List<Map<String, dynamic>> actions;
   final List<_SageMessageAttachment> attachments;
 
@@ -2297,6 +2349,10 @@ class _SageMessage {
       'content': content,
     };
   }
+
+  String get transcriptText => transcriptTextOverride?.trim().isNotEmpty == true
+      ? transcriptTextOverride!.trim()
+      : text;
 
   Map<String, dynamic> toSavedPayload() => {
         'role': role,
