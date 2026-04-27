@@ -157,17 +157,14 @@ class _AskJournalScreenState extends State<AskJournalScreen> {
                     : null,
               ),
               Expanded(
-                child: _hasConversation
-                    ? _ConversationView(
-                        scrollController: _scroll,
-                        messages: _messages,
-                        thinking: _thinking,
-                        sourceCount: _sourceCount,
-                      )
-                    : _StarterView(
-                        starters: _starters,
-                        onTap: _send,
-                      ),
+                child: _UnifiedAskView(
+                  scrollController: _scroll,
+                  starters: _starters,
+                  messages: _messages,
+                  thinking: _thinking,
+                  sourceCount: _sourceCount,
+                  onTapStarter: _send,
+                ),
               ),
               _InputBar(
                 ctrl: _ctrl,
@@ -277,133 +274,74 @@ class _AskBackdrop extends StatelessWidget {
   }
 }
 
-class _StarterView extends StatelessWidget {
-  const _StarterView({
+class _UnifiedAskView extends StatelessWidget {
+  const _UnifiedAskView({
+    required this.scrollController,
     required this.starters,
-    required this.onTap,
+    required this.messages,
+    required this.thinking,
+    required this.sourceCount,
+    required this.onTapStarter,
   });
 
+  final ScrollController scrollController;
   final List<String> starters;
-  final void Function(String) onTap;
+  final List<_Message> messages;
+  final bool thinking;
+  final int sourceCount;
+  final void Function(String) onTapStarter;
+
+  bool get _hasConversation => messages.isNotEmpty || thinking;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return ListView.builder(
+      controller: scrollController,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(
         20,
         MediaQuery.of(context).padding.top + 18,
         20,
-        28,
+        24,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _AskHero(),
-          const SizedBox(height: 18),
-          GlassCard(
-            accentBorder: true,
-            padding: const EdgeInsets.all(0),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    _withAlpha(JournalColors.bgCardAlt, 0.98),
-                    _withAlpha(JournalColors.bgCard, 0.92),
-                  ],
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'SEARCH',
-                              style: TextStyle(
-                                color: JournalColors.textMuted,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Ask for patterns, pressure points, identity shifts, or emotional loops.',
-                              style: TextStyle(
-                                color: JournalColors.textPrimary,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                height: 1.25,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      _Pill(
-                        label: 'RAG',
-                        icon: CupertinoIcons.sparkles,
-                        tint: JournalColors.accent,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _withAlpha(JournalColors.bgSurface, 0.72),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: JournalColors.border),
-                    ),
-                    child: const Text(
-                      'Specific questions work best. Ask about a time period, a repeated issue, or a person.',
-                      style: TextStyle(
-                        color: JournalColors.textSecondary,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+      itemCount: _conversationStartIndex + messages.length + (thinking ? 1 : 0),
+      itemBuilder: (_, index) {
+        if (index == 0) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 18),
+            child: _AskHero(),
+          );
+        }
+        if (index == 1) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: _PromptDeck(
+              starters: starters,
+              hasConversation: _hasConversation,
+              onTap: onTapStarter,
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'SUGGESTED PROMPTS',
-            style: TextStyle(
-              color: JournalColors.textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
+          );
+        }
+        if (_hasConversation && index == 2) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _ConversationHeader(
+              messageCount: messages.length,
+              sourceCount: sourceCount,
             ),
-          ),
-          const SizedBox(height: 12),
-          ...starters.map(
-            (starter) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _StarterCard(
-                prompt: starter,
-                onTap: () => onTap(starter),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
+          );
+        }
+
+        final messageIndex = index - _conversationStartIndex;
+        if (messageIndex == messages.length && thinking) {
+          return const _ThinkingBubble();
+        }
+        return _ChatBubble(message: messages[messageIndex]);
+      },
     );
   }
+
+  int get _conversationStartIndex => _hasConversation ? 3 : 2;
 }
 
 class _AskHero extends StatelessWidget {
@@ -476,7 +414,7 @@ class _AskHero extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Search across your journal, compare periods, or look for repeated themes.',
+              'Search across your journal, compare periods, or look for repeated themes without leaving the thread.',
               style: TextStyle(
                 color: JournalColors.textSecondary,
                 fontSize: 15,
@@ -512,48 +450,128 @@ class _AskHero extends StatelessWidget {
   }
 }
 
-class _ConversationView extends StatelessWidget {
-  const _ConversationView({
-    required this.scrollController,
-    required this.messages,
-    required this.thinking,
-    required this.sourceCount,
+class _PromptDeck extends StatelessWidget {
+  const _PromptDeck({
+    required this.starters,
+    required this.hasConversation,
+    required this.onTap,
   });
 
-  final ScrollController scrollController;
-  final List<_Message> messages;
-  final bool thinking;
-  final int sourceCount;
+  final List<String> starters;
+  final bool hasConversation;
+  final void Function(String) onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      controller: scrollController,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(
-        20,
-        MediaQuery.of(context).padding.top + 18,
-        20,
-        24,
-      ),
-      itemCount: messages.length + (thinking ? 1 : 0) + 1,
-      itemBuilder: (_, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _ConversationHeader(
-              messageCount: messages.length,
-              sourceCount: sourceCount,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GlassCard(
+          accentBorder: !hasConversation,
+          padding: const EdgeInsets.all(0),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _withAlpha(JournalColors.bgCardAlt, 0.98),
+                  _withAlpha(JournalColors.bgCard, 0.92),
+                ],
+              ),
             ),
-          );
-        }
-
-        final messageIndex = index - 1;
-        if (messageIndex == messages.length) {
-          return const _ThinkingBubble();
-        }
-        return _ChatBubble(message: messages[messageIndex]);
-      },
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ASK',
+                            style: TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Everything stays in one thread now.',
+                            style: TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              height: 1.25,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _Pill(
+                      label: hasConversation ? 'LIVE' : 'READY',
+                      icon: hasConversation
+                          ? CupertinoIcons.chat_bubble_text_fill
+                          : CupertinoIcons.sparkles,
+                      tint: hasConversation
+                          ? JournalColors.info
+                          : JournalColors.accent,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _withAlpha(JournalColors.bgSurface, 0.72),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: JournalColors.border),
+                  ),
+                  child: Text(
+                    hasConversation
+                        ? 'Jump off what you already asked, or tap a prompt to take the conversation in a new direction.'
+                        : 'Specific questions work best. Ask about a time period, a repeated issue, or a person.',
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'STARTERS',
+                  style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...starters.take(3).map(
+                      (starter) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _StarterCard(
+                          prompt: starter,
+                          onTap: () => onTap(starter),
+                          compact: hasConversation,
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -636,10 +654,12 @@ class _StarterCard extends StatelessWidget {
   const _StarterCard({
     required this.prompt,
     required this.onTap,
+    this.compact = false,
   });
 
   final String prompt;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -658,12 +678,13 @@ class _StarterCard extends StatelessWidget {
             ],
           ),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        padding:
+            EdgeInsets.fromLTRB(18, compact ? 14 : 16, 18, compact ? 14 : 16),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: compact ? 36 : 40,
+              height: compact ? 36 : 40,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 color: _withAlpha(JournalColors.accent, 0.14),
@@ -689,8 +710,8 @@ class _StarterCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Container(
-              width: 34,
-              height: 34,
+              width: compact ? 30 : 34,
+              height: compact ? 30 : 34,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _withAlpha(JournalColors.bgSurface, 0.82),
