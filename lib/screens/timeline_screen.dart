@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
+import '../services/tts_audio_file_helper.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'sage_screen.dart';
@@ -55,10 +56,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
   bool _summaryTtsSequenceActive = false;
   int _summaryTtsRequestCounter = 0;
   String? _summaryTtsError;
+  String? _summaryTtsTempAudioPath;
 
   @override
   void initState() {
     super.initState();
+    unawaited(configureTtsAudioPlayer(_summaryAudioPlayer));
     _summaryAudioPlayer.onPlayerComplete.listen((_) {
       if (mounted && !_summaryTtsSequenceActive) {
         setState(() {
@@ -75,6 +78,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   @override
   void dispose() {
     _summaryAudioPlayer.dispose();
+    unawaited(deleteTtsAudioTempFile(_summaryTtsTempAudioPath));
     _scroll.dispose();
     super.dispose();
   }
@@ -248,6 +252,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
     });
 
     try {
+      await configureTtsAudioPlayer(_summaryAudioPlayer);
       await _summaryAudioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
       final hasVoiceKey = voiceSettings['has_voice_key'] == true;
@@ -281,8 +286,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
         if (requestId != _summaryTtsRequestCounter) return;
         if (!mounted) return;
         setState(() => _summaryTtsLoading = false);
-        await _summaryAudioPlayer.play(
-          BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
+        await deleteTtsAudioTempFile(_summaryTtsTempAudioPath);
+        _summaryTtsTempAudioPath = await writeTtsAudioTempFile(
+          prefix: 'timeline-summary-tts',
+          bytes: bytes,
+        );
+        await playTtsAudioFile(
+          _summaryAudioPlayer,
+          path: _summaryTtsTempAudioPath!,
         );
         await _waitForSummaryAudioToFinish();
       }
@@ -391,6 +402,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
       if (message.isNotEmpty) {
         return 'Couldn’t generate audio: $message';
       }
+    }
+    final raw = e.toString().trim();
+    if (raw.isNotEmpty && raw != 'null') {
+      return 'Couldn’t generate audio: $raw';
     }
     return 'Couldn’t generate audio. Try again, or shorten the summary.';
   }

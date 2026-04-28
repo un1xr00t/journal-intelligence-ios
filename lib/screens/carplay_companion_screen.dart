@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -10,6 +9,7 @@ import '../providers/launch_intent_provider.dart';
 import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
+import '../services/tts_audio_file_helper.dart';
 import '../services/voice_entry_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -52,11 +52,13 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
   bool _briefingSpeaking = false;
   int _briefingRequestCounter = 0;
   String? _briefingError;
+  String? _briefingTempAudioPath;
   bool _initialFocusHandled = false;
 
   @override
   void initState() {
     super.initState();
+    unawaited(configureTtsAudioPlayer(_audioPlayer));
     _loadTodayBrief();
     _voiceEventsSub = _voiceEntryService.events.listen(_handleVoiceEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,6 +70,7 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
   void dispose() {
     _voiceEventsSub?.cancel();
     _audioPlayer.dispose();
+    unawaited(deleteTtsAudioTempFile(_briefingTempAudioPath));
     _transcriptCtrl.dispose();
     _transcriptFocus.dispose();
     super.dispose();
@@ -242,6 +245,7 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
     });
 
     try {
+      await configureTtsAudioPlayer(_audioPlayer);
       await _audioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
       final hasVoiceKey = voiceSettings['has_voice_key'] == true;
@@ -273,8 +277,14 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
         if (requestId != _briefingRequestCounter) return;
         if (!mounted) return;
         setState(() => _briefingLoading = false);
-        await _audioPlayer.play(
-          BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
+        await deleteTtsAudioTempFile(_briefingTempAudioPath);
+        _briefingTempAudioPath = await writeTtsAudioTempFile(
+          prefix: 'carplay-briefing-tts',
+          bytes: bytes,
+        );
+        await playTtsAudioFile(
+          _audioPlayer,
+          path: _briefingTempAudioPath!,
         );
         await _waitForAudioToFinish();
       }
@@ -387,8 +397,13 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
   String _parseTtsError(dynamic e) {
     final raw = e.toString();
     final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(raw);
-    return match?.group(1) ??
-        'Couldn’t generate audio. Check Settings → Voice and try again.';
+    final detail = match?.group(1)?.trim();
+    if (detail?.isNotEmpty == true) return detail!;
+    final trimmed = raw.trim();
+    if (trimmed.isNotEmpty && trimmed != 'null') {
+      return 'Couldn’t generate audio: $trimmed';
+    }
+    return 'Couldn’t generate audio. Check Settings → Voice and try again.';
   }
 
   String _focusLabel() {

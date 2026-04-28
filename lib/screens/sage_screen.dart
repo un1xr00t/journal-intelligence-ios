@@ -17,6 +17,7 @@ import '../models/detective_entry_draft.dart';
 import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
+import '../services/tts_audio_file_helper.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'admin_screen.dart';
@@ -742,6 +743,7 @@ class _SageScreenState extends State<SageScreen> {
   String? _ttsLoadingMessageId;
   String? _ttsErrorMessageId;
   String? _ttsErrorText;
+  String? _ttsTempAudioPath;
   String? _savedConversationId;
   int _messageCounter = 0;
   int _ttsRequestCounter = 0;
@@ -762,6 +764,7 @@ class _SageScreenState extends State<SageScreen> {
     super.initState();
     _handoff = widget.handoff;
     _composerCtrl.addListener(_handleComposerChanged);
+    unawaited(configureTtsAudioPlayer(_audioPlayer));
     _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted && !_ttsSequenceActive) {
         setState(() {
@@ -783,6 +786,7 @@ class _SageScreenState extends State<SageScreen> {
     _scroll.dispose();
     _focusNode.dispose();
     _audioPlayer.dispose();
+    unawaited(deleteTtsAudioTempFile(_ttsTempAudioPath));
     super.dispose();
   }
 
@@ -1872,6 +1876,7 @@ Return JSON only.
     });
 
     try {
+      await configureTtsAudioPlayer(_audioPlayer);
       await _audioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
       final hasVoiceKey = voiceSettings['has_voice_key'] == true;
@@ -1905,8 +1910,14 @@ Return JSON only.
         if (requestId != _ttsRequestCounter) return;
         if (!mounted) return;
         setState(() => _ttsLoadingMessageId = null);
-        await _audioPlayer.play(
-          BytesSource(Uint8List.fromList(bytes), mimeType: 'audio/mpeg'),
+        await deleteTtsAudioTempFile(_ttsTempAudioPath);
+        _ttsTempAudioPath = await writeTtsAudioTempFile(
+          prefix: 'sage-tts',
+          bytes: bytes,
+        );
+        await playTtsAudioFile(
+          _audioPlayer,
+          path: _ttsTempAudioPath!,
         );
         await _waitForAudioToFinish();
       }
@@ -1985,6 +1996,10 @@ Return JSON only.
     final parsed = _parseError(e);
     if (parsed != 'Something went wrong.') {
       return 'Couldn’t generate audio: $parsed';
+    }
+    final raw = e.toString().trim();
+    if (raw.isNotEmpty && raw != 'null') {
+      return 'Couldn’t generate audio: $raw';
     }
     return 'Couldn’t generate audio. Try again, or shorten the reply.';
   }
