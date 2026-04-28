@@ -15,20 +15,39 @@ class NotificationNudgesScreen extends StatefulWidget {
       _NotificationNudgesScreenState();
 }
 
-class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
+class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
+    with WidgetsBindingObserver {
   final _service = NotificationNudgeService();
 
   NotificationNudgeSettings _settings = NotificationNudgeSettings.defaults();
   NotificationBridgeStatus? _status;
+  Map<String, dynamic>? _currentPlaceSuggestion;
   bool _loading = true;
   bool _syncing = false;
   bool _capturingPlace = false;
+  bool _loadingCurrentPlace = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (!mounted || _loading || _capturingPlace || _loadingCurrentPlace) return;
+    if (_status?.locationAuthorized ?? false) {
+      _refreshCurrentPlaceSuggestion(silent: true);
+    }
   }
 
   Future<void> _load() async {
@@ -47,6 +66,9 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
         _status = results[1] as NotificationBridgeStatus;
         _loading = false;
       });
+      if ((_status?.locationAuthorized ?? false)) {
+        _refreshCurrentPlaceSuggestion(silent: true);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -71,6 +93,9 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
       final status = await _service.requestLocationPermission();
       if (!mounted) return;
       setState(() => _status = status);
+      if (status.locationAuthorized) {
+        _refreshCurrentPlaceSuggestion(silent: true);
+      }
     } catch (e) {
       _showMessage('Could not request location permission.', details: e);
     }
@@ -176,6 +201,40 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
     onSelected(picked.hour, picked.minute);
   }
 
+  Future<void> _refreshCurrentPlaceSuggestion({bool silent = false}) async {
+    final status = _status;
+    if (status == null) return;
+    if (!status.locationAuthorized) {
+      if (!silent) {
+        _showMessage(
+          'Location access needs to be on before the app can suggest nearby places.',
+        );
+      }
+      return;
+    }
+
+    setState(() => _loadingCurrentPlace = true);
+    try {
+      final location = await _service.getCurrentLocationDetails();
+      final suggestedName = location['placeName']?.toString().trim() ?? '';
+      if (!mounted) return;
+      setState(() {
+        _currentPlaceSuggestion = {
+          ...location,
+          'placeName':
+              suggestedName.isNotEmpty ? suggestedName : 'Current Spot',
+        };
+        _loadingCurrentPlace = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingCurrentPlace = false);
+      if (!silent) {
+        _showMessage('Could not detect your current place.', details: e);
+      }
+    }
+  }
+
   Future<void> _addPlace() async {
     final status = _status;
     if (status == null) return;
@@ -190,82 +249,85 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
       if (!mounted || !(_status?.locationAuthorized ?? false)) return;
     }
 
-    final nameController = TextEditingController();
-    final enteredPlaceName = await showCupertinoDialog<String>(
-      context: context,
-      builder: (context) {
-        return DefaultTextStyle.merge(
-          style: const TextStyle(decoration: TextDecoration.none),
-          child: CupertinoAlertDialog(
-            title: const Text('Save This Place'),
-            content: Column(
-              children: [
-                const SizedBox(height: 8),
-                const Text(
-                  'Stand where you want the nudge to trigger. You can name it yourself or let the app suggest a place name from your current location.',
-                  style: TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                CupertinoTextField(
-                  controller: nameController,
-                  placeholder: 'Optional: Boyce Park, Soccer Field, Home...',
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: JournalColors.bgSurface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: JournalColors.border),
-                  ),
-                  style: const TextStyle(color: JournalColors.textPrimary),
-                  placeholderStyle:
-                      const TextStyle(color: JournalColors.textMuted),
-                  autofocus: true,
-                ),
-              ],
-            ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              CupertinoDialogAction(
-                onPressed: () =>
-                    Navigator.of(context).pop(nameController.text.trim()),
-                child: const Text('Use Current Spot'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    nameController.dispose();
-
-    if (enteredPlaceName == null) return;
-
     setState(() => _capturingPlace = true);
     try {
       final location = await _service.getCurrentLocationDetails();
-      final suggestedName = location['placeName']?.toString().trim() ?? '';
-      final finalPlaceName = enteredPlaceName.trim().isNotEmpty
-          ? enteredPlaceName.trim()
-          : (suggestedName.isNotEmpty ? suggestedName : 'Saved Place');
-      final nextPlaces = [
-        ..._settings.places,
-        NudgePlace(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          name: finalPlaceName,
-          latitude: location['latitude'] ?? 0,
-          longitude: location['longitude'] ?? 0,
-        ),
-      ];
       if (!mounted) return;
       setState(() => _capturingPlace = false);
-      await _updateSettings(_settings.copyWith(places: nextPlaces));
+      final suggestedName = location['placeName']?.toString().trim() ?? '';
+      final placeName = await _showAddPlaceSheet(
+        suggestedName: suggestedName,
+        latitude: location['latitude'] as double? ?? 0,
+        longitude: location['longitude'] as double? ?? 0,
+      );
+      if (placeName == null || placeName.trim().isEmpty) return;
+      await _savePlace(
+        name: placeName.trim(),
+        latitude: location['latitude'] ?? 0,
+        longitude: location['longitude'] ?? 0,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _capturingPlace = false);
       _showMessage('Could not capture your current location.', details: e);
     }
+  }
+
+  Future<String?> _showAddPlaceSheet({
+    required String suggestedName,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final controller = TextEditingController(text: suggestedName);
+    final result = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) {
+        return DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _AddPlaceSheet(
+            controller: controller,
+            suggestedName: suggestedName,
+            latitude: latitude,
+            longitude: longitude,
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _savePlace({
+    required String name,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final alreadySaved = _settings.places.any(
+      (place) => place.name.trim().toLowerCase() == name.trim().toLowerCase(),
+    );
+    if (alreadySaved) {
+      _showMessage('$name is already in your saved places.');
+      return;
+    }
+
+    final nextPlaces = [
+      ..._settings.places,
+      NudgePlace(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: name,
+        latitude: latitude,
+        longitude: longitude,
+      ),
+    ];
+    await _updateSettings(_settings.copyWith(places: nextPlaces));
+    if (!mounted) return;
+    setState(() {
+      _currentPlaceSuggestion = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'placeName': name,
+      };
+    });
   }
 
   Future<void> _removePlace(NudgePlace place) async {
@@ -343,6 +405,15 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
     final twelveHour = normalizedHour % 12 == 0 ? 12 : normalizedHour % 12;
     final minuteLabel = minute.toString().padLeft(2, '0');
     return '$twelveHour:$minuteLabel $period';
+  }
+
+  bool get _currentSuggestionAlreadySaved {
+    final placeName =
+        _currentPlaceSuggestion?['placeName']?.toString().trim().toLowerCase();
+    if (placeName == null || placeName.isEmpty) return false;
+    return _settings.places.any(
+      (place) => place.name.trim().toLowerCase() == placeName,
+    );
   }
 
   @override
@@ -556,6 +627,59 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
                             const _Divider(),
                             Padding(
                               padding:
+                                  const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                              child: _currentSuggestionAlreadySaved
+                                  ? _CurrentPlaceStatusRow(
+                                      loading: _loadingCurrentPlace,
+                                      suggestion: _currentPlaceSuggestion,
+                                      hasLocationAccess:
+                                          _status?.locationAuthorized ?? false,
+                                      onRefresh: _refreshCurrentPlaceSuggestion,
+                                    )
+                                  : _SmartPlaceCard(
+                                      loading: _loadingCurrentPlace,
+                                      suggestion: _currentPlaceSuggestion,
+                                      hasLocationAccess:
+                                          _status?.locationAuthorized ?? false,
+                                      savedPlaces: _settings.places,
+                                      onRefresh: _refreshCurrentPlaceSuggestion,
+                                      onSave: () async {
+                                        final suggestion =
+                                            _currentPlaceSuggestion;
+                                        if (suggestion == null) return;
+                                        final suggestedName =
+                                            suggestion['placeName']
+                                                    ?.toString() ??
+                                                '';
+                                        final placeName =
+                                            await _showAddPlaceSheet(
+                                          suggestedName: suggestedName,
+                                          latitude: suggestion['latitude']
+                                                  as double? ??
+                                              0,
+                                          longitude: suggestion['longitude']
+                                                  as double? ??
+                                              0,
+                                        );
+                                        if (placeName == null ||
+                                            placeName.trim().isEmpty) {
+                                          return;
+                                        }
+                                        await _savePlace(
+                                          name: placeName.trim(),
+                                          latitude: suggestion['latitude']
+                                                  as double? ??
+                                              0,
+                                          longitude: suggestion['longitude']
+                                                  as double? ??
+                                              0,
+                                        );
+                                      },
+                                    ),
+                            ),
+                            const _Divider(),
+                            Padding(
+                              padding:
                                   const EdgeInsets.fromLTRB(16, 14, 16, 16),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,11 +739,15 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen> {
                                   const SizedBox(height: 8),
                                   AdaptiveButton(
                                     style: AdaptiveButtonStyle.prominentGlass,
-                                    onPressed:
-                                        _capturingPlace ? null : _addPlace,
+                                    onPressed: _capturingPlace ||
+                                            _currentSuggestionAlreadySaved
+                                        ? null
+                                        : _addPlace,
                                     label: _capturingPlace
                                         ? 'Saving Current Spot...'
-                                        : 'Add Current Location',
+                                        : _currentSuggestionAlreadySaved
+                                            ? 'Current Place Already Saved'
+                                            : 'Add Current Location',
                                   ),
                                 ],
                               ),
@@ -1144,6 +1272,487 @@ class _PlaceRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SmartPlaceCard extends StatelessWidget {
+  const _SmartPlaceCard({
+    required this.loading,
+    required this.suggestion,
+    required this.hasLocationAccess,
+    required this.savedPlaces,
+    required this.onRefresh,
+    required this.onSave,
+  });
+
+  final bool loading;
+  final Map<String, dynamic>? suggestion;
+  final bool hasLocationAccess;
+  final List<NudgePlace> savedPlaces;
+  final Future<void> Function({bool silent}) onRefresh;
+  final Future<void> Function() onSave;
+
+  bool get _alreadySaved {
+    final placeName = suggestion?['placeName']?.toString().trim().toLowerCase();
+    if (placeName == null || placeName.isEmpty) return false;
+    return savedPlaces.any(
+      (place) => place.name.trim().toLowerCase() == placeName,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final placeName = suggestion?['placeName']?.toString().trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _withAlpha(JournalColors.accent, 0.14),
+            _withAlpha(JournalColors.info, 0.08),
+            _withAlpha(JournalColors.bgSurface, 0.92),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _withAlpha(JournalColors.borderBright, 0.9)),
+        boxShadow: const [
+          BoxShadow(
+            color: JournalColors.accentGlow,
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.accent, 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  CupertinoIcons.sparkles,
+                  color: JournalColors.textPrimary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SMART PLACE DETECTION',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Catch the place you are actually standing in.',
+                      style: TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (!hasLocationAccess)
+            const Text(
+              'Enable location access and this screen can suggest your current place while you are here, without always-on background tracking.',
+              style: TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            )
+          else if (loading)
+            const Row(
+              children: [
+                CupertinoActivityIndicator(color: JournalColors.accent),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Checking your current spot...',
+                    style: TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (placeName != null && placeName.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  placeName,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _alreadySaved
+                      ? 'Already saved for location nudges. Refresh if you moved somewhere new.'
+                      : 'Looks like you are here right now. Save it and let iPhone ask about Wyatt or an activity the next time you arrive.',
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            )
+          else
+            const Text(
+              'No nearby place name came back yet. Refresh while you are physically at the park, home, school, or store you care about.',
+              style: TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: AdaptiveButton(
+                  style: AdaptiveButtonStyle.prominentGlass,
+                  onPressed: !hasLocationAccess || loading || _alreadySaved
+                      ? null
+                      : () => onSave(),
+                  label: _alreadySaved ? 'Already Saved' : 'Save This Place',
+                ),
+              ),
+              const SizedBox(width: 10),
+              CupertinoButton(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                onPressed: loading ? null : () => onRefresh(silent: false),
+                child: const Text(
+                  'Refresh',
+                  style: TextStyle(
+                    color: JournalColors.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentPlaceStatusRow extends StatelessWidget {
+  const _CurrentPlaceStatusRow({
+    required this.loading,
+    required this.suggestion,
+    required this.hasLocationAccess,
+    required this.onRefresh,
+  });
+
+  final bool loading;
+  final Map<String, dynamic>? suggestion;
+  final bool hasLocationAccess;
+  final Future<void> Function({bool silent}) onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeName =
+        suggestion?['placeName']?.toString().trim() ?? 'Current place';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _withAlpha(JournalColors.success, 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              CupertinoIcons.check_mark_circled_solid,
+              color: JournalColors.success,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasLocationAccess && !loading
+                      ? 'Current place: $placeName'
+                      : 'Current place detection unavailable',
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  hasLocationAccess && !loading
+                      ? 'Already saved for nudges.'
+                      : 'Enable location access to keep this updated.',
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: loading ? null : () => onRefresh(silent: false),
+            child: Text(
+              'Refresh',
+              style: TextStyle(
+                color: loading ? JournalColors.textMuted : JournalColors.accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddPlaceSheet extends StatelessWidget {
+  const _AddPlaceSheet({
+    required this.controller,
+    required this.suggestedName,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  final TextEditingController controller;
+  final String suggestedName;
+  final double latitude;
+  final double longitude;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+        decoration: BoxDecoration(
+          color: _withAlpha(JournalColors.bgCard, 0.98),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: JournalColors.borderBright),
+          boxShadow: const [
+            BoxShadow(
+              color: JournalColors.accentGlow,
+              blurRadius: 28,
+              offset: Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.textMuted, 0.5),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        _withAlpha(JournalColors.accent, 0.24),
+                        _withAlpha(JournalColors.info, 0.16),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: JournalColors.borderBright),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.location_solid,
+                    color: JournalColors.textPrimary,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'SAVE A NUDGE PLACE',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Turn this spot into a smarter arrival reminder.',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (suggestedName.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgSurface, 0.75),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: JournalColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ON-DEVICE PLACE SUGGESTION',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      suggestedName,
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (suggestedName.isNotEmpty) const SizedBox(height: 14),
+            const Text(
+              'Name this place however you want it to appear in the notification.',
+              style: TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 12),
+            CupertinoTextField(
+              controller: controller,
+              placeholder: 'Boyce Park, Soccer Field, Mom’s House...',
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: JournalColors.bgSurface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: JournalColors.borderBright),
+              ),
+              style: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 16,
+              ),
+              placeholderStyle: const TextStyle(
+                color: JournalColors.textMuted,
+              ),
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Coordinates: ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}',
+              style: const TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: CupertinoButton(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    color: _withAlpha(JournalColors.bgSurface, 0.9),
+                    borderRadius: BorderRadius.circular(16),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: JournalColors.textSecondary),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AdaptiveButton(
+                    style: AdaptiveButtonStyle.prominentGlass,
+                    onPressed: () =>
+                        Navigator.of(context).pop(controller.text.trim()),
+                    label: 'Save Place',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
