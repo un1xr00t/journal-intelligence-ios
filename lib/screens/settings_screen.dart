@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
+import 'notification_nudges_screen.dart';
 import 'resources_screen.dart';
 import 'sage_settings_screen.dart';
 
@@ -524,6 +525,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _SettingsSectionCard(
                       accentColor: JournalColors.orange,
                       children: [
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.bell_fill,
+                          iconColor: JournalColors.accent,
+                          label: 'Notification Nudges',
+                          subtitle:
+                              'Location prompts, Wyatt reminders, and local lock-screen nudges.',
+                          onTap: () => _push(const NotificationNudgesScreen()),
+                        ),
+                        const _SectionDivider(),
                         _SettingsActionRow(
                           icon: CupertinoIcons.chat_bubble_2_fill,
                           iconColor: JournalColors.orange,

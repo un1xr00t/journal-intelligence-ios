@@ -12,6 +12,10 @@ class LaunchIntentProvider extends ChangeNotifier {
   int get intentVersion => _intentVersion;
   String? get lastRoute => _lastUri?.toString();
   String? get routePath => _lastUri?.path;
+  String? get writePrefillText => _lastUri?.queryParameters['prefill'];
+  String? get sagePrefillText => _lastUri?.queryParameters['prefill'];
+  bool get shouldAutoSendSagePrefill =>
+      _lastUri?.queryParameters['auto_send'] == '1';
   String? get companionFocus => _lastUri?.queryParameters['focus'];
   bool get hasPendingIntent => _intentVersion != _handledVersion;
   bool get shouldOpenCarPlayCompanion =>

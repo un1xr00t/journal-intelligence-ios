@@ -2,6 +2,8 @@ import Flutter
 import Foundation
 
 final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
+  static let shared = LaunchRouteStreamHandler()
+
   private var eventSink: FlutterEventSink?
   private var pendingRoutes: [String] = []
 

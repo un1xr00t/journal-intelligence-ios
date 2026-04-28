@@ -35,6 +35,8 @@
 	<string>Allow Journal Intelligence to take photos for journal entries.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sign in to Journal Intelligence with Face ID</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow Journal Intelligence to trigger local reminders when you arrive at saved places.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Journal Intelligence to capture voice journal entries.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

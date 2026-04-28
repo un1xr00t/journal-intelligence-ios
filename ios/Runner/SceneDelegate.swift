@@ -6,11 +6,14 @@ class SceneDelegate: FlutterSceneDelegate {
     "name.williamthomas.journalIntelligence.route"
   private static let launchRouteUserInfoKey = "route"
   private let speechRecognitionService = SpeechRecognitionService()
-  private let launchRouteStreamHandler = LaunchRouteStreamHandler()
+  private let launchRouteStreamHandler = LaunchRouteStreamHandler.shared
+  private let notificationBridge = NotificationBridge.shared
   private var voiceChannelsConfigured = false
   private var methodChannel: FlutterMethodChannel?
+  private var notificationMethodChannel: FlutterMethodChannel?
   private var eventChannel: FlutterEventChannel?
   private let methodChannelName = "journal_intelligence/voice_entry"
+  private let notificationMethodChannelName = "journal_intelligence/notifications"
   private let eventChannelName = "journal_intelligence/voice_entry/events"
   private var launchRouteEventChannel: FlutterEventChannel?
   private let launchRouteEventChannelName =
@@ -92,7 +95,27 @@ class SceneDelegate: FlutterSceneDelegate {
       }
     }
 
+    let notificationMethodChannel = FlutterMethodChannel(
+      name: notificationMethodChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
+    notificationMethodChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(
+          FlutterError(
+            code: "notifications_unavailable",
+            message: "Notifications are unavailable right now.",
+            details: nil
+          )
+        )
+        return
+      }
+
+      self.notificationBridge.handle(call, result: result)
+    }
+
     self.methodChannel = methodChannel
+    self.notificationMethodChannel = notificationMethodChannel
     self.eventChannel = eventChannel
     self.launchRouteEventChannel = launchRouteEventChannel
     voiceChannelsConfigured = true

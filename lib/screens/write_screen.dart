@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -24,6 +26,8 @@ class _WriteScreenState extends State<WriteScreen> {
   final _ctrl = TextEditingController();
   final _focusNode = FocusNode();
   final _picker = ImagePicker();
+  LaunchIntentProvider? _launchIntent;
+  int _lastLaunchIntentVersion = 0;
 
   bool _saving = false;
   bool _saved = false;
@@ -53,10 +57,62 @@ class _WriteScreenState extends State<WriteScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final launchIntent = context.read<LaunchIntentProvider>();
+    if (_launchIntent == launchIntent) return;
+
+    _launchIntent?.removeListener(_handleLaunchIntentChange);
+    _launchIntent = launchIntent;
+    _launchIntent?.addListener(_handleLaunchIntentChange);
+    _handleLaunchIntentChange();
+  }
+
+  @override
   void dispose() {
+    _launchIntent?.removeListener(_handleLaunchIntentChange);
     _ctrl.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _handleLaunchIntentChange() {
+    final launchIntent = _launchIntent;
+    if (launchIntent == null) return;
+
+    final version = launchIntent.intentVersion;
+    final routePath = launchIntent.routePath;
+    if (version == _lastLaunchIntentVersion) return;
+    if (routePath != '/write' && routePath != '/compose') return;
+
+    _lastLaunchIntentVersion = version;
+    final prefill = launchIntent.writePrefillText?.trim();
+    if (prefill == null || prefill.isEmpty) return;
+
+    final existing = _ctrl.text.trim();
+    final nextText = existing.isEmpty
+        ? prefill
+        : existing.contains(prefill)
+            ? _ctrl.text
+            : '${_ctrl.text.trimRight()}\n\n$prefill';
+
+    _ctrl.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+
+    if (mounted) {
+      setState(() {
+        _saved = false;
+        _error = null;
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   Future<void> _pickImage() async {

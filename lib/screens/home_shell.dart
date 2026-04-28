@@ -10,6 +10,9 @@ import 'package:provider/provider.dart';
 import '../providers/launch_intent_provider.dart';
 import 'carplay_companion_screen.dart';
 
+import 'budget_planner_screen.dart';
+import 'notification_nudges_screen.dart';
+import 'resources_screen.dart';
 import 'today_screen.dart';
 import 'write_screen.dart';
 import 'timeline_screen.dart';
@@ -32,6 +35,7 @@ class _HomeShellState extends State<HomeShell> {
   int _lastHandledIntentVersion = 0;
   bool _carPlayCompanionVisible = false;
   bool _sageVisible = false;
+  bool _overlayRouteVisible = false;
 
   static const _screens = [
     TodayScreen(),
@@ -97,7 +101,21 @@ class _HomeShellState extends State<HomeShell> {
 
     if (launchIntent.shouldOpenSage && !_sageVisible) {
       launchIntent.markHandled(version);
-      _openSage();
+      _openSage(
+        handoff: SageHandoff(
+          prefillText: launchIntent.sagePrefillText,
+          autoSendPrefill: launchIntent.shouldAutoSendSagePrefill,
+          autoStartGreeting: false,
+          showDefaultWelcome: true,
+        ),
+      );
+      return;
+    }
+
+    final overlayRoute = _overlayRouteFor(launchIntent.routePath);
+    if (overlayRoute != null && !_overlayRouteVisible) {
+      launchIntent.markHandled(version);
+      _openOverlayRoute(overlayRoute);
       return;
     }
 
@@ -120,14 +138,42 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
-  void _openSage() {
+  Widget? _overlayRouteFor(String? routePath) {
+    return switch (routePath) {
+      '/resources' => const ResourcesScreen(),
+      '/budget' => const BudgetPlannerScreen(),
+      '/notification-nudges' => const NotificationNudgesScreen(),
+      _ => null,
+    };
+  }
+
+  void _openOverlayRoute(Widget screen) {
+    _overlayRouteVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _overlayRouteVisible = false;
+        return;
+      }
+      await Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder: (_) => DefaultTextStyle.merge(
+            style: const TextStyle(decoration: TextDecoration.none),
+            child: screen,
+          ),
+        ),
+      );
+      _overlayRouteVisible = false;
+    });
+  }
+
+  void _openSage({SageHandoff handoff = const SageHandoff.standard()}) {
     _sageVisible = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
         _sageVisible = false;
         return;
       }
-      await pushSageScreen(context);
+      await pushSageScreen(context, handoff: handoff);
       _sageVisible = false;
     });
   }
