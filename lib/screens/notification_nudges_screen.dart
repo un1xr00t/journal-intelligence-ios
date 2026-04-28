@@ -21,12 +21,15 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
 
   NotificationNudgeSettings _settings = NotificationNudgeSettings.defaults();
   NotificationBridgeStatus? _status;
+  JournalPatternProfile? _patternProfile;
   Map<String, dynamic>? _currentPlaceSuggestion;
   bool _loading = true;
   bool _syncing = false;
+  bool _analyzingPatterns = false;
   bool _capturingPlace = false;
   bool _loadingCurrentPlace = false;
   String? _error;
+  String? _patternError;
 
   NudgePlace? _matchingSavedPlace({
     String? name,
@@ -78,13 +81,19 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
         _service.loadSettings(),
         _service.getStatus(),
       ]);
+      final loadedSettings = results[0] as NotificationNudgeSettings;
+      final patternProfile = await _buildPatternProfileFor(loadedSettings);
       if (!mounted) return;
       setState(() {
-        _settings = results[0] as NotificationNudgeSettings;
+        _settings = loadedSettings;
         _status = results[1] as NotificationBridgeStatus;
+        _patternProfile = patternProfile;
         _loading = false;
       });
-      await _service.syncSchedules(_settings);
+      await _service.syncSchedules(
+        _settings,
+        journalPatternProfile: patternProfile,
+      );
       if (!mounted) return;
       if ((_status?.locationAuthorized ?? false)) {
         _refreshCurrentPlaceSuggestion(silent: true);
@@ -129,11 +138,16 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
     });
 
     try {
-      await _service.syncSchedules(nextSettings);
+      final patternProfile = await _buildPatternProfileFor(nextSettings);
+      await _service.syncSchedules(
+        nextSettings,
+        journalPatternProfile: patternProfile,
+      );
       final status = await _service.getStatus();
       if (!mounted) return;
       setState(() {
         _status = status;
+        _patternProfile = patternProfile;
         _syncing = false;
       });
     } catch (e) {
@@ -141,6 +155,46 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       setState(() => _syncing = false);
       _showMessage('Could not update your nudges.', details: e);
       _load();
+    }
+  }
+
+  Future<JournalPatternProfile?> _buildPatternProfileFor(
+    NotificationNudgeSettings settings,
+  ) async {
+    if (!settings.journalPatternPromptsEnabled) {
+      if (mounted) {
+        setState(() {
+          _analyzingPatterns = false;
+          _patternError = null;
+        });
+      }
+      return null;
+    }
+
+    if (mounted) {
+      setState(() {
+        _analyzingPatterns = true;
+        _patternError = null;
+      });
+    }
+
+    try {
+      await _service.syncObservedLocationEvents();
+      final patternProfile = await _service.buildJournalPatternProfile(
+        settings,
+      );
+      if (mounted) {
+        setState(() => _analyzingPatterns = false);
+      }
+      return patternProfile;
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _analyzingPatterns = false;
+          _patternError = _friendlyError(e);
+        });
+      }
+      return null;
     }
   }
 
@@ -635,6 +689,40 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                       ),
                       const SizedBox(height: 20),
                       const _SectionTitle(
+                        title: 'Adaptive Intelligence',
+                        subtitle:
+                            'Use recent journal patterns on-device to make home and work nudges more emotionally aware.',
+                      ),
+                      const SizedBox(height: 10),
+                      GlassCard(
+                        child: Column(
+                          children: [
+                            _ToggleRow(
+                              icon: CupertinoIcons.sparkles,
+                              iconColor: JournalColors.accent,
+                              title: 'Use Journal Patterns',
+                              subtitle:
+                                  'Keep pattern learning on-device so work-to-home nudges can adapt to stress, routine, and timing.',
+                              value: _settings.journalPatternPromptsEnabled,
+                              onChanged: (value) => _updateSettings(
+                                _settings.copyWith(
+                                  journalPatternPromptsEnabled: value,
+                                ),
+                              ),
+                            ),
+                            const _Divider(),
+                            _PatternInsightPanel(
+                              enabled: _settings.journalPatternPromptsEnabled,
+                              analyzing: _analyzingPatterns,
+                              error: _patternError,
+                              patternProfile: _patternProfile,
+                              onRefresh: () => _updateSettings(_settings),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const _SectionTitle(
                         title: 'Location Nudges',
                         subtitle:
                             'Save parks, home, school, or other places and fire local reminders when you arrive or leave.',
@@ -1087,6 +1175,210 @@ class _PermissionRow extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatternInsightPanel extends StatelessWidget {
+  const _PatternInsightPanel({
+    required this.enabled,
+    required this.analyzing,
+    required this.error,
+    required this.patternProfile,
+    required this.onRefresh,
+  });
+
+  final bool enabled;
+  final bool analyzing;
+  final String? error;
+  final JournalPatternProfile? patternProfile;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget child;
+    if (!enabled) {
+      child = const Text(
+        'Turn this on to analyze recent entries locally and explain why a home or work nudge was suggested. Nothing from this pattern scan leaves the device.',
+        style: TextStyle(
+          color: JournalColors.textSecondary,
+          fontSize: 13,
+          height: 1.45,
+        ),
+      );
+    } else if (analyzing) {
+      child = const Row(
+        children: [
+          CupertinoActivityIndicator(color: JournalColors.accent),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Scanning recent entries on-device for home, work, family, and timing patterns...',
+              style: TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (error != null && error!.isNotEmpty) {
+      child = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            error!,
+            style: const TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: onRefresh,
+            child: const Text(
+              'Try Again',
+              style: TextStyle(
+                color: JournalColors.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (patternProfile == null || !patternProfile!.hasSignals) {
+      child = const Text(
+        'The app needs a little more pattern signal before it can personalize these nudges. Saving both home and work helps the work-to-home transition kick in sooner.',
+        style: TextStyle(
+          color: JournalColors.textSecondary,
+          fontSize: 13,
+          height: 1.45,
+        ),
+      );
+    } else {
+      child = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Suggested because the app found ${patternProfile!.entriesAnalyzed} recent-entry signals like these:',
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...patternProfile!.reasons.map(
+            (reason) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(top: 6),
+                    decoration: const BoxDecoration(
+                      color: JournalColors.accent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      reason,
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Pattern prompts stay explainable and only rewrite local notification copy. They do not upload location history or your movement patterns.',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.info, 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  CupertinoIcons.waveform_path_ecg,
+                  color: JournalColors.info,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'EXPLAINABLE SIGNALS',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Why the nudge got smarter',
+                      style: TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: enabled && !analyzing ? onRefresh : null,
+                child: const Text(
+                  'Refresh',
+                  style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
         ],
       ),
     );

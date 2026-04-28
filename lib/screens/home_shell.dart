@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/launch_intent_provider.dart';
+import '../services/notification_nudge_service.dart';
 import 'carplay_companion_screen.dart';
 
 import 'budget_planner_screen.dart';
@@ -30,8 +31,10 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  static bool _adaptiveNudgesBootstrapped = false;
   late int _selectedIndex;
   LaunchIntentProvider? _launchIntent;
+  final _notificationNudgeService = NotificationNudgeService();
   int _lastHandledIntentVersion = 0;
   bool _carPlayCompanionVisible = false;
   bool _sageVisible = false;
@@ -49,6 +52,9 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialTab.clamp(0, _screens.length - 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrapAdaptiveNudges();
+    });
   }
 
   @override
@@ -176,6 +182,32 @@ class _HomeShellState extends State<HomeShell> {
       await pushSageScreen(context, handoff: handoff);
       _sageVisible = false;
     });
+  }
+
+  Future<void> _bootstrapAdaptiveNudges() async {
+    if (_adaptiveNudgesBootstrapped) return;
+    _adaptiveNudgesBootstrapped = true;
+
+    try {
+      final settings = await _notificationNudgeService.loadSettings();
+      if (!settings.locationPromptsEnabled &&
+          !settings.journalPatternPromptsEnabled) {
+        return;
+      }
+
+      await _notificationNudgeService.syncObservedLocationEvents();
+      final patternProfile = settings.journalPatternPromptsEnabled
+          ? await _notificationNudgeService.buildJournalPatternProfile(
+              settings,
+            )
+          : null;
+      await _notificationNudgeService.syncSchedules(
+        settings,
+        journalPatternProfile: patternProfile,
+      );
+    } catch (_) {
+      // Keep boot resilient; notification learning should never block the shell.
+    }
   }
 
   @override
