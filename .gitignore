@@ -43,6 +43,7 @@ ios/Runner*
 !ios/Runner/
 ios/Runner/*
 !ios/Runner/Info.plist
+!ios/Runner/AppDelegate.swift
 
 # Symbolication related
 app.*.symbols
