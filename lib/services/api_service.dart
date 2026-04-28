@@ -12,6 +12,8 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http_parser/http_parser.dart';
 
+import 'ai_response_limits.dart';
+
 // Returns the correct MediaType for an image filename so the backend
 // can pass a valid media_type to the Anthropic API.
 MediaType _imageMimeType(String filename) {
@@ -590,6 +592,7 @@ class ApiService {
     required String contextString,
     bool webSearchEnabled = false,
     List<Map<String, dynamic>> attachments = const [],
+    int maxTokens = AiResponseLimits.sageReplyMaxTokens,
   }) async {
     final imageAttachments = attachments
         .where((item) => item['kind']?.toString() == 'image')
@@ -601,6 +604,7 @@ class ApiService {
     final body = <String, dynamic>{
       'messages': messages,
       'context_string': contextString,
+      'max_tokens': maxTokens,
       if (webSearchEnabled) 'enable_web_search': true,
       if (fileAttachments.isNotEmpty) 'attachments': fileAttachments,
       if (imageAttachments.isNotEmpty) 'images': imageAttachments,

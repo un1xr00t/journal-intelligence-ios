@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
@@ -9,6 +9,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
@@ -24,10 +25,6 @@ class TimelineScreen extends StatefulWidget {
 
 class _TimelineScreenState extends State<TimelineScreen> {
   static const int _pageSize = 20;
-  static const int _summarySpeechMaxChars = 1400;
-  static const int _summarySpeechMaxBytes = 1800;
-  static const int _summarySageMaxChars = 2400;
-  static const int _summarySageMaxBytes = 3200;
   static const List<String> _summaryTones = [
     'therapist',
     'best_friend',
@@ -261,7 +258,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         );
       }
 
-      final chunks = _speechChunks(insight);
+      final chunks = buildSpeechChunks(insight);
       if (chunks.isEmpty) throw Exception('No text to speak.');
       final sageSettings = await _sageProfile.loadSettings();
 
@@ -336,57 +333,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
     );
   }
 
-  List<String> _speechChunks(String raw) {
-    final cleaned = raw
-        .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
-        .replaceAll(RegExp(r'[*_`>#~-]+'), ' ')
-        .replaceAll(RegExp(r'\[[^\]]+\]\([^)]+\)'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (cleaned.isEmpty) return const [];
-
-    const maxChunkChars = 2800;
-    const maxChunkBytes = 3500;
-    final chunks = <String>[];
-    var remaining = cleaned;
-
-    while (remaining.isNotEmpty) {
-      if (remaining.length <= maxChunkChars &&
-          utf8.encode(remaining).length <= maxChunkBytes) {
-        chunks.add(remaining);
-        break;
-      }
-
-      var hardLimit = 0;
-      var bytes = 0;
-      for (var i = 0; i < remaining.length; i++) {
-        bytes += utf8.encode(remaining[i]).length;
-        if (i >= maxChunkChars || bytes >= maxChunkBytes) break;
-        hardLimit = i + 1;
-      }
-
-      if (hardLimit <= 0) hardLimit = remaining.length.clamp(0, maxChunkChars);
-
-      var splitAt = remaining.lastIndexOf(RegExp(r'[.!?]\s'), hardLimit);
-      if (splitAt < hardLimit * 0.45) {
-        splitAt = remaining.lastIndexOf(RegExp(r'[,;:]\s'), hardLimit);
-      }
-      if (splitAt < hardLimit * 0.45) {
-        splitAt = remaining.lastIndexOf(' ', hardLimit);
-      }
-      if (splitAt < hardLimit * 0.45) splitAt = hardLimit;
-
-      chunks.add(remaining.substring(0, splitAt).trim());
-      remaining = remaining.substring(splitAt).trim();
-    }
-
-    return chunks.where((chunk) => chunk.isNotEmpty).toList();
-  }
-
   String _prepareSummaryForSpeech() {
     return _prepareSummaryText(
-      maxChars: _summarySpeechMaxChars,
-      maxBytes: _summarySpeechMaxBytes,
+      maxChars: AiResponseLimits.livingSummarySpeechMaxChars,
+      maxBytes: AiResponseLimits.livingSummarySpeechMaxBytes,
       truncatedSuffix:
           '\n\n[Audio preview trimmed. Open Continue in Sage for the full insight.]',
     );
@@ -394,8 +344,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   String _prepareSummaryForSage() {
     return _prepareSummaryText(
-      maxChars: _summarySageMaxChars,
-      maxBytes: _summarySageMaxBytes,
+      maxChars: AiResponseLimits.livingSummarySageHandoffMaxChars,
+      maxBytes: AiResponseLimits.livingSummarySageHandoffMaxBytes,
       truncatedSuffix:
           '\n\n[Timeline note: this insight was trimmed slightly before handoff so the Sage follow-up can continue reliably.]',
     );
@@ -410,46 +360,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
     final cleaned =
         rawInsight.split('---ACTIONS---').first.replaceAll('\u0000', '').trim();
     if (cleaned.isEmpty) return '';
-    return _truncateUtf8Text(
+    return truncateUtf8Text(
       cleaned,
       maxChars: maxChars,
       maxBytes: maxBytes,
       truncatedSuffix: truncatedSuffix,
     );
-  }
-
-  String _truncateUtf8Text(
-    String text, {
-    required int maxChars,
-    required int maxBytes,
-    required String truncatedSuffix,
-  }) {
-    if (text.length <= maxChars && utf8.encode(text).length <= maxBytes) {
-      return text;
-    }
-
-    final suffix = truncatedSuffix.trim();
-    final suffixBytes = utf8.encode('\n\n$suffix').length;
-    final safeByteBudget = math.max(0, maxBytes - suffixBytes);
-    final safeCharBudget = math.max(0, maxChars - suffix.length);
-    final buffer = StringBuffer();
-    var bytes = 0;
-    var chars = 0;
-
-    for (final rune in text.runes) {
-      final char = String.fromCharCode(rune);
-      final charBytes = utf8.encode(char).length;
-      if (chars + 1 > safeCharBudget || bytes + charBytes > safeByteBudget) {
-        break;
-      }
-      buffer.write(char);
-      chars += 1;
-      bytes += charBytes;
-    }
-
-    final trimmed = buffer.toString().trimRight();
-    if (trimmed.isEmpty) return text.substring(0, math.min(text.length, 400));
-    return '$trimmed\n\n$suffix';
   }
 
   String _parseTtsError(dynamic e) {

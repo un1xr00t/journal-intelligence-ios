@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models/detective_entry_draft.dart';
+import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
@@ -1548,6 +1549,7 @@ $latestContent
         messages: requestMessages,
         contextString: _buildContextPayload(_contextString!),
         webSearchEnabled: _settings.webSearchEnabled,
+        maxTokens: AiResponseLimits.sageReplyMaxTokens,
         attachments: outgoing.attachments
             .map((attachment) => attachment.toApiAttachmentPayload())
             .where((payload) => payload.isNotEmpty)
@@ -1634,6 +1636,7 @@ $assistantReply
 You are a memory extraction utility for Sage.
 Return JSON only.
 ''',
+        maxTokens: AiResponseLimits.sageUtilityMaxTokens,
       );
       final reply = response['reply']?.toString() ?? '';
       final parsed = _extractFacts(reply);
@@ -1878,7 +1881,7 @@ Return JSON only.
           'Voice requires an OpenAI API key. Add one in Settings → Voice, or switch AI provider to OpenAI.',
         );
       }
-      final chunks = _speechChunks(message.text);
+      final chunks = buildSpeechChunks(message.text);
       if (chunks.isEmpty) throw Exception('No text to speak.');
 
       if (!mounted) return;
@@ -1953,54 +1956,6 @@ Return JSON only.
         finish();
       },
     );
-  }
-
-  List<String> _speechChunks(String raw) {
-    final withoutActions = raw.split('---ACTIONS---').first;
-    final cleaned = withoutActions
-        .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
-        .replaceAll(RegExp(r'[*_`>#~-]+'), ' ')
-        .replaceAll(RegExp(r'\[[^\]]+\]\([^)]+\)'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (cleaned.isEmpty) return const [];
-
-    const maxChunkChars = 2800;
-    const maxChunkBytes = 3500;
-    final chunks = <String>[];
-    var remaining = cleaned;
-
-    while (remaining.isNotEmpty) {
-      if (remaining.length <= maxChunkChars &&
-          utf8.encode(remaining).length <= maxChunkBytes) {
-        chunks.add(remaining);
-        break;
-      }
-
-      var hardLimit = 0;
-      var bytes = 0;
-      for (var i = 0; i < remaining.length; i++) {
-        bytes += utf8.encode(remaining[i]).length;
-        if (i >= maxChunkChars || bytes >= maxChunkBytes) break;
-        hardLimit = i + 1;
-      }
-
-      if (hardLimit <= 0) hardLimit = remaining.length.clamp(0, maxChunkChars);
-
-      var splitAt = remaining.lastIndexOf(RegExp(r'[.!?]\s'), hardLimit);
-      if (splitAt < hardLimit * 0.45) {
-        splitAt = remaining.lastIndexOf(RegExp(r'[,;:]\s'), hardLimit);
-      }
-      if (splitAt < hardLimit * 0.45) {
-        splitAt = remaining.lastIndexOf(' ', hardLimit);
-      }
-      if (splitAt < hardLimit * 0.45) splitAt = hardLimit;
-
-      chunks.add(remaining.substring(0, splitAt).trim());
-      remaining = remaining.substring(splitAt).trim();
-    }
-
-    return chunks.where((chunk) => chunk.isNotEmpty).toList();
   }
 
   String _parseTtsError(dynamic e) {
@@ -2217,6 +2172,7 @@ $assistantText
           },
         ],
         contextString: _buildContextPayload(_contextString!),
+        maxTokens: AiResponseLimits.sageUtilityMaxTokens,
       );
       return response['reply']?.toString();
     } catch (_) {

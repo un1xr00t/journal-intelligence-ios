@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/launch_intent_provider.dart';
+import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
 import '../services/voice_entry_service.dart';
@@ -251,7 +252,7 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
         );
       }
 
-      final chunks = _speechChunks(speech);
+      final chunks = buildSpeechChunks(speech);
       if (chunks.isEmpty) throw Exception('No text to speak.');
       final sageSettings = await _sageProfile.loadSettings();
 
@@ -347,54 +348,6 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
     ];
 
     return lines.join(' ').trim();
-  }
-
-  List<String> _speechChunks(String raw) {
-    final sanitized =
-        raw.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (sanitized.isEmpty) return const <String>[];
-
-    const maxChunkLength = 650;
-    final parts = sanitized.split(RegExp(r'(?<=[.!?])\s+'));
-    final chunks = <String>[];
-    final buffer = StringBuffer();
-
-    for (final part in parts) {
-      final sentence = part.trim();
-      if (sentence.isEmpty) continue;
-
-      final candidate =
-          buffer.isEmpty ? sentence : '${buffer.toString()} $sentence';
-      if (candidate.length <= maxChunkLength) {
-        buffer
-          ..clear()
-          ..write(candidate);
-        continue;
-      }
-
-      if (buffer.isNotEmpty) {
-        chunks.add(buffer.toString());
-        buffer.clear();
-      }
-
-      if (sentence.length <= maxChunkLength) {
-        buffer.write(sentence);
-        continue;
-      }
-
-      var start = 0;
-      while (start < sentence.length) {
-        final end = (start + maxChunkLength).clamp(0, sentence.length);
-        chunks.add(sentence.substring(start, end).trim());
-        start = end;
-      }
-    }
-
-    if (buffer.isNotEmpty) {
-      chunks.add(buffer.toString());
-    }
-
-    return chunks.where((item) => item.trim().isNotEmpty).toList();
   }
 
   Map<String, dynamic> _readMap(dynamic value) {

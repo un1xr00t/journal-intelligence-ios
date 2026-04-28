@@ -94,6 +94,7 @@ These are listed in the app UI but currently route to placeholder views rather t
 ### Services
 
 - `lib/services/api_service.dart`: source of truth for all backend API calls, token handling, refresh behavior, attachment/media uploads, and saved floatchat fallback storage
+- `lib/services/ai_response_limits.dart`: shared Sage reply, living summary, and TTS chunk budgets
 - `lib/services/launch_route_service.dart`: listens for native launch route events
 - `lib/services/voice_entry_service.dart`: Flutter wrapper around native speech recognition channels
 - `lib/services/sage_profile_service.dart`: local Sage settings and memory persistence

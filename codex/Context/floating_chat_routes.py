@@ -23,6 +23,9 @@ ANTHROPIC_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 ANTHROPIC_IMAGE_TARGET_BYTES = 4_500_000
 ANTHROPIC_IMAGE_MAX_DIMENSION = 1568
 SAGE_VISION_MODEL = "claude-sonnet-4-6"
+DEFAULT_SAGE_MAX_TOKENS = 1400
+MIN_SAGE_MAX_TOKENS = 200
+MAX_SAGE_MAX_TOKENS = 2500
 
 
 class ChatMessage(BaseModel):
@@ -39,6 +42,11 @@ class ImageAttachment(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     context_string: str                           # cached from /context
+    max_tokens: int = Field(
+        default=DEFAULT_SAGE_MAX_TOKENS,
+        ge=MIN_SAGE_MAX_TOKENS,
+        le=MAX_SAGE_MAX_TOKENS,
+    )
     images: list[ImageAttachment] = Field(default_factory=list)            # top-level shorthand
     image_attachments: list[ImageAttachment] = Field(default_factory=list) # alternate key iOS may send
 
@@ -365,6 +373,10 @@ def register_floating_chat_routes(app, require_any_user):
             raise HTTPException(status_code=400, detail="No messages provided.")
 
         user_id = current_user["id"]
+        requested_max_tokens = max(
+            MIN_SAGE_MAX_TOKENS,
+            min(body.max_tokens, MAX_SAGE_MAX_TOKENS),
+        )
 
         system_prompt = (
             "You are a deeply perceptive AI embedded inside someone's private journal dashboard. "
@@ -383,7 +395,7 @@ def register_floating_chat_routes(app, require_any_user):
             "- Reference specific dates, names, events from context. Be specific, not vague.\n"
             "- Never fabricate. If you don't see it in context, say so.\n"
             "- Speak directly. Like a trusted friend who has read everything.\n"
-            "- Keep responses under 200 words unless depth is clearly needed.\n"
+            "- Default to concise answers, but go deeper when the question clearly needs it.\n"
             "- If they seem in crisis or danger, acknowledge it directly and include /war-room or /exit-plan action.\n\n"
             "=== YOUR CONTEXT ===\n"
             f"{body.context_string}\n"
@@ -457,7 +469,7 @@ def register_floating_chat_routes(app, require_any_user):
                 client = anthropic.Anthropic(api_key=api_key)
                 msg    = client.messages.create(
                     model=SAGE_VISION_MODEL,
-                    max_tokens=500,
+                    max_tokens=requested_max_tokens,
                     system=system_prompt,
                     messages=messages_payload,
                 )
@@ -473,7 +485,7 @@ def register_floating_chat_routes(app, require_any_user):
                     user_id=user_id,
                     system=system_prompt,
                     user_prompt=last_text,
-                    max_tokens=500,
+                    max_tokens=requested_max_tokens,
                     call_type="floating_chat",
                 )
         except Exception as e:
