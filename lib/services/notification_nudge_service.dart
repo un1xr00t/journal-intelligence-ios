@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -235,6 +236,19 @@ class NotificationNudgeService {
     };
   }
 
+  Future<Map<String, dynamic>> resolveAddress(String address) async {
+    final raw = await _channel.invokeMethod<Map<Object?, Object?>>(
+      'resolveAddress',
+      {'address': address},
+    );
+    final map = raw ?? const <Object?, Object?>{};
+    return {
+      'latitude': (map['latitude'] as num?)?.toDouble() ?? 0,
+      'longitude': (map['longitude'] as num?)?.toDouble() ?? 0,
+      'addressLabel': map['addressLabel']?.toString(),
+    };
+  }
+
   Future<NotificationNudgeSettings> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
@@ -308,11 +322,12 @@ class NotificationNudgeService {
 
     if (nextSettings.locationPromptsEnabled) {
       for (final place in nextSettings.places) {
-        final notificationContent = buildLocationNotificationContent(place);
+        final entryContent =
+            buildLocationNotificationContent(place, transition: 'entry');
         await _channel.invokeMethod<void>('scheduleLocationNotification', {
-          'id': _placeNotificationId(place.id),
-          'title': notificationContent.title,
-          'body': notificationContent.body,
+          'id': _placeEntryNotificationId(place.id),
+          'title': entryContent.title,
+          'body': entryContent.body,
           'latitude': place.latitude,
           'longitude': place.longitude,
           'radius': place.radiusMeters,
@@ -320,8 +335,25 @@ class NotificationNudgeService {
           'notifyOnExit': false,
           'repeats': true,
           'categoryId': 'location_journal',
-          'route': _buildWriteRoute(_locationPrefill(place)),
-          'routeSage': _buildSageRoute(_locationSagePrefill(place)),
+          'route': _buildWriteRoute(entryContent.writePrefill),
+          'routeSage': _buildSageRoute(entryContent.sagePrefill),
+        });
+
+        final exitContent =
+            buildLocationNotificationContent(place, transition: 'exit');
+        await _channel.invokeMethod<void>('scheduleLocationNotification', {
+          'id': _placeExitNotificationId(place.id),
+          'title': exitContent.title,
+          'body': exitContent.body,
+          'latitude': place.latitude,
+          'longitude': place.longitude,
+          'radius': place.radiusMeters,
+          'notifyOnEntry': false,
+          'notifyOnExit': true,
+          'repeats': true,
+          'categoryId': 'location_journal',
+          'route': _buildWriteRoute(exitContent.writePrefill),
+          'routeSage': _buildSageRoute(exitContent.sagePrefill),
         });
       }
     }
@@ -334,11 +366,25 @@ class NotificationNudgeService {
     ids.add(_morningId);
     ids.add(_eveningId);
     ids.add(_weeklyWyattId);
-    ids.addAll(settings.places.map((place) => _placeNotificationId(place.id)));
+    ids.addAll(
+      settings.places.expand(
+        (place) => [
+          _legacyPlaceNotificationId(place.id),
+          _placeEntryNotificationId(place.id),
+          _placeExitNotificationId(place.id),
+        ],
+      ),
+    );
     return ids;
   }
 
-  String _placeNotificationId(String placeId) => 'nudge.place.$placeId';
+  String _legacyPlaceNotificationId(String placeId) => 'nudge.place.$placeId';
+
+  String _placeEntryNotificationId(String placeId) =>
+      'nudge.place.entry.$placeId';
+
+  String _placeExitNotificationId(String placeId) =>
+      'nudge.place.exit.$placeId';
 
   String _buildWriteRoute(String prefill) {
     return Uri(
@@ -365,68 +411,362 @@ class NotificationNudgeService {
   static const _weeklyWyattPrefill =
       'Quick Wyatt check-in. What activity, memory, or moment with Wyatt stands out from this week?';
 
-  String _locationPrefill(NudgePlace place) {
-    return switch (place.kind) {
-      'park' ||
-      'play' =>
-        'I am at ${place.name}. If Wyatt is here or we are doing something together, I want to capture the activity, what happened, and how it felt.',
-      'doctor' ||
-      'health' =>
-        'I am at ${place.name}. I want to log the appointment, what was discussed, anything important about Wyatt or family logistics, and how I felt leaving.',
-      'school' =>
-        'I am at ${place.name}. I want to note anything important about pickup, dropoff, school events, Wyatt, or how this moment felt.',
-      'work' =>
-        'I am at ${place.name}. I want to capture anything important about work, scheduling, stress, Wyatt planning, or what happened here.',
-      'home' =>
-        'I am at ${place.name}. I want to capture what is happening here, any Wyatt-related moment, and how the environment feels right now.',
-      _ =>
-        'I am at ${place.name}. I want to capture what happened here, why this place mattered, and whether it connects to Wyatt, family, or my day.',
-    };
+  ({String title, String body, String writePrefill, String sagePrefill})
+      buildLocationNotificationContent(
+    NudgePlace place, {
+    required String transition,
+  }) {
+    final prompts = _locationPromptVariants(place, transition: transition);
+    final index = _dailyPromptIndex(
+      seed: '${place.id}:$transition:${place.kind}',
+      count: prompts.length,
+    );
+    return prompts[index];
   }
+}
 
-  String _locationSagePrefill(NudgePlace place) {
-    final focus = switch (place.kind) {
-      'park' || 'play' => 'an activity or outing with Wyatt',
-      'doctor' || 'health' => 'an appointment or health-related note',
-      'school' => 'a school-related moment or logistics note',
-      'work' => 'a work-related moment or schedule note',
-      'home' => 'a home or family moment',
-      _ => 'the right kind of journal note for this place',
-    };
-    return "I'm at or near ${place.name}. Use web search if it's enabled to confirm the correct place name, tell me what kind of place this is, and help me log $focus.";
-  }
+List<({String title, String body, String writePrefill, String sagePrefill})>
+    _locationPromptVariants(
+  NudgePlace place, {
+  required String transition,
+}) {
+  final isExit = transition == 'exit';
+  return switch (place.kind) {
+    'park' || 'play' => isExit
+        ? [
+            (
+              title: 'Leaving ${place.name}?',
+              body: 'Catch the best moment before the ride home edits it.',
+              writePrefill:
+                  'I am leaving ${place.name}. What felt alive, fun, hard, or worth remembering about this outing, especially with Wyatt if he was part of it?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me turn this outing into a vivid journal note and pull out the detail most worth keeping.",
+            ),
+            (
+              title: '${place.name} still in your head?',
+              body: 'Grab the laugh, meltdown, win, or tiny detail now.',
+              writePrefill:
+                  'I just wrapped up time at ${place.name}. I want to capture the standout moment, the emotional tone, and anything I do not want to lose.',
+              sagePrefill:
+                  "I'm heading out from ${place.name}. Help me quickly log the emotional high points, friction points, and anything Wyatt-related.",
+            ),
+            (
+              title: 'Before ${place.name} fades...',
+              body: 'Save the memory while it still has color.',
+              writePrefill:
+                  'I am leaving ${place.name}. What happened here, what mattered, and what detail will I be glad I wrote down later?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me write a sharp note that preserves the texture of this outing.",
+            ),
+          ]
+        : [
+            (
+              title: 'At ${place.name} with Wyatt?',
+              body: 'Catch the activity before the details disappear.',
+              writePrefill:
+                  'I am at ${place.name}. If Wyatt is here or we are doing something together, I want to capture the activity, what happened, and how it felt.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me capture this outing, including what we are doing, the mood, and any detail worth remembering.",
+            ),
+            (
+              title: '${place.name} moment incoming?',
+              body: 'Log the scene while you are still inside it.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What are we doing, what is the vibe, and what do I want to notice before this moment passes?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me notice what matters about this activity and turn it into a journal entry.",
+            ),
+            (
+              title: 'Want to freeze this ${place.name} moment?',
+              body: 'A quick note now can save the whole memory later.',
+              writePrefill:
+                  'I am at ${place.name}. I want to capture the setup, who is here, what matters about this outing, and how it feels right now.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me log the outing in a way that preserves both the facts and the feeling.",
+            ),
+          ],
+    'doctor' || 'health' => isExit
+        ? [
+            (
+              title: 'Walking out of ${place.name}?',
+              body:
+                  'Catch the takeaway, feeling, or next step before it blurs.',
+              writePrefill:
+                  'I am leaving ${place.name}. What happened in the appointment, what matters next, and how do I feel walking out right now?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me log the appointment, next steps, emotions, and any Wyatt or family implications.",
+            ),
+            (
+              title: 'Before the appointment fog sets in...',
+              body: 'Write the note your future self will need tonight.',
+              writePrefill:
+                  'I just left ${place.name}. I want to capture what was said, what I need to remember, and what emotion is sticking to me.',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me turn the appointment into a clean note with concrete follow-ups and emotional context.",
+            ),
+            (
+              title: 'Leaving ${place.name} with a lot?',
+              body: 'Drop the facts and the feeling in one place.',
+              writePrefill:
+                  'I am heading out from ${place.name}. What is the headline, what do I need to do next, and what did this stir up in me?',
+              sagePrefill:
+                  "I'm heading out from ${place.name}. Help me process the medical or therapy visit and save the important parts.",
+            ),
+          ]
+        : [
+            (
+              title: 'At ${place.name}?',
+              body:
+                  'Mark the appointment, question, or worry before it runs ahead of you.',
+              writePrefill:
+                  'I am at ${place.name}. I want to log why I am here, what I am worried about, what I want answered, and how I feel going in.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me log the appointment context, what I want to ask, and the emotional state I'm bringing in.",
+            ),
+            (
+              title: 'Quick note before ${place.name} starts?',
+              body: 'Capture what matters going in.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What do I hope to learn, say, or remember from this appointment?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me create a focused note before this appointment begins.",
+            ),
+            (
+              title: '${place.name} check-in',
+              body: 'Name the concern, the hope, or the question.',
+              writePrefill:
+                  'I am at ${place.name}. I want to write down the key question, concern, or intention I have before this visit unfolds.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me get clear on what matters most before this visit.",
+            ),
+          ],
+    'school' => isExit
+        ? [
+            (
+              title: 'Leaving ${place.name}?',
+              body:
+                  'Catch the pickup detail, school note, or Wyatt moment now.',
+              writePrefill:
+                  'I am leaving ${place.name}. What happened here, what do I need to remember, and was there anything important about Wyatt, school, or logistics?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me log the school moment, logistics, and emotional tone before I lose it.",
+            ),
+            (
+              title: 'School-day residue from ${place.name}?',
+              body: 'Save the detail that matters before routine swallows it.',
+              writePrefill:
+                  'I just left ${place.name}. What was the key moment, update, or feeling I want to remember from this school stop?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me capture the important school or Wyatt-related detail from this stop.",
+            ),
+            (
+              title: 'Before pickup and dropoff blur together...',
+              body: 'Log the one thing worth keeping from this stop.',
+              writePrefill:
+                  'I am heading away from ${place.name}. What happened, what shifted, and what matters about this school moment?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me turn this school transition into a useful journal note.",
+            ),
+          ]
+        : [
+            (
+              title: 'At ${place.name}?',
+              body:
+                  'Log the school moment, pickup detail, or anything about Wyatt.',
+              writePrefill:
+                  'I am at ${place.name}. I want to note anything important about pickup, dropoff, school events, Wyatt, or how this moment feels.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me capture the school context, logistics, and anything emotionally important about this moment.",
+            ),
+            (
+              title: 'School moment worth catching?',
+              body: 'A fast note now can save the whole thread later.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What is happening here, what matters, and what do I not want to forget?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me log the school moment in a way that will still make sense later.",
+            ),
+            (
+              title: '${place.name} check-in',
+              body: 'Save the useful detail while you are in it.',
+              writePrefill:
+                  'I am at ${place.name}. I want to capture the school logistics, Wyatt-related context, and emotional tone of this stop.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me write a clear note about this school stop and why it matters.",
+            ),
+          ],
+    'work' => isExit
+        ? [
+            (
+              title: 'Leaving ${place.name}?',
+              body: 'What deserves to leave work with you, and what does not?',
+              writePrefill:
+                  'I am leaving ${place.name}. What happened today, what is still stuck to me, and what do I want to set down before I carry it home?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me process the workday, separate signal from noise, and save anything worth journaling.",
+            ),
+            (
+              title: 'Work day complete?',
+              body: 'Clear the static before the next part of your day starts.',
+              writePrefill:
+                  'I just left ${place.name}. What drained me, what moved forward, and what do I not want to drag into the rest of my day?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me unpack the work stress, wins, and unresolved pieces in a clean note.",
+            ),
+            (
+              title: 'Before work follows you home...',
+              body: 'Drop the pressure, the win, or the unfinished thing here.',
+              writePrefill:
+                  'I am heading out from ${place.name}. What felt heavy, what mattered, and what boundary do I want between work and the rest of today?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me turn the day into a grounded journal note instead of carrying it around.",
+            ),
+          ]
+        : [
+            (
+              title: 'At ${place.name}?',
+              body:
+                  'What is the one thing you do not want work to swallow today?',
+              writePrefill:
+                  'I am at ${place.name}. What matters most today, what feels tense or unfinished already, and what do I want to remember about this workday?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me frame this workday, including priorities, stress, and anything I want to keep sight of.",
+            ),
+            (
+              title: 'Work mode at ${place.name}?',
+              body: 'Set the tone before the day starts happening to you.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What is today asking from me, what am I worried about, and what would count as a good day?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me create a quick grounding note before the workday takes over.",
+            ),
+            (
+              title: '${place.name} reset',
+              body: 'Name the pressure or intention before it multiplies.',
+              writePrefill:
+                  'I am at ${place.name}. I want to capture the pressure, intention, or decision sitting with me as this work block begins.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me get honest about what this workday feels like before it moves too fast.",
+            ),
+          ],
+    'home' => isExit
+        ? [
+            (
+              title: 'Heading out from ${place.name}?',
+              body: 'What feeling are you carrying out the door today?',
+              writePrefill:
+                  'I am leaving ${place.name}. What is the emotional weather at home, what am I carrying with me, and what do I want to leave here instead?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me capture the home mood, family context, and what I'm carrying into the rest of the day.",
+            ),
+            (
+              title: 'Leaving home with a lot on you?',
+              body: 'Set down the feeling before the next thing starts.',
+              writePrefill:
+                  'I just left ${place.name}. What happened at home, what is lingering, and how do I want to show up after this?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me process the home transition and name what I am carrying forward.",
+            ),
+            (
+              title: 'Before the day pulls you away...',
+              body: 'Catch the mood you are stepping out of.',
+              writePrefill:
+                  'I am heading away from ${place.name}. What was the tone at home, what mattered in that moment, and what do I want to remember later?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me turn this home transition into a grounded journal note.",
+            ),
+          ]
+        : [
+            (
+              title: 'Back at ${place.name}?',
+              body: 'Capture a quick family, home, or Wyatt-related moment.',
+              writePrefill:
+                  'I am at ${place.name}. I want to capture what is happening here, any Wyatt-related moment, and how the environment feels right now.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me log the home or family moment and name what matters about the atmosphere.",
+            ),
+            (
+              title: 'Home has a mood right now.',
+              body: 'Name it before the night blurs the edges.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What is the mood at home, what is happening, and what do I want to remember about this moment?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me capture the tone of home, the family context, and the detail worth saving.",
+            ),
+            (
+              title: '${place.name} check-in',
+              body: 'What kind of version of home are you walking into?',
+              writePrefill:
+                  'I am at ${place.name}. I want to write down the emotional tone, the family energy, and anything important happening here.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me log what kind of home moment this is and why it matters.",
+            ),
+          ],
+    _ => isExit
+        ? [
+            (
+              title: 'Leaving ${place.name}?',
+              body: 'Save the detail, feeling, or shift before it disappears.',
+              writePrefill:
+                  'I am leaving ${place.name}. What happened here, why did it matter, and what feeling am I carrying away?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me figure out what mattered about this stop and turn it into a journal note.",
+            ),
+            (
+              title: 'Before ${place.name} becomes a blur...',
+              body: 'What is the one thing worth keeping from this stop?',
+              writePrefill:
+                  'I just left ${place.name}. I want to capture the standout detail, the emotional tone, and why this mattered today.',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me capture the signal from this stop before it fades into the day.",
+            ),
+            (
+              title: 'Walking away from ${place.name} with something?',
+              body: 'Drop it here while it is still clear.',
+              writePrefill:
+                  'I am heading out from ${place.name}. What happened, what shifted in me, and what deserves a quick note?',
+              sagePrefill:
+                  "I'm leaving ${place.name}. Help me make sense of this stop and save the part that matters.",
+            ),
+          ]
+        : [
+            (
+              title: 'At ${place.name}?',
+              body: 'Want to save a quick note about what happened here?',
+              writePrefill:
+                  'I am at ${place.name}. I want to capture what happened here, why this place mattered, and whether it connects to Wyatt, family, or my day.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me figure out the right kind of note for this place and what matters about this moment.",
+            ),
+            (
+              title: '${place.name} might matter more than it looks.',
+              body: 'Grab a note while you are still inside the moment.',
+              writePrefill:
+                  'I just arrived at ${place.name}. What is happening, what feels important, and why might this place matter today?',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me notice whether this stop belongs in my journal and how to capture it.",
+            ),
+            (
+              title: 'Quick pulse from ${place.name}',
+              body: 'Save the moment before the next thing takes it.',
+              writePrefill:
+                  'I am at ${place.name}. I want to note the context, the emotional tone, and anything I may want to revisit later.',
+              sagePrefill:
+                  "I'm at ${place.name}. Help me turn this moment into a useful, specific journal note.",
+            ),
+          ],
+  };
+}
 
-  ({String title, String body}) buildLocationNotificationContent(
-      NudgePlace place) {
-    return switch (place.kind) {
-      'park' || 'play' => (
-          title: 'At ${place.name} with Wyatt?',
-          body: 'Capture the activity before the details disappear.'
-        ),
-      'doctor' || 'health' => (
-          title: 'Leaving ${place.name}?',
-          body:
-              'Save a quick note about the appointment, takeaway, or next step.'
-        ),
-      'school' => (
-          title: 'At ${place.name}?',
-          body: 'Log the school moment, pickup detail, or anything about Wyatt.'
-        ),
-      'work' => (
-          title: 'At ${place.name}?',
-          body:
-              'Want to log anything important about work, stress, or scheduling?'
-        ),
-      'home' => (
-          title: 'At ${place.name}?',
-          body: 'Capture a quick family, home, or Wyatt-related moment.'
-        ),
-      _ => (
-          title: 'At ${place.name}?',
-          body: 'Want to save a quick note about what happened here?'
-        ),
-    };
-  }
+int _dailyPromptIndex({
+  required String seed,
+  required int count,
+}) {
+  if (count <= 1) return 0;
+  final now = DateTime.now();
+  final startOfYear = DateTime(now.year, 1, 1);
+  final dayOfYear = now.difference(startOfYear).inDays;
+  return (seed.hashCode + dayOfYear).abs() % count;
 }
 
 String inferPlaceKind(String? rawName) {
@@ -507,4 +847,44 @@ bool _containsAny(String value, List<String> needles) {
     if (value.contains(needle)) return true;
   }
   return false;
+}
+
+bool placesLikelyMatch(
+  NudgePlace place, {
+  String? candidateName,
+  double? latitude,
+  double? longitude,
+  double coordinateThresholdMeters = 150,
+}) {
+  final normalizedCandidate = candidateName?.trim().toLowerCase() ?? '';
+  final normalizedPlace = place.name.trim().toLowerCase();
+  if (normalizedCandidate.isNotEmpty &&
+      normalizedPlace == normalizedCandidate) {
+    return true;
+  }
+
+  if (latitude == null || longitude == null) return false;
+  final distance = _distanceMeters(
+    latitude,
+    longitude,
+    place.latitude,
+    place.longitude,
+  );
+  return distance <= coordinateThresholdMeters;
+}
+
+double _distanceMeters(
+  double latitudeA,
+  double longitudeA,
+  double latitudeB,
+  double longitudeB,
+) {
+  const metersPerDegreeLatitude = 111320.0;
+  final averageLatitudeRadians =
+      ((latitudeA + latitudeB) / 2) * 0.017453292519943295;
+  final metersPerDegreeLongitude =
+      metersPerDegreeLatitude * math.cos(averageLatitudeRadians);
+  final latMeters = (latitudeA - latitudeB) * metersPerDegreeLatitude;
+  final lngMeters = (longitudeA - longitudeB) * metersPerDegreeLongitude;
+  return math.sqrt((latMeters * latMeters) + (lngMeters * lngMeters));
 }

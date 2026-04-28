@@ -28,6 +28,24 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
   bool _loadingCurrentPlace = false;
   String? _error;
 
+  NudgePlace? _matchingSavedPlace({
+    String? name,
+    double? latitude,
+    double? longitude,
+  }) {
+    for (final place in _settings.places) {
+      if (placesLikelyMatch(
+        place,
+        candidateName: name,
+        latitude: latitude,
+        longitude: longitude,
+      )) {
+        return place;
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +84,8 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
         _status = results[1] as NotificationBridgeStatus;
         _loading = false;
       });
+      await _service.syncSchedules(_settings);
+      if (!mounted) return;
       if ((_status?.locationAuthorized ?? false)) {
         _refreshCurrentPlaceSuggestion(silent: true);
       }
@@ -257,19 +277,18 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       if (!mounted) return;
       setState(() => _capturingPlace = false);
       final suggestedName = location['placeName']?.toString().trim() ?? '';
-      final placeName = await _showAddPlaceSheet(
+      final place = await _showPlaceSheet(
         suggestedName: suggestedName,
         addressLabel: location['addressLabel']?.toString(),
         latitude: location['latitude'] as double? ?? 0,
         longitude: location['longitude'] as double? ?? 0,
       );
-      if (placeName == null || placeName.trim().isEmpty) return;
-      final parsed = _parsePlaceSheetResult(placeName);
+      if (place == null) return;
       await _savePlace(
-        name: parsed.name,
-        kind: parsed.kind,
-        latitude: location['latitude'] ?? 0,
-        longitude: location['longitude'] ?? 0,
+        name: place.name,
+        kind: place.kind,
+        latitude: place.latitude!,
+        longitude: place.longitude!,
       );
     } catch (e) {
       if (!mounted) return;
@@ -278,48 +297,28 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
     }
   }
 
-  Future<String?> _showAddPlaceSheet({
+  Future<_PlaceDraft?> _showPlaceSheet({
     required String suggestedName,
     String? addressLabel,
     required double latitude,
     required double longitude,
+    bool allowCoordinateEditing = false,
   }) async {
-    final controller = TextEditingController(text: suggestedName);
-    var selectedKind = inferPlaceKind(suggestedName);
-    final result = await showCupertinoModalPopup<String>(
+    return showCupertinoModalPopup<_PlaceDraft>(
       context: context,
       builder: (context) {
         return DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
           child: _AddPlaceSheet(
-            controller: controller,
             suggestedName: suggestedName,
             addressLabel: addressLabel,
-            initialKind: selectedKind,
-            onKindChanged: (kind) => selectedKind = kind,
+            initialKind: inferPlaceKind(suggestedName),
             latitude: latitude,
             longitude: longitude,
+            allowCoordinateEditing: allowCoordinateEditing,
           ),
         );
       },
-    );
-    controller.dispose();
-    if (result == null) return null;
-    return '$selectedKind::$result';
-  }
-
-  ({String kind, String name}) _parsePlaceSheetResult(String raw) {
-    final separator = raw.indexOf('::');
-    if (separator <= 0) {
-      final name = raw.trim();
-      return (kind: inferPlaceKind(name), name: name);
-    }
-
-    final kind = raw.substring(0, separator).trim();
-    final name = raw.substring(separator + 2).trim();
-    return (
-      kind: kind.isEmpty ? inferPlaceKind(name) : kind,
-      name: name,
     );
   }
 
@@ -329,11 +328,13 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
     required double latitude,
     required double longitude,
   }) async {
-    final alreadySaved = _settings.places.any(
-      (place) => place.name.trim().toLowerCase() == name.trim().toLowerCase(),
+    final existingPlace = _matchingSavedPlace(
+      name: name,
+      latitude: latitude,
+      longitude: longitude,
     );
-    if (alreadySaved) {
-      _showMessage('$name is already in your saved places.');
+    if (existingPlace != null) {
+      _showMessage('${existingPlace.name} is already in your saved places.');
       return;
     }
 
@@ -437,12 +438,14 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
   }
 
   bool get _currentSuggestionAlreadySaved {
-    final placeName =
-        _currentPlaceSuggestion?['placeName']?.toString().trim().toLowerCase();
-    if (placeName == null || placeName.isEmpty) return false;
-    return _settings.places.any(
-      (place) => place.name.trim().toLowerCase() == placeName,
-    );
+    final suggestion = _currentPlaceSuggestion;
+    if (suggestion == null) return false;
+    return _matchingSavedPlace(
+          name: suggestion['placeName']?.toString(),
+          latitude: suggestion['latitude'] as double?,
+          longitude: suggestion['longitude'] as double?,
+        ) !=
+        null;
   }
 
   @override
@@ -634,7 +637,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                       const _SectionTitle(
                         title: 'Location Nudges',
                         subtitle:
-                            'Save parks, home, school, or other places and fire a local reminder when you arrive.',
+                            'Save parks, home, school, or other places and fire local reminders when you arrive or leave.',
                       ),
                       const SizedBox(height: 10),
                       GlassCard(
@@ -646,7 +649,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                               iconColor: JournalColors.orange,
                               title: 'Location Prompts',
                               subtitle:
-                                  'Show a lock-screen reminder when you arrive at saved places.',
+                                  'Show lock-screen reminders that adapt to saved places and transitions.',
                               value: _settings.locationPromptsEnabled,
                               onChanged: (value) => _updateSettings(
                                 _settings.copyWith(
@@ -680,8 +683,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                             suggestion['placeName']
                                                     ?.toString() ??
                                                 '';
-                                        final placeName =
-                                            await _showAddPlaceSheet(
+                                        final place = await _showPlaceSheet(
                                           suggestedName: suggestedName,
                                           addressLabel:
                                               suggestion['addressLabel']
@@ -693,21 +695,14 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                                   as double? ??
                                               0,
                                         );
-                                        if (placeName == null ||
-                                            placeName.trim().isEmpty) {
+                                        if (place == null) {
                                           return;
                                         }
-                                        final parsed =
-                                            _parsePlaceSheetResult(placeName);
                                         await _savePlace(
-                                          name: parsed.name,
-                                          kind: parsed.kind,
-                                          latitude: suggestion['latitude']
-                                                  as double? ??
-                                              0,
-                                          longitude: suggestion['longitude']
-                                                  as double? ??
-                                              0,
+                                          name: place.name,
+                                          kind: place.kind,
+                                          latitude: place.latitude!,
+                                          longitude: place.longitude!,
                                         );
                                       },
                                     ),
@@ -729,7 +724,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                   ),
                                   const SizedBox(height: 4),
                                   const Text(
-                                    'Stand at the place first, then save it. Each place uses a local geofence, opens Write on the main tap, and includes an Ask Sage notification action for live place lookup when web search is enabled.',
+                                    'Use your current location or enter one manually. Each place uses a local geofence, opens Write on the main tap, and includes an Ask Sage notification action.',
                                     style: TextStyle(
                                       color: JournalColors.textSecondary,
                                       fontSize: 13,
@@ -752,7 +747,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                         ),
                                       ),
                                       child: const Text(
-                                        'No places saved yet. Add one while you are physically at the park, home, gym, school, or wherever you want the reminder to trigger.',
+                                        'No places saved yet. Add one from where you are or enter a location manually with coordinates.',
                                         style: TextStyle(
                                           color: JournalColors.textSecondary,
                                           fontSize: 13,
@@ -783,6 +778,50 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                         : _currentSuggestionAlreadySaved
                                             ? 'Current Place Already Saved'
                                             : 'Add Current Location',
+                                  ),
+                                  const SizedBox(height: 10),
+                                  CupertinoButton(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                    onPressed: () async {
+                                      final place = await _showPlaceSheet(
+                                        suggestedName: '',
+                                        latitude: 0,
+                                        longitude: 0,
+                                        allowCoordinateEditing: true,
+                                      );
+                                      if (place == null) return;
+                                      try {
+                                        final resolved = await _service
+                                            .resolveAddress(place.address);
+                                        if (!mounted) return;
+                                        await _savePlace(
+                                          name: place.name,
+                                          kind: place.kind,
+                                          latitude:
+                                              resolved['latitude'] as double? ??
+                                                  0,
+                                          longitude: resolved['longitude']
+                                                  as double? ??
+                                              0,
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        _showMessage(
+                                          'Could not find that address.',
+                                          details: e,
+                                        );
+                                      }
+                                    },
+                                    child: const Text(
+                                      'Add Manually',
+                                      style: TextStyle(
+                                        color: JournalColors.accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1471,14 +1510,15 @@ class _SmartPlaceCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: _PrimarySheetButton(
-                  label: alreadySaved ? 'Use Saved Place' : 'Save This Place',
-                  enabled: hasLocationAccess && !loading,
-                  onPressed: hasLocationAccess && !loading ? onSave : null,
+              if (!alreadySaved)
+                Expanded(
+                  child: _PrimarySheetButton(
+                    label: 'Save This Place',
+                    enabled: hasLocationAccess && !loading,
+                    onPressed: hasLocationAccess && !loading ? onSave : null,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
+              if (!alreadySaved) const SizedBox(width: 10),
               CupertinoButton(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1587,226 +1627,341 @@ class _CurrentPlaceStatusRow extends StatelessWidget {
   }
 }
 
-class _AddPlaceSheet extends StatelessWidget {
+class _PlaceDraft {
+  const _PlaceDraft({
+    required this.name,
+    required this.kind,
+    this.latitude,
+    this.longitude,
+    this.address = '',
+  });
+
+  final String name;
+  final String kind;
+  final double? latitude;
+  final double? longitude;
+  final String address;
+}
+
+class _AddPlaceSheet extends StatefulWidget {
   const _AddPlaceSheet({
-    required this.controller,
     required this.suggestedName,
     required this.addressLabel,
     required this.initialKind,
-    required this.onKindChanged,
     required this.latitude,
     required this.longitude,
+    this.allowCoordinateEditing = false,
   });
 
-  final TextEditingController controller;
   final String suggestedName;
   final String? addressLabel;
   final String initialKind;
-  final ValueChanged<String> onKindChanged;
   final double latitude;
   final double longitude;
+  final bool allowCoordinateEditing;
+
+  @override
+  State<_AddPlaceSheet> createState() => _AddPlaceSheetState();
+}
+
+class _AddPlaceSheetState extends State<_AddPlaceSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _addressController;
+  late String _selectedKind;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.suggestedName);
+    _addressController = TextEditingController(text: widget.addressLabel ?? '');
+    _selectedKind = widget.initialKind;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Give this place a name first.');
+      return;
+    }
+
+    final address = _addressController.text.trim();
+    if (widget.allowCoordinateEditing && address.isEmpty) {
+      setState(() => _error = 'Enter the address for this place.');
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _PlaceDraft(
+        name: name,
+        kind: _selectedKind,
+        latitude: widget.allowCoordinateEditing ? null : widget.latitude,
+        longitude: widget.allowCoordinateEditing ? null : widget.longitude,
+        address: address,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return SafeArea(
       top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-        decoration: BoxDecoration(
-          color: _withAlpha(JournalColors.bgCard, 0.98),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: JournalColors.borderBright),
-          boxShadow: const [
-            BoxShadow(
-              color: JournalColors.accentGlow,
-              blurRadius: 28,
-              offset: Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _withAlpha(JournalColors.textMuted, 0.5),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        _withAlpha(JournalColors.accent, 0.24),
-                        _withAlpha(JournalColors.info, 0.16),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: JournalColors.borderBright),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.location_solid,
-                    color: JournalColors.textPrimary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'SAVE A NUDGE PLACE',
-                        style: TextStyle(
-                          color: JournalColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Turn this spot into a smarter arrival reminder.',
-                        style: TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding:
+            EdgeInsets.only(bottom: bottomInset > 0 ? bottomInset + 12 : 12),
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            decoration: BoxDecoration(
+              color: _withAlpha(JournalColors.bgCard, 0.98),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: JournalColors.borderBright),
+              boxShadow: const [
+                BoxShadow(
+                  color: JournalColors.accentGlow,
+                  blurRadius: 28,
+                  offset: Offset(0, 16),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            if (suggestedName.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _withAlpha(JournalColors.bgSurface, 0.75),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: JournalColors.border),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.textMuted, 0.5),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    const Text(
-                      'ON-DEVICE PLACE SUGGESTION',
-                      style: TextStyle(
-                        color: JournalColors.textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      suggestedName,
-                      style: const TextStyle(
-                        color: JournalColors.textPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (addressLabel != null &&
-                        addressLabel!.trim().isNotEmpty &&
-                        addressLabel!.trim().toLowerCase() !=
-                            suggestedName.trim().toLowerCase()) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        addressLabel!,
-                        style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 12,
-                          height: 1.35,
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            _withAlpha(JournalColors.accent, 0.24),
+                            _withAlpha(JournalColors.info, 0.16),
+                          ],
                         ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: JournalColors.borderBright),
                       ),
-                    ],
+                      child: const Icon(
+                        CupertinoIcons.location_solid,
+                        color: JournalColors.textPrimary,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.allowCoordinateEditing
+                                ? 'ADD A PLACE MANUALLY'
+                                : 'SAVE A NUDGE PLACE',
+                            style: const TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.allowCoordinateEditing
+                                ? 'Drop in a place name and coordinates.'
+                                : 'Turn this spot into a smarter arrival reminder.',
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            if (suggestedName.isNotEmpty) const SizedBox(height: 14),
-            const Text(
-              'Name this place however you want it to appear in the notification.',
-              style: TextStyle(
-                color: JournalColors.textSecondary,
-                fontSize: 13,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _PlaceKindSelector(
-              initialKind: initialKind,
-              onChanged: onKindChanged,
-            ),
-            const SizedBox(height: 12),
-            CupertinoTextField(
-              controller: controller,
-              placeholder: 'Boyce Park, Soccer Field, Mom’s House...',
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: JournalColors.bgSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: JournalColors.borderBright),
-              ),
-              style: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 16,
-              ),
-              placeholderStyle: const TextStyle(
-                color: JournalColors.textMuted,
-              ),
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Coordinates: ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}',
-              style: const TextStyle(
-                color: JournalColors.textMuted,
-                fontSize: 11,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: CupertinoButton(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    color: _withAlpha(JournalColors.bgSurface, 0.9),
-                    borderRadius: BorderRadius.circular(16),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(color: JournalColors.textSecondary),
+                const SizedBox(height: 16),
+                if (widget.suggestedName.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.bgSurface, 0.75),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: JournalColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'ON-DEVICE PLACE SUGGESTION',
+                          style: TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.suggestedName,
+                          style: const TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (widget.addressLabel != null &&
+                            widget.addressLabel!.trim().isNotEmpty &&
+                            widget.addressLabel!.trim().toLowerCase() !=
+                                widget.suggestedName.trim().toLowerCase()) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.addressLabel!,
+                            style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PrimarySheetButton(
-                    label: 'Save Place',
-                    enabled: true,
-                    onPressed: () =>
-                        Navigator.of(context).pop(controller.text.trim()),
+                if (widget.suggestedName.isNotEmpty) const SizedBox(height: 14),
+                Text(
+                  widget.allowCoordinateEditing
+                      ? 'Use any name you want, then enter the address where the reminder should fire.'
+                      : 'Name this place however you want it to appear in the notification.',
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.45,
                   ),
+                ),
+                const SizedBox(height: 14),
+                _PlaceKindSelector(
+                  initialKind: _selectedKind,
+                  onChanged: (kind) => _selectedKind = kind,
+                ),
+                const SizedBox(height: 12),
+                CupertinoTextField(
+                  controller: _nameController,
+                  placeholder: 'Boyce Park, Soccer Field, Mom’s House...',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: JournalColors.bgSurface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: JournalColors.borderBright),
+                  ),
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 16,
+                  ),
+                  placeholderStyle: const TextStyle(
+                    color: JournalColors.textMuted,
+                  ),
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                if (widget.allowCoordinateEditing) ...[
+                  const SizedBox(height: 12),
+                  CupertinoTextField(
+                    controller: _addressController,
+                    placeholder: '123 Main St, Pittsburgh, PA',
+                    keyboardType: TextInputType.streetAddress,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: JournalColors.bgSurface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: JournalColors.border),
+                    ),
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 16,
+                    ),
+                    placeholderStyle: const TextStyle(
+                      color: JournalColors.textMuted,
+                    ),
+                    maxLines: 2,
+                  ),
+                ] else ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Coordinates: ${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: JournalColors.orange,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        color: _withAlpha(JournalColors.bgSurface, 0.9),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(color: JournalColors.textSecondary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _PrimarySheetButton(
+                        label: 'Save Place',
+                        enabled: true,
+                        onPressed: _submit,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
