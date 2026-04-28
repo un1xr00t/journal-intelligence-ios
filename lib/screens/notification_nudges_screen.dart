@@ -223,6 +223,8 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
           ...location,
           'placeName':
               suggestedName.isNotEmpty ? suggestedName : 'Current Spot',
+          'addressLabel': location['addressLabel']?.toString(),
+          'resolvedBy': location['resolvedBy']?.toString(),
         };
         _loadingCurrentPlace = false;
       });
@@ -257,12 +259,15 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       final suggestedName = location['placeName']?.toString().trim() ?? '';
       final placeName = await _showAddPlaceSheet(
         suggestedName: suggestedName,
+        addressLabel: location['addressLabel']?.toString(),
         latitude: location['latitude'] as double? ?? 0,
         longitude: location['longitude'] as double? ?? 0,
       );
       if (placeName == null || placeName.trim().isEmpty) return;
+      final parsed = _parsePlaceSheetResult(placeName);
       await _savePlace(
-        name: placeName.trim(),
+        name: parsed.name,
+        kind: parsed.kind,
         latitude: location['latitude'] ?? 0,
         longitude: location['longitude'] ?? 0,
       );
@@ -275,10 +280,12 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
 
   Future<String?> _showAddPlaceSheet({
     required String suggestedName,
+    String? addressLabel,
     required double latitude,
     required double longitude,
   }) async {
     final controller = TextEditingController(text: suggestedName);
+    var selectedKind = inferPlaceKind(suggestedName);
     final result = await showCupertinoModalPopup<String>(
       context: context,
       builder: (context) {
@@ -287,6 +294,9 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
           child: _AddPlaceSheet(
             controller: controller,
             suggestedName: suggestedName,
+            addressLabel: addressLabel,
+            initialKind: selectedKind,
+            onKindChanged: (kind) => selectedKind = kind,
             latitude: latitude,
             longitude: longitude,
           ),
@@ -294,11 +304,28 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       },
     );
     controller.dispose();
-    return result;
+    if (result == null) return null;
+    return '$selectedKind::$result';
+  }
+
+  ({String kind, String name}) _parsePlaceSheetResult(String raw) {
+    final separator = raw.indexOf('::');
+    if (separator <= 0) {
+      final name = raw.trim();
+      return (kind: inferPlaceKind(name), name: name);
+    }
+
+    final kind = raw.substring(0, separator).trim();
+    final name = raw.substring(separator + 2).trim();
+    return (
+      kind: kind.isEmpty ? inferPlaceKind(name) : kind,
+      name: name,
+    );
   }
 
   Future<void> _savePlace({
     required String name,
+    required String kind,
     required double latitude,
     required double longitude,
   }) async {
@@ -315,6 +342,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       NudgePlace(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         name: name,
+        kind: kind,
         latitude: latitude,
         longitude: longitude,
       ),
@@ -326,6 +354,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
         'latitude': latitude,
         'longitude': longitude,
         'placeName': name,
+        'kind': kind,
       };
     });
   }
@@ -654,6 +683,9 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                         final placeName =
                                             await _showAddPlaceSheet(
                                           suggestedName: suggestedName,
+                                          addressLabel:
+                                              suggestion['addressLabel']
+                                                  ?.toString(),
                                           latitude: suggestion['latitude']
                                                   as double? ??
                                               0,
@@ -665,8 +697,11 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
                                             placeName.trim().isEmpty) {
                                           return;
                                         }
+                                        final parsed =
+                                            _parsePlaceSheetResult(placeName);
                                         await _savePlace(
-                                          name: placeName.trim(),
+                                          name: parsed.name,
+                                          kind: parsed.kind,
                                           latitude: suggestion['latitude']
                                                   as double? ??
                                               0,
@@ -1294,17 +1329,14 @@ class _SmartPlaceCard extends StatelessWidget {
   final Future<void> Function({bool silent}) onRefresh;
   final Future<void> Function() onSave;
 
-  bool get _alreadySaved {
-    final placeName = suggestion?['placeName']?.toString().trim().toLowerCase();
-    if (placeName == null || placeName.isEmpty) return false;
-    return savedPlaces.any(
-      (place) => place.name.trim().toLowerCase() == placeName,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final placeName = suggestion?['placeName']?.toString().trim();
+    final alreadySaved = placeName != null &&
+        placeName.isNotEmpty &&
+        savedPlaces.any(
+          (place) => place.name.trim().toLowerCase() == placeName.toLowerCase(),
+        );
 
     return Container(
       width: double.infinity,
@@ -1416,7 +1448,7 @@ class _SmartPlaceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _alreadySaved
+                  alreadySaved
                       ? 'Already saved for location nudges. Refresh if you moved somewhere new.'
                       : 'Looks like you are here right now. Save it and let iPhone ask about Wyatt or an activity the next time you arrive.',
                   style: const TextStyle(
@@ -1440,12 +1472,10 @@ class _SmartPlaceCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: AdaptiveButton(
-                  style: AdaptiveButtonStyle.prominentGlass,
-                  onPressed: !hasLocationAccess || loading || _alreadySaved
-                      ? null
-                      : () => onSave(),
-                  label: _alreadySaved ? 'Already Saved' : 'Save This Place',
+                child: _PrimarySheetButton(
+                  label: alreadySaved ? 'Use Saved Place' : 'Save This Place',
+                  enabled: hasLocationAccess && !loading,
+                  onPressed: hasLocationAccess && !loading ? onSave : null,
                 ),
               ),
               const SizedBox(width: 10),
@@ -1561,12 +1591,18 @@ class _AddPlaceSheet extends StatelessWidget {
   const _AddPlaceSheet({
     required this.controller,
     required this.suggestedName,
+    required this.addressLabel,
+    required this.initialKind,
+    required this.onKindChanged,
     required this.latitude,
     required this.longitude,
   });
 
   final TextEditingController controller;
   final String suggestedName;
+  final String? addressLabel;
+  final String initialKind;
+  final ValueChanged<String> onKindChanged;
   final double latitude;
   final double longitude;
 
@@ -1685,6 +1721,20 @@ class _AddPlaceSheet extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (addressLabel != null &&
+                        addressLabel!.trim().isNotEmpty &&
+                        addressLabel!.trim().toLowerCase() !=
+                            suggestedName.trim().toLowerCase()) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        addressLabel!,
+                        style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1696,6 +1746,11 @@ class _AddPlaceSheet extends StatelessWidget {
                 fontSize: 13,
                 height: 1.45,
               ),
+            ),
+            const SizedBox(height: 14),
+            _PlaceKindSelector(
+              initialKind: initialKind,
+              onChanged: onKindChanged,
             ),
             const SizedBox(height: 12),
             CupertinoTextField(
@@ -1742,16 +1797,164 @@ class _AddPlaceSheet extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: AdaptiveButton(
-                    style: AdaptiveButtonStyle.prominentGlass,
+                  child: _PrimarySheetButton(
+                    label: 'Save Place',
+                    enabled: true,
                     onPressed: () =>
                         Navigator.of(context).pop(controller.text.trim()),
-                    label: 'Save Place',
                   ),
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaceKindSelector extends StatefulWidget {
+  const _PlaceKindSelector({
+    required this.initialKind,
+    required this.onChanged,
+  });
+
+  final String initialKind;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_PlaceKindSelector> createState() => _PlaceKindSelectorState();
+}
+
+class _PlaceKindSelectorState extends State<_PlaceKindSelector> {
+  late String _selectedKind;
+
+  static const _options = <({String id, String label})>[
+    (id: 'park', label: 'Park / Kid Spot'),
+    (id: 'doctor', label: 'Doctor / Health'),
+    (id: 'school', label: 'School'),
+    (id: 'home', label: 'Home / Family'),
+    (id: 'work', label: 'Work / Errands'),
+    (id: 'general', label: 'General'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedKind = widget.initialKind;
+    widget.onChanged(_selectedKind);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'WHAT KIND OF PLACE IS THIS?',
+          style: TextStyle(
+            color: JournalColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _options.map((option) {
+            final selected = option.id == _selectedKind;
+            return GestureDetector(
+              onTap: () {
+                setState(() => _selectedKind = option.id);
+                widget.onChanged(option.id);
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? _withAlpha(JournalColors.accent, 0.18)
+                      : _withAlpha(JournalColors.bgSurface, 0.9),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: selected
+                        ? JournalColors.borderBright
+                        : JournalColors.border,
+                  ),
+                ),
+                child: Text(
+                  option.label,
+                  style: TextStyle(
+                    color: selected
+                        ? JournalColors.textPrimary
+                        : JournalColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrimarySheetButton extends StatelessWidget {
+  const _PrimarySheetButton({
+    required this.label,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool enabled;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: enabled ? onPressed : null,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: enabled
+                ? [
+                    JournalColors.accent,
+                    JournalColors.info,
+                  ]
+                : [
+                    _withAlpha(JournalColors.textMuted, 0.28),
+                    _withAlpha(JournalColors.textMuted, 0.18),
+                  ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: enabled
+              ? const [
+                  BoxShadow(
+                    color: JournalColors.accentGlow,
+                    blurRadius: 18,
+                    offset: Offset(0, 10),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: enabled
+                ? JournalColors.textPrimary
+                : _withAlpha(JournalColors.textMuted, 0.9),
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

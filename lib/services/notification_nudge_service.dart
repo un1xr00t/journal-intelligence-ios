@@ -33,6 +33,7 @@ class NudgePlace {
   const NudgePlace({
     required this.id,
     required this.name,
+    required this.kind,
     required this.latitude,
     required this.longitude,
     this.radiusMeters = 200,
@@ -40,6 +41,7 @@ class NudgePlace {
 
   final String id;
   final String name;
+  final String kind;
   final double latitude;
   final double longitude;
   final double radiusMeters;
@@ -48,6 +50,7 @@ class NudgePlace {
     return {
       'id': id,
       'name': name,
+      'kind': kind,
       'latitude': latitude,
       'longitude': longitude,
       'radiusMeters': radiusMeters,
@@ -58,6 +61,8 @@ class NudgePlace {
     return NudgePlace(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Saved Place',
+      kind:
+          json['kind']?.toString() ?? inferPlaceKind(json['name']?.toString()),
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
       radiusMeters: (json['radiusMeters'] as num?)?.toDouble() ?? 200,
@@ -225,6 +230,8 @@ class NotificationNudgeService {
       'longitude': (map['longitude'] as num?)?.toDouble() ?? 0,
       'accuracy': (map['accuracy'] as num?)?.toDouble() ?? 0,
       'placeName': map['placeName']?.toString(),
+      'addressLabel': map['addressLabel']?.toString(),
+      'resolvedBy': map['resolvedBy']?.toString(),
     };
   }
 
@@ -301,10 +308,11 @@ class NotificationNudgeService {
 
     if (nextSettings.locationPromptsEnabled) {
       for (final place in nextSettings.places) {
+        final notificationContent = buildLocationNotificationContent(place);
         await _channel.invokeMethod<void>('scheduleLocationNotification', {
           'id': _placeNotificationId(place.id),
-          'title': 'At ${place.name}?',
-          'body': 'If this is a Wyatt moment, save a quick activity entry now.',
+          'title': notificationContent.title,
+          'body': notificationContent.body,
           'latitude': place.latitude,
           'longitude': place.longitude,
           'radius': place.radiusMeters,
@@ -312,8 +320,8 @@ class NotificationNudgeService {
           'notifyOnExit': false,
           'repeats': true,
           'categoryId': 'location_journal',
-          'route': _buildWriteRoute(_locationPrefill(place.name)),
-          'routeSage': _buildSageRoute(_locationSagePrefill(place.name)),
+          'route': _buildWriteRoute(_locationPrefill(place)),
+          'routeSage': _buildSageRoute(_locationSagePrefill(place)),
         });
       }
     }
@@ -357,11 +365,146 @@ class NotificationNudgeService {
   static const _weeklyWyattPrefill =
       'Quick Wyatt check-in. What activity, memory, or moment with Wyatt stands out from this week?';
 
-  String _locationPrefill(String placeName) {
-    return 'I am at $placeName. If Wyatt is here or this place matters to us, I want to capture the activity, what happened, and how it felt.';
+  String _locationPrefill(NudgePlace place) {
+    return switch (place.kind) {
+      'park' ||
+      'play' =>
+        'I am at ${place.name}. If Wyatt is here or we are doing something together, I want to capture the activity, what happened, and how it felt.',
+      'doctor' ||
+      'health' =>
+        'I am at ${place.name}. I want to log the appointment, what was discussed, anything important about Wyatt or family logistics, and how I felt leaving.',
+      'school' =>
+        'I am at ${place.name}. I want to note anything important about pickup, dropoff, school events, Wyatt, or how this moment felt.',
+      'work' =>
+        'I am at ${place.name}. I want to capture anything important about work, scheduling, stress, Wyatt planning, or what happened here.',
+      'home' =>
+        'I am at ${place.name}. I want to capture what is happening here, any Wyatt-related moment, and how the environment feels right now.',
+      _ =>
+        'I am at ${place.name}. I want to capture what happened here, why this place mattered, and whether it connects to Wyatt, family, or my day.',
+    };
   }
 
-  String _locationSagePrefill(String placeName) {
-    return "I'm at or near $placeName. Use web search if it's enabled to confirm the correct place name, tell me what this location is, and help me log a quick activity or memory with Wyatt.";
+  String _locationSagePrefill(NudgePlace place) {
+    final focus = switch (place.kind) {
+      'park' || 'play' => 'an activity or outing with Wyatt',
+      'doctor' || 'health' => 'an appointment or health-related note',
+      'school' => 'a school-related moment or logistics note',
+      'work' => 'a work-related moment or schedule note',
+      'home' => 'a home or family moment',
+      _ => 'the right kind of journal note for this place',
+    };
+    return "I'm at or near ${place.name}. Use web search if it's enabled to confirm the correct place name, tell me what kind of place this is, and help me log $focus.";
   }
+
+  ({String title, String body}) buildLocationNotificationContent(
+      NudgePlace place) {
+    return switch (place.kind) {
+      'park' || 'play' => (
+          title: 'At ${place.name} with Wyatt?',
+          body: 'Capture the activity before the details disappear.'
+        ),
+      'doctor' || 'health' => (
+          title: 'Leaving ${place.name}?',
+          body:
+              'Save a quick note about the appointment, takeaway, or next step.'
+        ),
+      'school' => (
+          title: 'At ${place.name}?',
+          body: 'Log the school moment, pickup detail, or anything about Wyatt.'
+        ),
+      'work' => (
+          title: 'At ${place.name}?',
+          body:
+              'Want to log anything important about work, stress, or scheduling?'
+        ),
+      'home' => (
+          title: 'At ${place.name}?',
+          body: 'Capture a quick family, home, or Wyatt-related moment.'
+        ),
+      _ => (
+          title: 'At ${place.name}?',
+          body: 'Want to save a quick note about what happened here?'
+        ),
+    };
+  }
+}
+
+String inferPlaceKind(String? rawName) {
+  final name = (rawName ?? '').trim().toLowerCase();
+  if (name.isEmpty) return 'general';
+
+  if (_containsAny(name, [
+    'park',
+    'playground',
+    'zoo',
+    'museum',
+    'pool',
+    'soccer',
+    'baseball',
+    'basketball',
+    'skate',
+    'ice rink',
+    'arcade',
+  ])) {
+    return 'park';
+  }
+  if (_containsAny(name, [
+    'doctor',
+    'dr ',
+    'dr.',
+    'pediatric',
+    'hospital',
+    'clinic',
+    'dentist',
+    'therapy',
+    'urgent care',
+    'medical',
+    'health',
+  ])) {
+    return 'doctor';
+  }
+  if (_containsAny(name, [
+    'school',
+    'elementary',
+    'middle school',
+    'high school',
+    'daycare',
+    'preschool',
+    'academy',
+  ])) {
+    return 'school';
+  }
+  if (_containsAny(name, [
+    'home',
+    'house',
+    'apartment',
+    'condo',
+    'mom',
+    'dad',
+    'grandma',
+    'grandpa',
+  ])) {
+    return 'home';
+  }
+  if (_containsAny(name, [
+    'work',
+    'office',
+    'job',
+    'warehouse',
+    'shop',
+    'store',
+    'target',
+    'walmart',
+    'costco',
+  ])) {
+    return 'work';
+  }
+  return 'general';
+}
+
+bool _containsAny(String value, List<String> needles) {
+  for (final needle in needles) {
+    if (value.contains(needle)) return true;
+  }
+  return false;
 }
