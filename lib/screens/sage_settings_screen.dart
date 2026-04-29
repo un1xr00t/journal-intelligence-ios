@@ -157,6 +157,17 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
     setState(() => _memoryItems = const []);
   }
 
+  Future<void> _push(Widget screen) {
+    return Navigator.of(context, rootNavigator: true).push(
+      CupertinoPageRoute(
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: screen,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -569,14 +580,7 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                   const _SectionLabel('ONGOING COACH'),
                   const SizedBox(height: 8),
                   GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (_) => const SageTracksScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => _push(const SageTracksScreen()),
                     child: GlassCard(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
