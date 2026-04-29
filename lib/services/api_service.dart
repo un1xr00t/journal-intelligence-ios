@@ -114,6 +114,201 @@ class SavedFloatchatConversation {
   }
 }
 
+class SageTrackCheckIn {
+  const SageTrackCheckIn({
+    required this.id,
+    required this.createdAt,
+    required this.source,
+    required this.moodLabel,
+    required this.progressStatus,
+    required this.whatHappened,
+    required this.win,
+    required this.hardPart,
+    required this.nextStep,
+    required this.userConfirmed,
+  });
+
+  final String id;
+  final String createdAt;
+  final String source;
+  final String moodLabel;
+  final String progressStatus;
+  final String whatHappened;
+  final String win;
+  final String hardPart;
+  final String nextStep;
+  final bool userConfirmed;
+
+  factory SageTrackCheckIn.fromJson(Map<String, dynamic> json) {
+    return SageTrackCheckIn(
+      id: json['id']?.toString() ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
+      source: json['source']?.toString() ?? 'manual',
+      moodLabel: json['mood_label']?.toString() ?? '',
+      progressStatus: json['progress_status']?.toString() ?? '',
+      whatHappened: json['what_happened']?.toString() ?? '',
+      win: json['win']?.toString() ?? '',
+      hardPart: json['hard_part']?.toString() ?? '',
+      nextStep: json['next_step']?.toString() ?? '',
+      userConfirmed: json['user_confirmed'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'created_at': createdAt,
+        'source': source,
+        'mood_label': moodLabel,
+        'progress_status': progressStatus,
+        'what_happened': whatHappened,
+        'win': win,
+        'hard_part': hardPart,
+        'next_step': nextStep,
+        'user_confirmed': userConfirmed,
+      };
+}
+
+class SageFocusTrack {
+  const SageFocusTrack({
+    required this.id,
+    required this.title,
+    required this.category,
+    required this.status,
+    required this.isPrimary,
+    required this.checkInCadence,
+    required this.currentGoal,
+    required this.whyThisMatters,
+    required this.nextCommitment,
+    required this.summaryCompact,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastCheckInAt,
+    this.stuckPoints = const [],
+    this.recentWins = const [],
+    this.openLoops = const [],
+    this.successMarkers = const [],
+    this.checkIns = const [],
+  });
+
+  final String id;
+  final String title;
+  final String category;
+  final String status;
+  final bool isPrimary;
+  final String checkInCadence;
+  final String currentGoal;
+  final String whyThisMatters;
+  final String nextCommitment;
+  final String summaryCompact;
+  final String createdAt;
+  final String updatedAt;
+  final String? lastCheckInAt;
+  final List<String> stuckPoints;
+  final List<String> recentWins;
+  final List<String> openLoops;
+  final List<String> successMarkers;
+  final List<SageTrackCheckIn> checkIns;
+
+  factory SageFocusTrack.fromJson(Map<String, dynamic> json) {
+    List<String> readStringList(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .map((item) => item?.toString().trim() ?? '')
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    return SageFocusTrack(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Focus track',
+      category: json['category']?.toString() ?? 'general',
+      status: json['status']?.toString() ?? 'active',
+      isPrimary: json['is_primary'] == true,
+      checkInCadence: json['check_in_cadence']?.toString() ?? 'weekly',
+      currentGoal: json['current_goal']?.toString() ?? '',
+      whyThisMatters: json['why_this_matters']?.toString() ?? '',
+      nextCommitment: json['next_commitment']?.toString() ?? '',
+      summaryCompact: json['summary_compact']?.toString() ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
+      updatedAt: json['updated_at']?.toString() ?? '',
+      lastCheckInAt: json['last_check_in_at']?.toString(),
+      stuckPoints: readStringList(json['stuck_points']),
+      recentWins: readStringList(json['recent_wins']),
+      openLoops: readStringList(json['open_loops']),
+      successMarkers: readStringList(json['success_markers']),
+      checkIns: (json['check_ins'] as List?)
+              ?.whereType<Map>()
+              .map((item) =>
+                  SageTrackCheckIn.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
+          const <SageTrackCheckIn>[],
+    );
+  }
+
+  SageFocusTrack copyWith({
+    String? id,
+    String? title,
+    String? category,
+    String? status,
+    bool? isPrimary,
+    String? checkInCadence,
+    String? currentGoal,
+    String? whyThisMatters,
+    String? nextCommitment,
+    String? summaryCompact,
+    String? createdAt,
+    String? updatedAt,
+    String? lastCheckInAt,
+    List<String>? stuckPoints,
+    List<String>? recentWins,
+    List<String>? openLoops,
+    List<String>? successMarkers,
+    List<SageTrackCheckIn>? checkIns,
+  }) {
+    return SageFocusTrack(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      category: category ?? this.category,
+      status: status ?? this.status,
+      isPrimary: isPrimary ?? this.isPrimary,
+      checkInCadence: checkInCadence ?? this.checkInCadence,
+      currentGoal: currentGoal ?? this.currentGoal,
+      whyThisMatters: whyThisMatters ?? this.whyThisMatters,
+      nextCommitment: nextCommitment ?? this.nextCommitment,
+      summaryCompact: summaryCompact ?? this.summaryCompact,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastCheckInAt: lastCheckInAt ?? this.lastCheckInAt,
+      stuckPoints: stuckPoints ?? this.stuckPoints,
+      recentWins: recentWins ?? this.recentWins,
+      openLoops: openLoops ?? this.openLoops,
+      successMarkers: successMarkers ?? this.successMarkers,
+      checkIns: checkIns ?? this.checkIns,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'category': category,
+        'status': status,
+        'is_primary': isPrimary,
+        'check_in_cadence': checkInCadence,
+        'current_goal': currentGoal,
+        'why_this_matters': whyThisMatters,
+        'next_commitment': nextCommitment,
+        'summary_compact': summaryCompact,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        if (lastCheckInAt != null) 'last_check_in_at': lastCheckInAt,
+        'stuck_points': stuckPoints,
+        'recent_wins': recentWins,
+        'open_loops': openLoops,
+        'success_markers': successMarkers,
+        'check_ins': checkIns.map((item) => item.toJson()).toList(),
+      };
+}
+
 class TimelinePage {
   const TimelinePage({
     required this.entries,
@@ -131,6 +326,7 @@ class ApiService {
   static const String _inviteTokenStorageKey = 'invite_access_token';
   static const String _savedFloatchatStorageKey =
       'saved_floatchat_conversations_v1';
+  static const String _sageTracksStorageKey = 'sage_focus_tracks_v1';
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
@@ -347,6 +543,399 @@ class ApiService {
         data: {'detail': 'Saved conversation not found.'},
       ),
     );
+  }
+
+  Future<List<SageFocusTrack>> _readLocalSageTracks() async {
+    final raw = await _storage.read(key: _sageTracksStorageKey);
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw) as List;
+      final tracks = decoded
+          .whereType<Map>()
+          .map((item) =>
+              SageFocusTrack.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+      tracks.sort((a, b) {
+        if (a.isPrimary != b.isPrimary) return a.isPrimary ? -1 : 1;
+        final aTime = DateTime.tryParse(a.updatedAt);
+        final bTime = DateTime.tryParse(b.updatedAt);
+        if (aTime == null || bTime == null) {
+          return b.updatedAt.compareTo(a.updatedAt);
+        }
+        return bTime.compareTo(aTime);
+      });
+      return tracks;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _writeLocalSageTracks(List<SageFocusTrack> tracks) {
+    return _storage.write(
+      key: _sageTracksStorageKey,
+      value: jsonEncode(tracks.map((item) => item.toJson()).toList()),
+    );
+  }
+
+  String _buildTrackSummary({
+    required String title,
+    required String currentGoal,
+    required List<String> recentWins,
+    required List<String> stuckPoints,
+    required String nextCommitment,
+  }) {
+    final parts = <String>[];
+    if (currentGoal.trim().isNotEmpty) {
+      parts.add('Goal: ${currentGoal.trim()}');
+    }
+    if (recentWins.isNotEmpty) {
+      parts.add('Wins: ${recentWins.take(2).join('; ')}');
+    }
+    if (stuckPoints.isNotEmpty) {
+      parts.add('Stuck: ${stuckPoints.take(2).join('; ')}');
+    }
+    if (nextCommitment.trim().isNotEmpty) {
+      parts.add('Next: ${nextCommitment.trim()}');
+    }
+    if (parts.isEmpty) return title.trim();
+    return parts.join(' ');
+  }
+
+  Future<List<SageFocusTrack>> listSageTracks() async {
+    try {
+      final res = await _authedGet('/api/sage/tracks');
+      final data = res.data;
+      final items = data is List
+          ? data
+          : (data is Map ? data['tracks'] as List? ?? const [] : const []);
+      return items
+          .whereType<Map>()
+          .map((item) =>
+              SageFocusTrack.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      return _readLocalSageTracks();
+    }
+  }
+
+  Future<SageFocusTrack?> getPrimarySageTrack() async {
+    final tracks = await listSageTracks();
+    for (final track in tracks) {
+      if (track.isPrimary && track.status == 'active') return track;
+    }
+    for (final track in tracks) {
+      if (track.status == 'active') return track;
+    }
+    return null;
+  }
+
+  Future<SageFocusTrack> getSageTrack(String trackId) async {
+    try {
+      final res = await _authedGet('/api/sage/tracks/$trackId');
+      return SageFocusTrack.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      for (final track in tracks) {
+        if (track.id == trackId) return track;
+      }
+      throw DioException(
+        requestOptions: RequestOptions(path: '/api/sage/tracks/$trackId'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/sage/tracks/$trackId'),
+          statusCode: 404,
+          data: {'detail': 'Focus track not found.'},
+        ),
+      );
+    }
+  }
+
+  Future<SageFocusTrack> createSageTrack(Map<String, dynamic> body) async {
+    try {
+      final res = await _authedPost('/api/sage/tracks', data: body);
+      return SageFocusTrack.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      final now = DateTime.now().toUtc().toIso8601String();
+      final title = body['title']?.toString().trim().isNotEmpty == true
+          ? body['title'].toString().trim()
+          : 'Focus track';
+      final category = body['category']?.toString().trim().isNotEmpty == true
+          ? body['category'].toString().trim()
+          : 'general';
+      final currentGoal = body['current_goal']?.toString().trim() ?? '';
+      final whyThisMatters =
+          body['why_this_matters']?.toString().trim() ?? '';
+      final nextCommitment =
+          body['next_commitment']?.toString().trim() ?? '';
+      final stuckPoints = ((body['stuck_points'] as List?) ?? const [])
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      final recentWins = ((body['recent_wins'] as List?) ?? const [])
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      final openLoops = ((body['open_loops'] as List?) ?? const [])
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      final successMarkers = ((body['success_markers'] as List?) ?? const [])
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      final isPrimary = body['is_primary'] == true || tracks.isEmpty;
+      final track = SageFocusTrack(
+        id: 'local_track_${DateTime.now().microsecondsSinceEpoch}',
+        title: title,
+        category: category,
+        status: 'active',
+        isPrimary: isPrimary,
+        checkInCadence:
+            body['check_in_cadence']?.toString().trim().isNotEmpty == true
+                ? body['check_in_cadence'].toString().trim()
+                : 'weekly',
+        currentGoal: currentGoal,
+        whyThisMatters: whyThisMatters,
+        nextCommitment: nextCommitment,
+        summaryCompact: _buildTrackSummary(
+          title: title,
+          currentGoal: currentGoal,
+          recentWins: recentWins,
+          stuckPoints: stuckPoints,
+          nextCommitment: nextCommitment,
+        ),
+        createdAt: now,
+        updatedAt: now,
+        stuckPoints: stuckPoints,
+        recentWins: recentWins,
+        openLoops: openLoops,
+        successMarkers: successMarkers,
+      );
+      final next = [
+        if (isPrimary)
+          ...tracks.map((item) => item.copyWith(isPrimary: false))
+        else
+          ...tracks,
+      ];
+      next.insert(0, track);
+      await _writeLocalSageTracks(next);
+      return track;
+    }
+  }
+
+  Future<SageFocusTrack> updateSageTrack(
+    String trackId,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final res = await _authedPatch('/api/sage/tracks/$trackId', data: body);
+      return SageFocusTrack.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      final index = tracks.indexWhere((item) => item.id == trackId);
+      if (index == -1) rethrow;
+      final current = tracks[index];
+      List<String>? parseList(String key) {
+        if (!body.containsKey(key)) return null;
+        final raw = body[key];
+        if (raw is! List) return const [];
+        return raw
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+      }
+
+      final nextTrack = current.copyWith(
+        title: body.containsKey('title') ? body['title']?.toString() ?? '' : null,
+        category: body.containsKey('category')
+            ? body['category']?.toString() ?? ''
+            : null,
+        status:
+            body.containsKey('status') ? body['status']?.toString() ?? '' : null,
+        isPrimary: body.containsKey('is_primary')
+            ? body['is_primary'] == true
+            : null,
+        checkInCadence: body.containsKey('check_in_cadence')
+            ? body['check_in_cadence']?.toString() ?? ''
+            : null,
+        currentGoal: body.containsKey('current_goal')
+            ? body['current_goal']?.toString() ?? ''
+            : null,
+        whyThisMatters: body.containsKey('why_this_matters')
+            ? body['why_this_matters']?.toString() ?? ''
+            : null,
+        nextCommitment: body.containsKey('next_commitment')
+            ? body['next_commitment']?.toString() ?? ''
+            : null,
+        lastCheckInAt: body.containsKey('last_check_in_at')
+            ? body['last_check_in_at']?.toString()
+            : null,
+        stuckPoints: parseList('stuck_points'),
+        recentWins: parseList('recent_wins'),
+        openLoops: parseList('open_loops'),
+        successMarkers: parseList('success_markers'),
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      final normalized = nextTrack.copyWith(
+        summaryCompact: _buildTrackSummary(
+          title: nextTrack.title,
+          currentGoal: nextTrack.currentGoal,
+          recentWins: nextTrack.recentWins,
+          stuckPoints: nextTrack.stuckPoints,
+          nextCommitment: nextTrack.nextCommitment,
+        ),
+      );
+      final rewritten = tracks
+          .map((item) => item.id == trackId
+              ? normalized
+              : normalized.isPrimary
+                  ? item.copyWith(isPrimary: false)
+                  : item)
+          .toList();
+      await _writeLocalSageTracks(rewritten);
+      return normalized;
+    }
+  }
+
+  Future<void> deleteSageTrack(String trackId) async {
+    try {
+      await _authedDelete('/api/sage/tracks/$trackId');
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      final removed = tracks.where((item) => item.id != trackId).toList();
+      if (removed.isNotEmpty && !removed.any((item) => item.isPrimary)) {
+        removed[0] = removed[0].copyWith(isPrimary: true);
+      }
+      await _writeLocalSageTracks(removed);
+    }
+  }
+
+  Future<SageFocusTrack> setPrimarySageTrack(String trackId) async {
+    try {
+      final res = await _authedPost('/api/sage/tracks/$trackId/set-primary');
+      return SageFocusTrack.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      SageFocusTrack? selected;
+      final next = tracks.map((item) {
+        final updated = item.copyWith(isPrimary: item.id == trackId);
+        if (updated.id == trackId) selected = updated;
+        return updated;
+      }).toList();
+      await _writeLocalSageTracks(next);
+      if (selected == null) rethrow;
+      return selected!;
+    }
+  }
+
+  Future<SageFocusTrack> pauseSageTrack(String trackId) {
+    return updateSageTrack(trackId, {'status': 'paused', 'is_primary': false});
+  }
+
+  Future<SageFocusTrack> resumeSageTrack(String trackId) {
+    return updateSageTrack(trackId, {'status': 'active'});
+  }
+
+  Future<SageFocusTrack> archiveSageTrack(String trackId) {
+    return updateSageTrack(trackId, {'status': 'archived', 'is_primary': false});
+  }
+
+  Future<List<SageTrackCheckIn>> listSageTrackCheckIns(String trackId) async {
+    try {
+      final res = await _authedGet('/api/sage/tracks/$trackId/check-ins');
+      final data = res.data;
+      final items = data is List
+          ? data
+          : (data is Map ? data['check_ins'] as List? ?? const [] : const []);
+      return items
+          .whereType<Map>()
+          .map((item) =>
+              SageTrackCheckIn.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final track = await getSageTrack(trackId);
+      return track.checkIns;
+    }
+  }
+
+  Future<SageTrackCheckIn> createSageTrackCheckIn(
+    String trackId,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final res = await _authedPost(
+        '/api/sage/tracks/$trackId/check-ins',
+        data: body,
+      );
+      return SageTrackCheckIn.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      final tracks = await _readLocalSageTracks();
+      final index = tracks.indexWhere((item) => item.id == trackId);
+      if (index == -1) rethrow;
+      final current = tracks[index];
+      final now = DateTime.now().toUtc().toIso8601String();
+      final checkIn = SageTrackCheckIn(
+        id: 'local_checkin_${DateTime.now().microsecondsSinceEpoch}',
+        createdAt: now,
+        source: body['source']?.toString() ?? 'manual',
+        moodLabel: body['mood_label']?.toString() ?? '',
+        progressStatus: body['progress_status']?.toString() ?? '',
+        whatHappened: body['what_happened']?.toString() ?? '',
+        win: body['win']?.toString() ?? '',
+        hardPart: body['hard_part']?.toString() ?? '',
+        nextStep: body['next_step']?.toString() ?? '',
+        userConfirmed: body['user_confirmed'] != false,
+      );
+      final recentWins = List<String>.from(current.recentWins);
+      final openLoops = List<String>.from(current.openLoops);
+      if (checkIn.win.trim().isNotEmpty) {
+        recentWins.insert(0, checkIn.win.trim());
+      }
+      if (checkIn.nextStep.trim().isNotEmpty) {
+        openLoops.insert(0, checkIn.nextStep.trim());
+      }
+      final nextTrack = current.copyWith(
+        updatedAt: now,
+        lastCheckInAt: now,
+        nextCommitment: checkIn.nextStep.trim().isNotEmpty
+            ? checkIn.nextStep.trim()
+            : current.nextCommitment,
+        recentWins: recentWins.take(6).toList(),
+        openLoops: openLoops.take(6).toList(),
+        checkIns: [checkIn, ...current.checkIns].take(20).toList(),
+      ).copyWith(
+        summaryCompact: _buildTrackSummary(
+          title: current.title,
+          currentGoal: current.currentGoal,
+          recentWins: recentWins.take(6).toList(),
+          stuckPoints: current.stuckPoints,
+          nextCommitment: checkIn.nextStep.trim().isNotEmpty
+              ? checkIn.nextStep.trim()
+              : current.nextCommitment,
+        ),
+      );
+      tracks[index] = nextTrack;
+      await _writeLocalSageTracks(tracks);
+      return checkIn;
+    }
   }
 
   // ── Auth ──────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
 import 'saved_sage_chats_screen.dart';
 import 'sage_settings_screen.dart';
+import 'sage_tracks_screen.dart';
 import 'settings_screen.dart';
 import 'timeline_screen.dart';
 import 'today_screen.dart';
@@ -729,6 +730,7 @@ class _SageScreenState extends State<SageScreen> {
   List<_SageMessage> _messages = const [];
   List<SageMemoryItem> _memoryItems = const [];
   List<_SageFileDraft> _pendingAttachments = const [];
+  SageFocusTrack? _activeTrack;
   SageSettings _settings = SageSettings.defaults;
   String? _contextString;
   String? _expandedContextString;
@@ -751,6 +753,7 @@ class _SageScreenState extends State<SageScreen> {
   bool _seededInitialAssistantMessage = false;
   bool _appliedInitialPrefill = false;
   bool _sentInitialPrefill = false;
+  bool _useTrackForSession = true;
   String? _actionPrefillLabel;
   late SageHandoff _handoff;
 
@@ -1049,12 +1052,15 @@ class _SageScreenState extends State<SageScreen> {
     final expandedContext = _expandedContextString?.trim() ?? '';
     final sessionToneInstruction =
         _promptInstructionForSageSessionTone(_handoff.sessionToneOverride);
+    final activeTrackContext = _buildActiveTrackContext();
     return '''
 $contextString
 
 $expandedContext
 
 $memoryContext
+
+$activeTrackContext
 
 [SYSTEM INSTRUCTION]
 $_kSageSystemPrompt
@@ -1063,6 +1069,33 @@ ${sessionSettings.toPromptInstruction()}
 
 $sessionToneInstruction
 ''';
+  }
+
+  String _buildActiveTrackContext() {
+    if (!_useTrackForSession || _activeTrack == null) return '';
+    final track = _activeTrack!;
+    final lines = <String>[
+      '[ACTIVE FOCUS TRACK]',
+      'Title: ${track.title}',
+      'Category: ${track.category}',
+      'Status: ${track.status}',
+      if (track.currentGoal.trim().isNotEmpty)
+        'Current goal: ${track.currentGoal.trim()}',
+      if (track.whyThisMatters.trim().isNotEmpty)
+        'Why it matters: ${track.whyThisMatters.trim()}',
+      if (track.recentWins.isNotEmpty)
+        'Recent wins: ${track.recentWins.take(3).join('; ')}',
+      if (track.stuckPoints.isNotEmpty)
+        'Stuck points: ${track.stuckPoints.take(3).join('; ')}',
+      if (track.openLoops.isNotEmpty)
+        'Open loops: ${track.openLoops.take(3).join('; ')}',
+      if (track.nextCommitment.trim().isNotEmpty)
+        'Next commitment: ${track.nextCommitment.trim()}',
+      'Cadence: ${track.checkInCadence}',
+      if (track.lastCheckInAt?.trim().isNotEmpty == true)
+        'Last check-in: ${track.lastCheckInAt}',
+    ];
+    return '${lines.join('\n')}\n';
   }
 
   Future<void> _loadContextAndStart({
@@ -1086,13 +1119,17 @@ $sessionToneInstruction
       final results = await Future.wait([
         _api.getFloatchatContext(forceRefresh: forceRefresh),
         _loadExpandedSageContext(),
+        _api.getPrimarySageTrack(),
       ]);
-      final contextString = results[0];
-      final expandedContextString = results[1];
+      final contextString = results[0] as String;
+      final expandedContextString = results[1] as String;
+      final activeTrack = results[2] as SageFocusTrack?;
       if (!mounted) return;
       setState(() {
         _contextString = contextString;
         _expandedContextString = expandedContextString;
+        _activeTrack = activeTrack;
+        _useTrackForSession = activeTrack != null;
         _contextLoading = false;
       });
       _seedInitialAssistantMessageIfNeeded();
@@ -1838,6 +1875,37 @@ Return JSON only.
     await _loadSageProfile();
   }
 
+  Future<void> _chooseFocusTrack() async {
+    final selected = await Navigator.push<SageFocusTrack>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => SageTracksScreen(
+          allowSelection: true,
+          initialSelectedTrackId: _activeTrack?.id,
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    try {
+      final updated = await _api.setPrimarySageTrack(selected.id);
+      if (!mounted) return;
+      setState(() {
+        _activeTrack = updated;
+        _useTrackForSession = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _activeTrack = selected;
+        _useTrackForSession = true;
+      });
+    }
+  }
+
+  void _muteTrackForSession() {
+    setState(() => _useTrackForSession = false);
+  }
+
   void _scrollDown() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
@@ -2573,6 +2641,10 @@ $excerpt
                   sessionToneOverride: _handoff.sessionToneOverride,
                   profileLoading: _profileLoading,
                   memoryCount: _memoryItems.length,
+                  activeTrack: _activeTrack,
+                  useTrackForSession: _useTrackForSession,
+                  onChooseTrack: _chooseFocusTrack,
+                  onMuteTrackForSession: _muteTrackForSession,
                   onNewChat: _clearChat,
                 ),
               ),
@@ -3133,6 +3205,10 @@ class _SageThread extends StatelessWidget {
     required this.sessionToneOverride,
     required this.profileLoading,
     required this.memoryCount,
+    required this.activeTrack,
+    required this.useTrackForSession,
+    required this.onChooseTrack,
+    required this.onMuteTrackForSession,
     required this.onNewChat,
   });
 
@@ -3155,6 +3231,10 @@ class _SageThread extends StatelessWidget {
   final String? sessionToneOverride;
   final bool profileLoading;
   final int memoryCount;
+  final SageFocusTrack? activeTrack;
+  final bool useTrackForSession;
+  final Future<void> Function() onChooseTrack;
+  final VoidCallback onMuteTrackForSession;
   final Future<void> Function() onNewChat;
 
   @override
@@ -3246,6 +3326,10 @@ class _SageThread extends StatelessWidget {
                   sessionToneOverride: sessionToneOverride,
                   profileLoading: profileLoading,
                   memoryCount: memoryCount,
+                  activeTrack: activeTrack,
+                  useTrackForSession: useTrackForSession,
+                  onChooseTrack: onChooseTrack,
+                  onMuteTrackForSession: onMuteTrackForSession,
                   onNewChat: onNewChat,
                 ),
                 const SizedBox(height: 16),
@@ -3299,6 +3383,10 @@ class _SageIntroCard extends StatelessWidget {
     required this.sessionToneOverride,
     required this.profileLoading,
     required this.memoryCount,
+    required this.activeTrack,
+    required this.useTrackForSession,
+    required this.onChooseTrack,
+    required this.onMuteTrackForSession,
     required this.onNewChat,
   });
 
@@ -3306,6 +3394,10 @@ class _SageIntroCard extends StatelessWidget {
   final String? sessionToneOverride;
   final bool profileLoading;
   final int memoryCount;
+  final SageFocusTrack? activeTrack;
+  final bool useTrackForSession;
+  final Future<void> Function() onChooseTrack;
+  final VoidCallback onMuteTrackForSession;
   final Future<void> Function() onNewChat;
 
   @override
@@ -3408,6 +3500,134 @@ class _SageIntroCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _withAlpha(JournalColors.bgSurface, 0.9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: useTrackForSession && activeTrack != null
+                      ? JournalColors.borderBright
+                      : JournalColors.border,
+                ),
+              ),
+              child: activeTrack == null
+                  ? Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'No focus track attached',
+                                style: TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Pick one if you want Sage to keep an ongoing coaching thread across sessions.',
+                                style: TextStyle(
+                                  color: JournalColors.textSecondary,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          color: JournalColors.accent,
+                          onPressed: onChooseTrack,
+                          child: const Text(
+                            'Choose',
+                            style: TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                useTrackForSession
+                                    ? 'Active focus track'
+                                    : 'Track muted for this chat',
+                                style: const TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              activeTrack!.title,
+                              style: TextStyle(
+                                color: useTrackForSession
+                                    ? JournalColors.info
+                                    : JournalColors.textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (activeTrack!.currentGoal.trim().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            activeTrack!.currentGoal,
+                            style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                        if (activeTrack!.nextCommitment.trim().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Next: ${activeTrack!.nextCommitment}',
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _MiniActionChip(
+                              label: 'Switch Track',
+                              onTap: onChooseTrack,
+                            ),
+                            if (useTrackForSession)
+                              _MiniActionChip(
+                                label: 'Mute For Chat',
+                                onTap: onMuteTrackForSession,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: 14),
             GestureDetector(
               onTap: onNewChat,
               child: Container(
@@ -3476,6 +3696,39 @@ class _SageIntroCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniActionChip extends StatelessWidget {
+  const _MiniActionChip({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: _withAlpha(JournalColors.bgCardAlt, 0.92),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: JournalColors.textPrimary,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

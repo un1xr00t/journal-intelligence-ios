@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 
+import 'sage_tracks_screen.dart';
 import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -562,6 +563,73 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionLabel('ONGOING COACH'),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        CupertinoPageRoute(
+                          builder: (_) => const SageTracksScreen(),
+                        ),
+                      );
+                    },
+                    child: GlassCard(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: _withAlpha(JournalColors.accent, 0.16),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: JournalColors.borderBright,
+                              ),
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.arrow_branch,
+                              color: JournalColors.textPrimary,
+                              size: 19,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Focus Tracks',
+                                  style: TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Create persistent tracks like breakup recovery, custody, sobriety, burnout, or finances so Sage can carry goals and unfinished threads across sessions.',
+                                  style: TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 13,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(
+                            CupertinoIcons.chevron_right,
+                            color: JournalColors.textMuted,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
