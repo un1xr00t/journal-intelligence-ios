@@ -33,9 +33,10 @@ This Flutter iOS client connects to `https://journal.williamthomas.name` and com
 
 - `Write` is the fast path for manual journaling, with deep links, notification prefills, and native voice-entry hooks.
 - `Timeline` is the living record: paginated entries, AI summaries on tiles, edit/delete flows, bookmarks, reflections, and image attachments.
+- `Timeline` now also acts like an insight console: it can pull the best cached therapist-insight card for the preferred tone, fall back across multiple tones when needed, regenerate the summary on demand, read it aloud with chunked TTS playback, and hand the full thread straight into Sage for follow-up.
 - `Today` generates a daily brief with emotional state, risk, trajectory, trends, and what matters most right now.
 - `Ask My Journal` is a journal-wide RAG search experience that answers questions against your own entries and shows supporting matches.
-- `Sage` is the persistent assistant experience with journal context, optional web search, saved conversations, attachments, and route-based handoff flows.
+- `Sage` is the persistent assistant experience with journal context, optional web search, saved conversations, attachments, route-based handoff flows, file review, image review, and track-aware coaching memory.
 - `Day One` import is built into onboarding so existing journal history can be brought forward instead of starting from zero.
 - `SMS journaling` support lets the account verify a phone number and use text-based intake flows from the same system.
 
@@ -43,9 +44,21 @@ This Flutter iOS client connects to `https://journal.williamthomas.name` and com
 
 - Timeline insight uses the therapist insight backend to generate a living summary of recent entries, with cache-aware refresh behavior.
 - Entry reflections support six tones: `therapist`, `detective`, `coach`, `friend`, `philosopher`, and `chaos_agent`.
-- Timeline insight supports multiple summary voices and can continue directly into Sage when the summary needs follow-up.
+- Timeline insight supports multiple summary voices: `therapist`, `best_friend`, `coach`, `mentor`, `inner_critic`, and `chaos_agent`.
+- Timeline can continue directly into Sage with a trimmed, reliability-safe living-summary handoff so the next chat starts from the current emotional and narrative context.
 - Text-to-speech playback can read the timeline summary out loud using saved voice settings, chunked audio generation, and native iOS playback handling.
 - People intelligence, mood trend data, rollups, contradictions, and pattern alerts are all part of the backend surface this client is wired to.
+- Sage can ingest supported files and images inside chat, including plain text formats, PDFs, `.docx`, `.odt`, markdown, structured text, and common image formats, then use that material as part of the active conversation.
+
+### Sage focus tracks
+
+- Focus tracks are persistent coaching threads that help Sage remember what you are working on across sessions instead of treating every chat like a blank slate.
+- Each track stores a `title`, `category`, `current goal`, `why this matters`, `next commitment`, `recent wins`, `stuck points`, `open loops`, `success markers`, `status`, and a check-in cadence.
+- Built-in categories include `Breakup`, `Custody`, `Burnout`, `Finances`, `Sobriety`, `Leaving`, and `General`.
+- Check-in cadence can be `Daily`, `Weekly`, or `When I Open Sage`, depending on how active or lightweight you want the thread to feel.
+- Tracks can be marked as the primary track, paused, resumed, archived, or deleted, and Sage can mute a track for a single chat when you want a conversation to stay separate.
+- Track check-ins capture what happened, mood, progress status, the win, the hard part, the next step, and whether the user confirmed the entry, giving Sage an ongoing record of momentum and friction instead of a single snapshot.
+- When a track is active for the session, Sage injects that goal, the recent wins, stuck points, open loops, next commitment, cadence, and last check-in directly into the chat context.
 
 ### Specialized workspaces
 

@@ -1,66 +1,66 @@
-<svg width="1600" height="980" viewBox="0 0 1600 980" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1600" height="980" rx="40" fill="#09111C"/>
+<svg width="1600" height="1040" viewBox="0 0 1600 1040" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="1040" rx="40" fill="#09111C"/>
   <text x="800" y="86" text-anchor="middle" fill="#FFFFFF" font-size="48" font-weight="700" font-family="Arial, Helvetica, sans-serif">Adaptive Notification Nudges</text>
   <text x="800" y="130" text-anchor="middle" fill="#B7D5EE" font-size="24" font-family="Arial, Helvetica, sans-serif">A local-first reminder system that stays grounded in your routine and your journal</text>
 
-  <rect x="104" y="210" width="300" height="230" rx="28" fill="#101B2B" stroke="#2C77D1"/>
+  <rect x="104" y="210" width="300" height="270" rx="28" fill="#101B2B" stroke="#2C77D1"/>
   <text x="136" y="266" fill="#8EC5FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">1. Inputs</text>
   <text x="136" y="318" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="136" dy="0">Schedules and</tspan>
     <tspan x="136" dy="32">saved places</tspan>
   </text>
-  <text x="136" y="390" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
+  <text x="136" y="382" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
     <tspan x="136" dy="0">Morning check-in</tspan>
     <tspan x="136" dy="30">Evening wrap-up</tspan>
     <tspan x="136" dy="30">Weekly Wyatt reminder</tspan>
   </text>
 
-  <rect x="460" y="210" width="340" height="230" rx="28" fill="#101B2B" stroke="#2C77D1"/>
+  <rect x="460" y="210" width="340" height="270" rx="28" fill="#101B2B" stroke="#2C77D1"/>
   <text x="492" y="266" fill="#8EC5FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">2. On-device learning</text>
   <text x="492" y="318" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="492" dy="0">Pattern scan of</tspan>
     <tspan x="492" dy="32">recent entries</tspan>
   </text>
-  <text x="492" y="390" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
+  <text x="492" y="382" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
     <tspan x="492" dy="0">Home stress and family language</tspan>
     <tspan x="492" dy="30">Work-to-home transition history</tspan>
     <tspan x="492" dy="30">Heavier times of day and Wyatt timing</tspan>
   </text>
 
-  <rect x="856" y="210" width="300" height="230" rx="28" fill="#101B2B" stroke="#2C77D1"/>
+  <rect x="856" y="210" width="300" height="270" rx="28" fill="#101B2B" stroke="#2C77D1"/>
   <text x="888" y="266" fill="#8EC5FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">3. Smart copy</text>
   <text x="888" y="318" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="888" dy="0">Explainable prompt</tspan>
     <tspan x="888" dy="32">rewriting</tspan>
   </text>
-  <text x="888" y="390" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
+  <text x="888" y="382" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
     <tspan x="888" dy="0">The app adjusts what the</tspan>
     <tspan x="888" dy="30">notification says and</tspan>
     <tspan x="888" dy="30">shows why.</tspan>
   </text>
 
-  <rect x="1212" y="210" width="284" height="230" rx="28" fill="#101B2B" stroke="#2C77D1"/>
+  <rect x="1212" y="210" width="284" height="270" rx="28" fill="#101B2B" stroke="#2C77D1"/>
   <text x="1244" y="266" fill="#8EC5FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">4. Action</text>
   <text x="1244" y="318" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="1244" dy="0">Open Write</tspan>
     <tspan x="1244" dy="32">or Sage</tspan>
   </text>
-  <text x="1244" y="390" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
+  <text x="1244" y="382" fill="#CAE1F4" font-size="19" font-family="Arial, Helvetica, sans-serif">
     <tspan x="1244" dy="0">Prefilled journal prompt</tspan>
     <tspan x="1244" dy="30">or auto-send Sage</tspan>
     <tspan x="1244" dy="30">handoff</tspan>
   </text>
 
-  <path d="M404 325H460" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
-  <path d="M800 325H856" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
-  <path d="M1156 325H1212" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
-  <path d="M444 325L424 311V339L444 325Z" fill="#6EB8FF"/>
-  <path d="M840 325L820 311V339L840 325Z" fill="#6EB8FF"/>
-  <path d="M1196 325L1176 311V339L1196 325Z" fill="#6EB8FF"/>
+  <path d="M404 350H460" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M800 350H856" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M1156 350H1212" stroke="#6EB8FF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M444 350L424 336V364L444 350Z" fill="#6EB8FF"/>
+  <path d="M840 350L820 336V364L840 350Z" fill="#6EB8FF"/>
+  <path d="M1196 350L1176 336V364L1196 350Z" fill="#6EB8FF"/>
 
-  <rect x="168" y="546" width="1264" height="264" rx="30" fill="#0E1826" stroke="#294765"/>
-  <text x="220" y="610" fill="#FFFFFF" font-size="32" font-weight="700" font-family="Arial, Helvetica, sans-serif">What makes this unusual</text>
-  <text x="220" y="674" fill="#CDE0F0" font-size="22" font-family="Arial, Helvetica, sans-serif">
+  <rect x="168" y="586" width="1264" height="264" rx="30" fill="#0E1826" stroke="#294765"/>
+  <text x="220" y="650" fill="#FFFFFF" font-size="32" font-weight="700" font-family="Arial, Helvetica, sans-serif">What makes this unusual</text>
+  <text x="220" y="714" fill="#CDE0F0" font-size="22" font-family="Arial, Helvetica, sans-serif">
     <tspan x="220" dy="0">These are local iPhone notifications, not a remote push funnel.</tspan>
     <tspan x="220" dy="38">Observed geofence events and learned movement context stay on-device for this feature.</tspan>
     <tspan x="220" dy="38">The app can explain why a home or work nudge changed instead of asking users to trust a black box.</tspan>

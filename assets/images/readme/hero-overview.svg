@@ -32,47 +32,47 @@
   <text x="1312" y="400" fill="#B8B8C8" font-size="19" font-family="Arial, Helvetica, sans-serif">Folders, logs,</text>
   <text x="1312" y="428" fill="#B8B8C8" font-size="19" font-family="Arial, Helvetica, sans-serif">AI summaries.</text>
 
-  <rect x="112" y="492" width="316" height="208" rx="28" fill="#101826" stroke="#1D6FD6"/>
+  <rect x="112" y="492" width="316" height="228" rx="28" fill="#101826" stroke="#1D6FD6"/>
   <text x="144" y="544" fill="#7FC7FF" font-size="17" font-weight="700" font-family="Arial, Helvetica, sans-serif">ADAPTIVE NOTIFICATION NUDGES</text>
   <text x="144" y="586" fill="#FFFFFF" font-size="23" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="144" dy="0">Local reminders that</tspan>
     <tspan x="144" dy="30">learn from your journal</tspan>
   </text>
-  <text x="144" y="652" fill="#B8D8F4" font-size="18" font-family="Arial, Helvetica, sans-serif">
+  <text x="144" y="646" fill="#B8D8F4" font-size="18" font-family="Arial, Helvetica, sans-serif">
     <tspan x="144" dy="0">Morning, evening, weekly</tspan>
     <tspan x="144" dy="28">Wyatt, and saved-place</tspan>
     <tspan x="144" dy="28">prompts.</tspan>
   </text>
 
-  <rect x="464" y="492" width="304" height="208" rx="28" fill="#161F16" stroke="#23945C"/>
+  <rect x="464" y="492" width="304" height="228" rx="28" fill="#161F16" stroke="#23945C"/>
   <text x="496" y="544" fill="#7ED6A7" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">PLANNING TOOLS</text>
   <text x="496" y="586" fill="#FFFFFF" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="496" dy="0">Exit Plan and</tspan>
     <tspan x="496" dy="30">Budget Planner</tspan>
   </text>
-  <text x="496" y="652" fill="#C5EAD4" font-size="18" font-family="Arial, Helvetica, sans-serif">
+  <text x="496" y="646" fill="#C5EAD4" font-size="18" font-family="Arial, Helvetica, sans-serif">
     <tspan x="496" dy="0">Structure hard decisions</tspan>
     <tspan x="496" dy="28">into trackable steps.</tspan>
   </text>
 
-  <rect x="804" y="492" width="304" height="208" rx="28" fill="#241618" stroke="#B04C54"/>
+  <rect x="804" y="492" width="304" height="228" rx="28" fill="#241618" stroke="#B04C54"/>
   <text x="836" y="544" fill="#FFB1B7" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">EARLY WARNING</text>
   <text x="836" y="586" fill="#FFFFFF" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="836" dy="0">Danger patterns before</tspan>
     <tspan x="836" dy="30">escalation</tspan>
   </text>
-  <text x="836" y="652" fill="#F4C7CB" font-size="18" font-family="Arial, Helvetica, sans-serif">
+  <text x="836" y="646" fill="#F4C7CB" font-size="18" font-family="Arial, Helvetica, sans-serif">
     <tspan x="836" dy="0">Signals, matched spikes,</tspan>
     <tspan x="836" dy="28">confidence, dismiss/rebuild.</tspan>
   </text>
 
-  <rect x="1144" y="492" width="344" height="208" rx="28" fill="#1A1626" stroke="#7A57C6"/>
+  <rect x="1144" y="492" width="344" height="228" rx="28" fill="#1A1626" stroke="#7A57C6"/>
   <text x="1176" y="544" fill="#C9B4FF" font-size="21" font-weight="700" font-family="Arial, Helvetica, sans-serif">NATIVE iOS TOUCHES</text>
   <text x="1176" y="586" fill="#FFFFFF" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">
     <tspan x="1176" dy="0">Widget, CarPlay,</tspan>
     <tspan x="1176" dy="30">Face ID, passkeys</tspan>
   </text>
-  <text x="1176" y="652" fill="#DDD0F9" font-size="18" font-family="Arial, Helvetica, sans-serif">
+  <text x="1176" y="646" fill="#DDD0F9" font-size="18" font-family="Arial, Helvetica, sans-serif">
     <tspan x="1176" dy="0">Built as more than a</tspan>
     <tspan x="1176" dy="28">plain Flutter shell.</tspan>
   </text>
