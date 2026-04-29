@@ -1567,8 +1567,8 @@ class _LogTabState extends State<_LogTab> {
                                             ?.trim()
                                             .isNotEmpty ==
                                         true
-                                    ? '${widget.initialDraft!.sourceLabel} is loaded below and ready to submit.'
-                                    : 'Sage dropped a prepared note below so you can review it and fire it into the case.',
+                                    ? '${widget.initialDraft!.sourceLabel} is loaded below and ready for review.'
+                                    : 'Sage dropped a prepared note below so you can review it before saving it to the case.',
                                 style: const TextStyle(
                                   color: JournalColors.textSecondary,
                                   fontSize: 12,
@@ -1882,88 +1882,106 @@ class _EntryCard extends StatefulWidget {
   State<_EntryCard> createState() => _EntryCardState();
 }
 
-class _EntryCardState extends State<_EntryCard>
-    with SingleTickerProviderStateMixin {
-  static const double _actionsWidth = 148;
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-  }
-
-  @override
-  void didUpdateWidget(covariant _EntryCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.editing || oldWidget.editing != widget.editing) {
-      _ctrl.reverse();
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+class _EntryCardState extends State<_EntryCard> {
+  static const List<String> _monthLabels = <String>[
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
+  ];
+  static const List<String> _weekdayLabels = <String>[
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
 
   Color get _sevColor =>
       _kSeverityColors[widget.entry['severity']] ?? JournalColors.border;
 
-  String _fmt(String? raw) {
-    if (raw == null || raw.length < 16) return raw ?? '';
-    return raw.substring(0, 16).replaceAll('T', ' ');
-  }
-
-  void _closeActions() => _ctrl.reverse();
-
-  void _handleCardTap() {
-    if (_ctrl.value > 0) {
-      _closeActions();
-      return;
+  DateTime? _parseDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      return DateTime.parse(raw).toLocal();
+    } catch (_) {
+      return null;
     }
-    if (!widget.editing) widget.onTap();
   }
 
-  Widget _buildActionButton({
-    required VoidCallback onTap,
+  String _monthLabel(String? raw) {
+    final date = _parseDate(raw);
+    if (date == null) return 'LOG';
+    return _monthLabels[date.month - 1];
+  }
+
+  String _dayLabel(String? raw) {
+    final date = _parseDate(raw);
+    if (date == null) return '--';
+    return '${date.day}';
+  }
+
+  String _dateHeadline(String? raw) {
+    final date = _parseDate(raw);
+    if (date == null) {
+      final fallback = raw?.trim() ?? '';
+      return fallback.isEmpty ? 'Case entry' : fallback;
+    }
+    final weekday = _weekdayLabels[date.weekday - 1];
+    final month = _monthLabels[date.month - 1];
+    return '$weekday, $month ${date.day}';
+  }
+
+  String _timeLabel(String? raw) {
+    final date = _parseDate(raw);
+    if (date == null) return '';
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final suffix = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $suffix';
+  }
+
+  Widget _swipeBackground({
+    required Alignment alignment,
+    required Color color,
     required IconData icon,
     required String label,
-    required Color color,
-    required double width,
   }) {
-    return GestureDetector(
-      onTap: () {
-        _closeActions();
-        onTap();
-      },
-      child: Container(
-        width: width,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: CupertinoColors.white, size: 20),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: CupertinoColors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+    final isRight = alignment == Alignment.centerRight;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        color: color.withValues(alpha: 0.14),
+      ),
+      padding: EdgeInsets.only(left: isRight ? 0 : 20, right: isRight ? 20 : 0),
+      alignment: alignment,
+      child: Row(
+        mainAxisAlignment:
+            isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isRight) Icon(icon, color: color, size: 18),
+          if (!isRight) const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
-          ],
-        ),
+          ),
+          if (isRight) const SizedBox(width: 8),
+          if (isRight) Icon(icon, color: color, size: 18),
+        ],
       ),
     );
   }
@@ -1981,532 +1999,591 @@ class _EntryCardState extends State<_EntryCard>
     final synthesizing = widget.synthesizing;
     final photos = List<dynamic>.from(entry['photos'] ?? []);
     final analysis = entry['multi_photo_analysis'] as String?;
+    final createdAt = entry['created_at'] as String?;
+    final hasEvidence = photos.isNotEmpty || (analysis?.isNotEmpty ?? false);
+    final content = (entry['content'] as String? ?? '').trim();
+    final isLong = content.length > 220;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: editing
-            ? null
-            : (d) {
-                _ctrl.value =
-                    (_ctrl.value - d.delta.dx / _actionsWidth).clamp(0.0, 1.0);
-              },
-        onHorizontalDragEnd: editing
-            ? null
-            : (_) {
-                if (_ctrl.value > 0.35) {
-                  _ctrl.forward();
-                } else {
-                  _ctrl.reverse();
-                }
-              },
-        onTap: _handleCardTap,
-        child: AnimatedBuilder(
-          animation: _anim,
-          builder: (_, __) {
-            final offset = _anim.value * _actionsWidth;
-            return SizedBox(
-              child: Stack(
+      child: Dismissible(
+        key: ValueKey('detective-entry-${entry['id']}'),
+        direction: DismissDirection.horizontal,
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.startToEnd) {
+            widget.onDelete();
+          } else if (editing) {
+            widget.onEditCancel();
+          } else {
+            widget.onEditStart();
+          }
+          return false;
+        },
+        background: _swipeBackground(
+          alignment: Alignment.centerLeft,
+          color: JournalColors.danger,
+          icon: CupertinoIcons.trash,
+          label: 'Delete',
+        ),
+        secondaryBackground: _swipeBackground(
+          alignment: Alignment.centerRight,
+          color: JournalColors.accent,
+          icon: editing ? CupertinoIcons.xmark : CupertinoIcons.pencil,
+          label: editing ? 'Close' : 'Edit',
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, right: 14),
+              child: Column(
                 children: [
-                  Positioned.fill(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 44),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            _buildActionButton(
-                              onTap: editing
-                                  ? widget.onEditCancel
-                                  : widget.onEditStart,
-                              icon: editing
-                                  ? CupertinoIcons.xmark
-                                  : CupertinoIcons.pencil,
-                              label: editing ? 'Close' : 'Edit',
-                              color: JournalColors.accent,
-                              width: 68,
-                            ),
-                            const SizedBox(width: 8),
-                            _buildActionButton(
-                              onTap: widget.onDelete,
-                              icon: CupertinoIcons.trash,
-                              label: 'Delete',
-                              color: JournalColors.danger,
-                              width: 72,
-                            ),
-                          ],
-                        ),
-                      ),
+                  Container(
+                    width: 46,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      color: _withAlpha(JournalColors.bgSurface, 0.72),
+                      border: Border.all(color: _withAlpha(_sevColor, 0.22)),
                     ),
-                  ),
-                  Transform.translate(
-                    offset: Offset(-offset, 0),
-                    child: GlassCard(
-                      accentBorder: expanded || editing,
-                      padding: const EdgeInsets.all(0),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Container(width: 3, color: _sevColor),
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: [
-                                          ...[
-                                            _Chip(entry['entry_type'] ?? 'note',
-                                                JournalColors.textMuted),
-                                            _Chip(
-                                                (entry['severity'] ?? 'medium')
-                                                    .toString()
-                                                    .toUpperCase(),
-                                                _sevColor),
-                                            if (photos.isNotEmpty)
-                                              _Chip(
-                                                  '${photos.length} photo${photos.length == 1 ? '' : 's'}',
-                                                  JournalColors.success),
-                                          ],
-                                          GestureDetector(
-                                            onTap: widget.onAddPhoto,
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 7),
-                                              decoration: BoxDecoration(
-                                                color: _withAlpha(
-                                                    JournalColors.accent, 0.12),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                                border: Border.all(
-                                                  color: _withAlpha(
-                                                      JournalColors.accent,
-                                                      0.28),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(
-                                                    CupertinoIcons.paperclip,
-                                                    size: 15,
-                                                    color: JournalColors.accent,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    photos.isNotEmpty
-                                                        ? 'Attach more'
-                                                        : 'Attach photo',
-                                                    style: const TextStyle(
-                                                      color:
-                                                          JournalColors.accent,
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            _fmt(entry['created_at']),
-                                            style: const TextStyle(
-                                              color: JournalColors.textMuted,
-                                              fontSize: 10,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      if (editing) ...[
-                                        CupertinoTextField(
-                                          controller: editCtrl,
-                                          style: const TextStyle(
-                                            color: JournalColors.textPrimary,
-                                            fontSize: 13,
-                                            height: 1.5,
-                                          ),
-                                          maxLines: null,
-                                          minLines: 3,
-                                          decoration: BoxDecoration(
-                                            color: _withAlpha(
-                                                JournalColors.bgSurface, 0.72),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            border: Border.all(
-                                                color:
-                                                    JournalColors.borderBright),
-                                          ),
-                                          padding: const EdgeInsets.all(10),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children: _kEntryTypes
-                                                .map((t) => GestureDetector(
-                                                      onTap: () => widget
-                                                          .onEditTypeChange(t),
-                                                      child: Container(
-                                                        margin: const EdgeInsets
-                                                            .only(right: 5),
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: editType == t
-                                                              ? _withAlpha(
-                                                                  JournalColors
-                                                                      .accent,
-                                                                  0.18)
-                                                              : _withAlpha(
-                                                                  JournalColors
-                                                                      .bgSurface,
-                                                                  0.5),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(5),
-                                                          border: Border.all(
-                                                            color: editType == t
-                                                                ? JournalColors
-                                                                    .borderBright
-                                                                : JournalColors
-                                                                    .border,
-                                                          ),
-                                                        ),
-                                                        child: Text(
-                                                          t,
-                                                          style: TextStyle(
-                                                            color: editType == t
-                                                                ? JournalColors
-                                                                    .accent
-                                                                : JournalColors
-                                                                    .textMuted,
-                                                            fontSize: 10,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ))
-                                                .toList(),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children: _kSeverities.map((s) {
-                                              final c = _kSeverityColors[s]!;
-                                              return GestureDetector(
-                                                onTap: () => widget
-                                                    .onEditSeverityChange(s),
-                                                child: Container(
-                                                  margin: const EdgeInsets.only(
-                                                      right: 5),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: editSeverity == s
-                                                        ? _withAlpha(c, 0.18)
-                                                        : _withAlpha(
-                                                            JournalColors
-                                                                .bgSurface,
-                                                            0.5),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            5),
-                                                    border: Border.all(
-                                                      color: editSeverity == s
-                                                          ? _withAlpha(c, 0.5)
-                                                          : JournalColors
-                                                              .border,
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    s.toUpperCase(),
-                                                    style: TextStyle(
-                                                      color: editSeverity == s
-                                                          ? c
-                                                          : JournalColors
-                                                              .textMuted,
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.end,
-                                          children: [
-                                            CupertinoButton(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 14,
-                                                      vertical: 6),
-                                              onPressed: widget.onEditCancel,
-                                              child: const Text(
-                                                'Cancel',
-                                                style: TextStyle(
-                                                    color:
-                                                        JournalColors.textMuted,
-                                                    fontSize: 13),
-                                              ),
-                                            ),
-                                            CupertinoButton.filled(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 14,
-                                                      vertical: 6),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              onPressed: saving
-                                                  ? null
-                                                  : widget.onEditSave,
-                                              child: saving
-                                                  ? const CupertinoActivityIndicator(
-                                                      color:
-                                                          CupertinoColors.white)
-                                                  : const Text('Save',
-                                                      style: TextStyle(
-                                                          fontSize: 13)),
-                                            ),
-                                          ],
-                                        ),
-                                      ] else ...[
-                                        Text(
-                                          entry['content'] ?? '',
-                                          maxLines: expanded ? null : 3,
-                                          overflow: expanded
-                                              ? TextOverflow.visible
-                                              : TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: JournalColors.textPrimary,
-                                            fontSize: 13,
-                                            height: 1.55,
-                                          ),
-                                        ),
-                                        if (photos.isNotEmpty ||
-                                            (analysis != null &&
-                                                analysis.isNotEmpty)) ...[
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              if (!expanded &&
-                                                  photos.isNotEmpty)
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          right: 5),
-                                                  child: Text(
-                                                    '${photos.length} photo${photos.length == 1 ? '' : 's'}',
-                                                    style: const TextStyle(
-                                                        color: JournalColors
-                                                            .textMuted,
-                                                        fontSize: 10),
-                                                  ),
-                                                ),
-                                              Icon(
-                                                expanded
-                                                    ? CupertinoIcons.chevron_up
-                                                    : CupertinoIcons
-                                                        .chevron_down,
-                                                size: 11,
-                                                color: JournalColors.textMuted,
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ],
-                                      if (expanded &&
-                                          (photos.isNotEmpty || uploading)) ...[
-                                        const SizedBox(height: 10),
-                                        Container(
-                                          height: 0.5,
-                                          color: const Color(0x1AFFFFFF),
-                                          margin:
-                                              const EdgeInsets.only(bottom: 10),
-                                        ),
-                                        if (uploading)
-                                          const Padding(
-                                            padding: EdgeInsets.only(bottom: 8),
-                                            child: Row(
-                                              children: [
-                                                CupertinoActivityIndicator(
-                                                    radius: 7),
-                                                SizedBox(width: 8),
-                                                Text(
-                                                  'Uploading photos…',
-                                                  style: TextStyle(
-                                                      color: JournalColors
-                                                          .textMuted,
-                                                      fontSize: 11),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        if (photos.isNotEmpty)
-                                          Wrap(
-                                            spacing: 12,
-                                            runSpacing: 12,
-                                            children: photos.map<Widget>((p) {
-                                              final photoId =
-                                                  p['id'].toString();
-                                              final imageUrl =
-                                                  p['image_url'] as String? ??
-                                                      '';
-                                              final status =
-                                                  p['analysis_status']
-                                                          as String? ??
-                                                      'pending';
-                                              final photoAnalysis =
-                                                  p['ai_analysis'] as String?;
-                                              final filename =
-                                                  p['original_filename']
-                                                          as String? ??
-                                                      'Photo';
-                                              final statusColor = status ==
-                                                      'done'
-                                                  ? JournalColors.success
-                                                  : status == 'failed'
-                                                      ? JournalColors.danger
-                                                      : JournalColors.severity;
-                                              return _DetectivePhotoTile(
-                                                filename: filename,
-                                                remotePath: imageUrl,
-                                                size: 96,
-                                                statusColor: statusColor,
-                                                showExpandIcon: true,
-                                                onTap: () =>
-                                                    _showCasePhotoLightbox(
-                                                  context,
-                                                  imagePath: imageUrl,
-                                                  title: filename,
-                                                  analysis: photoAnalysis,
-                                                  analysisLabel:
-                                                      p['analysis_label']
-                                                          as String?,
-                                                ),
-                                                onDelete: () => widget
-                                                    .onDeletePhoto(photoId),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        if (synthesizing) ...[
-                                          const SizedBox(height: 8),
-                                          const Row(
-                                            children: [
-                                              CupertinoActivityIndicator(
-                                                  radius: 7),
-                                              SizedBox(width: 8),
-                                              Text(
-                                                'Analyzing photos together…',
-                                                style: TextStyle(
-                                                    color:
-                                                        JournalColors.textMuted,
-                                                    fontSize: 11),
-                                              ),
-                                            ],
-                                          ),
-                                        ] else if (photos.length > 1 &&
-                                            !uploading) ...[
-                                          const SizedBox(height: 8),
-                                          GestureDetector(
-                                            onTap: widget.onSynthesize,
-                                            child: Text(
-                                              analysis != null
-                                                  ? 'Re-run analysis'
-                                                  : 'Run combined analysis',
-                                              style: TextStyle(
-                                                color: _withAlpha(
-                                                    JournalColors.accent, 0.8),
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        if (analysis != null &&
-                                            analysis.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Container(
-                                            padding: const EdgeInsets.all(10),
-                                            decoration: BoxDecoration(
-                                              color: _withAlpha(
-                                                  JournalColors.accent, 0.05),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              border: Border.all(
-                                                  color: _withAlpha(
-                                                      JournalColors.accent,
-                                                      0.15)),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const Text(
-                                                  'COMBINED ANALYSIS',
-                                                  style: TextStyle(
-                                                    color: JournalColors.accent,
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w600,
-                                                    letterSpacing: 0.8,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  analysis,
-                                                  style: const TextStyle(
-                                                    color: JournalColors
-                                                        .textSecondary,
-                                                    fontSize: 12,
-                                                    height: 1.55,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                    child: Column(
+                      children: [
+                        Text(
+                          _monthLabel(createdAt),
+                          style: const TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.0,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _dayLabel(createdAt),
+                          style: const TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 2,
+                    height: expanded || hasEvidence ? 104 : 84,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          _withAlpha(_sevColor, 0.88),
+                          _withAlpha(_sevColor, 0.12),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: editing ? null : widget.onTap,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(26),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        _withAlpha(JournalColors.bgCard, 0.96),
+                        _withAlpha(JournalColors.bgCardAlt, 0.94),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: expanded || editing
+                          ? _withAlpha(_sevColor, 0.34)
+                          : JournalColors.border,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _withAlpha(_sevColor, 0.10),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _dateHeadline(createdAt),
+                                    style: const TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _timeLabel(createdAt),
+                                    style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (editing)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: _withAlpha(JournalColors.accent, 0.12),
+                                  border: Border.all(
+                                    color: _withAlpha(
+                                      JournalColors.accent,
+                                      0.24,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'EDITING',
+                                  style: TextStyle(
+                                    color: JournalColors.accent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.9,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _Chip(
+                              (entry['entry_type'] as String? ?? 'note')
+                                  .toUpperCase(),
+                              JournalColors.textMuted,
+                            ),
+                            _Chip(
+                              (entry['severity'] ?? 'medium')
+                                  .toString()
+                                  .toUpperCase(),
+                              _sevColor,
+                            ),
+                            if (photos.isNotEmpty)
+                              _Chip(
+                                '${photos.length} photo${photos.length == 1 ? '' : 's'}',
+                                JournalColors.success,
+                              ),
+                            GestureDetector(
+                              onTap: widget.onAddPhoto,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _withAlpha(
+                                    JournalColors.accent,
+                                    0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: _withAlpha(
+                                      JournalColors.accent,
+                                      0.28,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      CupertinoIcons.paperclip,
+                                      size: 14,
+                                      color: JournalColors.accent,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      photos.isNotEmpty
+                                          ? 'Attach more'
+                                          : 'Attach photo',
+                                      style: const TextStyle(
+                                        color: JournalColors.accent,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        if (editing) ...[
+                          CupertinoTextField(
+                            controller: editCtrl,
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 14,
+                              height: 1.6,
+                            ),
+                            maxLines: null,
+                            minLines: 4,
+                            decoration: BoxDecoration(
+                              color: _withAlpha(JournalColors.bgSurface, 0.72),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: JournalColors.borderBright,
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(14),
+                          ),
+                          const SizedBox(height: 10),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _kEntryTypes
+                                  .map(
+                                    (t) => GestureDetector(
+                                      onTap: () => widget.onEditTypeChange(t),
+                                      child: Container(
+                                        margin: const EdgeInsets.only(right: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: editType == t
+                                              ? _withAlpha(
+                                                  JournalColors.accent,
+                                                  0.18,
+                                                )
+                                              : _withAlpha(
+                                                  JournalColors.bgSurface,
+                                                  0.5,
+                                                ),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                          border: Border.all(
+                                            color: editType == t
+                                                ? JournalColors.borderBright
+                                                : JournalColors.border,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          t.toUpperCase(),
+                                          style: TextStyle(
+                                            color: editType == t
+                                                ? JournalColors.accent
+                                                : JournalColors.textMuted,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _kSeverities.map((s) {
+                                final color = _kSeverityColors[s]!;
+                                return GestureDetector(
+                                  onTap: () => widget.onEditSeverityChange(s),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: editSeverity == s
+                                          ? _withAlpha(color, 0.18)
+                                          : _withAlpha(
+                                              JournalColors.bgSurface,
+                                              0.5,
+                                            ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: editSeverity == s
+                                            ? _withAlpha(color, 0.5)
+                                            : JournalColors.border,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      s.toUpperCase(),
+                                      style: TextStyle(
+                                        color: editSeverity == s
+                                            ? color
+                                            : JournalColors.textMuted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CupertinoButton(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 6,
+                                ),
+                                onPressed: widget.onEditCancel,
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                    color: JournalColors.textMuted,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              CupertinoButton.filled(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 6,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                                onPressed: saving ? null : widget.onEditSave,
+                                child: saving
+                                    ? const CupertinoActivityIndicator(
+                                        color: CupertinoColors.white,
+                                      )
+                                    : const Text(
+                                        'Save',
+                                        style: TextStyle(fontSize: 13),
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
+                          Text(
+                            content,
+                            maxLines: expanded ? null : 4,
+                            overflow: expanded
+                                ? TextOverflow.visible
+                                : TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 14,
+                              height: 1.6,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: widget.onTap,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  expanded
+                                      ? 'Hide details'
+                                      : hasEvidence
+                                          ? 'Open evidence'
+                                          : isLong
+                                              ? 'Read more'
+                                              : 'Open entry',
+                                  style: TextStyle(
+                                    color: _sevColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  expanded
+                                      ? CupertinoIcons.chevron_up
+                                      : CupertinoIcons.chevron_down,
+                                  size: 12,
+                                  color: _sevColor,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (!editing &&
+                            (expanded || uploading || synthesizing)) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            height: 0.5,
+                            color: _withAlpha(JournalColors.textPrimary, 0.08),
+                          ),
+                          const SizedBox(height: 14),
+                          if (uploading)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                children: [
+                                  CupertinoActivityIndicator(radius: 7),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Uploading photos…',
+                                    style: TextStyle(
+                                      color: JournalColors.textMuted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (photos.isNotEmpty)
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: photos.map<Widget>((p) {
+                                final photoId = p['id'].toString();
+                                final imageUrl =
+                                    p['image_url'] as String? ?? '';
+                                final status =
+                                    p['analysis_status'] as String? ??
+                                        'pending';
+                                final photoAnalysis =
+                                    p['ai_analysis'] as String?;
+                                final filename =
+                                    p['original_filename'] as String? ??
+                                        'Photo';
+                                final statusColor = status == 'done'
+                                    ? JournalColors.success
+                                    : status == 'failed'
+                                        ? JournalColors.danger
+                                        : JournalColors.severity;
+                                return _DetectivePhotoTile(
+                                  filename: filename,
+                                  remotePath: imageUrl,
+                                  size: 96,
+                                  statusColor: statusColor,
+                                  showExpandIcon: true,
+                                  onTap: () => _showCasePhotoLightbox(
+                                    context,
+                                    imagePath: imageUrl,
+                                    title: filename,
+                                    analysis: photoAnalysis,
+                                    analysisLabel:
+                                        p['analysis_label'] as String?,
+                                  ),
+                                  onDelete: () => widget.onDeletePhoto(photoId),
+                                );
+                              }).toList(),
+                            ),
+                          if (synthesizing) ...[
+                            const SizedBox(height: 10),
+                            const Row(
+                              children: [
+                                CupertinoActivityIndicator(radius: 7),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Analyzing photos together…',
+                                  style: TextStyle(
+                                    color: JournalColors.textMuted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ] else if (photos.length > 1 && !uploading) ...[
+                            const SizedBox(height: 10),
+                            GestureDetector(
+                              onTap: widget.onSynthesize,
+                              child: Text(
+                                analysis != null && analysis.isNotEmpty
+                                    ? 'Re-run analysis'
+                                    : 'Run combined analysis',
+                                style: const TextStyle(
+                                  color: JournalColors.accent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (analysis != null && analysis.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    _withAlpha(JournalColors.accent, 0.10),
+                                    _withAlpha(JournalColors.bgSurface, 0.82),
+                                  ],
+                                ),
+                                border: Border.all(
+                                  color: _withAlpha(
+                                    JournalColors.accent,
+                                    0.22,
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'COMBINED ANALYSIS',
+                                    style: TextStyle(
+                                      color: JournalColors.accent,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    analysis,
+                                    style: const TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 13,
+                                      height: 1.6,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -5299,8 +5376,9 @@ class _SettingsTabState extends State<_SettingsTab> {
             _tf(_nameCtrl, ph: 'e.g. Alex'),
             const SizedBox(height: 4),
             const Text(
-                'Used in photo analysis so the AI knows you are never a participant '
-                'in screenshots unless explicitly mentioned.',
+                'Used only as reference context. Photo analysis must not assume you are '
+                'the photographer, uploader, sender, subject, or participant unless '
+                'the evidence explicitly says so.',
                 style: TextStyle(
                     color: JournalColors.textMuted, fontSize: 11, height: 1.6)),
             const SizedBox(height: 20),
@@ -5358,10 +5436,10 @@ class _SettingsTabState extends State<_SettingsTab> {
                           fontWeight: FontWeight.w700)),
                   SizedBox(height: 8),
                   Text(
-                      'When you attach photos to a log entry and run Combined Analysis, '
-                      'the AI is told exactly who you are and who the case subject is. '
-                      'Instead of "the gray bubble sender," it will say your real name '
-                      '— using the names you\'ve configured here.',
+                      'This context helps the AI use configured names only when the '
+                      'evidence clearly identifies them. It should not infer who took '
+                      'the photo, who uploaded it, or what phone UI details mean unless '
+                      'the evidence itself makes that explicit.',
                       style: TextStyle(
                           color: JournalColors.textMuted,
                           fontSize: 12,
