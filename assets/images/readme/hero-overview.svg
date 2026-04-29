@@ -1,0 +1,61 @@
+<svg width="1600" height="760" viewBox="0 0 1600 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="760" rx="40" fill="#07070F"/>
+  <rect x="24" y="24" width="1552" height="712" rx="32" fill="url(#bg)"/>
+  <circle cx="182" cy="168" r="72" fill="#17172A" stroke="#313149" stroke-width="2"/>
+  <text x="182" y="188" text-anchor="middle" fill="#E8E8F0" font-size="64" font-family="Arial, Helvetica, sans-serif">JI</text>
+  <text x="300" y="164" fill="#FFFFFF" font-size="54" font-weight="700" font-family="Arial, Helvetica, sans-serif">Journal Intelligence</text>
+  <text x="300" y="220" fill="#B8B8C8" font-size="26" font-family="Arial, Helvetica, sans-serif">Your journal, turned into memory, patterns, evidence, and next steps.</text>
+
+  <rect x="112" y="312" width="264" height="124" rx="24" fill="#121223" stroke="#2C2C44"/>
+  <text x="144" y="360" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">Today Brief</text>
+  <text x="144" y="398" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">Risk, trend, trajectory,</text>
+  <text x="144" y="426" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">and what matters now.</text>
+
+  <rect x="404" y="312" width="264" height="124" rx="24" fill="#121223" stroke="#2C2C44"/>
+  <text x="436" y="360" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">Timeline</text>
+  <text x="436" y="398" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">Living summary, TTS,</text>
+  <text x="436" y="426" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">reflections, attachments.</text>
+
+  <rect x="696" y="312" width="264" height="124" rx="24" fill="#121223" stroke="#2C2C44"/>
+  <text x="728" y="360" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">Ask + Sage</text>
+  <text x="728" y="398" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">RAG search, saved chats,</text>
+  <text x="728" y="426" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">web search, handoffs.</text>
+
+  <rect x="988" y="312" width="264" height="124" rx="24" fill="#121223" stroke="#2C2C44"/>
+  <text x="1020" y="360" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">Detective</text>
+  <text x="1020" y="398" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">Case files, evidence,</text>
+  <text x="1020" y="426" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">research, exportable PDFs.</text>
+
+  <rect x="1280" y="312" width="208" height="124" rx="24" fill="#121223" stroke="#2C2C44"/>
+  <text x="1312" y="360" fill="#FFFFFF" font-size="26" font-weight="700" font-family="Arial, Helvetica, sans-serif">Proof Vault</text>
+  <text x="1312" y="398" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">Folders, logs,</text>
+  <text x="1312" y="426" fill="#B8B8C8" font-size="20" font-family="Arial, Helvetica, sans-serif">AI summaries.</text>
+
+  <rect x="112" y="484" width="376" height="144" rx="28" fill="#101826" stroke="#1D6FD6"/>
+  <text x="148" y="536" fill="#7FC7FF" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">ADAPTIVE NOTIFICATION NUDGES</text>
+  <text x="148" y="574" fill="#FFFFFF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Local reminders that learn from your journal</text>
+  <text x="148" y="608" fill="#B8D8F4" font-size="20" font-family="Arial, Helvetica, sans-serif">Morning, evening, weekly Wyatt, and saved-place prompts.</text>
+
+  <rect x="516" y="484" width="296" height="144" rx="28" fill="#161F16" stroke="#23945C"/>
+  <text x="548" y="536" fill="#7ED6A7" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">PLANNING TOOLS</text>
+  <text x="548" y="574" fill="#FFFFFF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Exit Plan and Budget Planner</text>
+  <text x="548" y="608" fill="#C5EAD4" font-size="20" font-family="Arial, Helvetica, sans-serif">Structure hard decisions into trackable steps.</text>
+
+  <rect x="840" y="484" width="300" height="144" rx="28" fill="#241618" stroke="#B04C54"/>
+  <text x="872" y="536" fill="#FFB1B7" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">EARLY WARNING</text>
+  <text x="872" y="574" fill="#FFFFFF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Danger patterns before escalation</text>
+  <text x="872" y="608" fill="#F4C7CB" font-size="20" font-family="Arial, Helvetica, sans-serif">Signals, matched spikes, confidence, dismiss/rebuild.</text>
+
+  <rect x="1168" y="484" width="320" height="144" rx="28" fill="#1A1626" stroke="#7A57C6"/>
+  <text x="1200" y="536" fill="#C9B4FF" font-size="22" font-weight="700" font-family="Arial, Helvetica, sans-serif">NATIVE iOS TOUCHES</text>
+  <text x="1200" y="574" fill="#FFFFFF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Widget, CarPlay, Face ID, passkeys</text>
+  <text x="1200" y="608" fill="#DDD0F9" font-size="20" font-family="Arial, Helvetica, sans-serif">Built as more than a plain Flutter shell.</text>
+
+  <defs>
+    <linearGradient id="bg" x1="90" y1="44" x2="1510" y2="716" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10101B"/>
+      <stop offset="0.5" stop-color="#0E1324"/>
+      <stop offset="1" stop-color="#11111D"/>
+    </linearGradient>
+  </defs>
+</svg>

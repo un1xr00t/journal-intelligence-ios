@@ -1,0 +1,47 @@
+<svg width="1600" height="920" viewBox="0 0 1600 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="920" rx="40" fill="#0A0A12"/>
+  <text x="800" y="88" text-anchor="middle" fill="#FFFFFF" font-size="48" font-weight="700" font-family="Arial, Helvetica, sans-serif">Product Surface</text>
+  <text x="800" y="132" text-anchor="middle" fill="#B8B8C8" font-size="24" font-family="Arial, Helvetica, sans-serif">From daily reflection to evidence-building and high-stakes planning</text>
+
+  <rect x="80" y="188" width="460" height="284" rx="28" fill="#121223" stroke="#2C2C44"/>
+  <text x="116" y="242" fill="#8FD0FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Capture</text>
+  <text x="116" y="292" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">Write, voice, SMS, import, widget</text>
+  <text x="116" y="336" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">Manual entries, native speech capture,</text>
+  <text x="116" y="368" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">Day One import, text-based journaling,</text>
+  <text x="116" y="400" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">and home-screen shortcuts.</text>
+
+  <rect x="570" y="188" width="460" height="284" rx="28" fill="#121223" stroke="#2C2C44"/>
+  <text x="606" y="242" fill="#9FE6C0" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Understand</text>
+  <text x="606" y="292" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">Today, Timeline, reflections, TTS</text>
+  <text x="606" y="336" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">Daily brief, therapist insight,</text>
+  <text x="606" y="368" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">tone-based reflections, attached media,</text>
+  <text x="606" y="400" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">and spoken summaries.</text>
+
+  <rect x="1060" y="188" width="460" height="284" rx="28" fill="#121223" stroke="#2C2C44"/>
+  <text x="1096" y="242" fill="#E8B1FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Ask</text>
+  <text x="1096" y="292" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">RAG search and Sage assistant</text>
+  <text x="1096" y="336" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">Ask your own journal questions,</text>
+  <text x="1096" y="368" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">save conversations, attach context,</text>
+  <text x="1096" y="400" fill="#C7C7D5" font-size="22" font-family="Arial, Helvetica, sans-serif">and hand off from other flows.</text>
+
+  <rect x="80" y="520" width="460" height="284" rx="28" fill="#151A13" stroke="#2F8C4F"/>
+  <text x="116" y="574" fill="#9FE6C0" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Plan</text>
+  <text x="116" y="624" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">Exit Plan, Budget, War Room</text>
+  <text x="116" y="668" fill="#D1EAD7" font-size="22" font-family="Arial, Helvetica, sans-serif">Phased plans, AI comparisons,</text>
+  <text x="116" y="700" fill="#D1EAD7" font-size="22" font-family="Arial, Helvetica, sans-serif">urgent triage, notes, tasks,</text>
+  <text x="116" y="732" fill="#D1EAD7" font-size="22" font-family="Arial, Helvetica, sans-serif">attachments, exports, and sharing.</text>
+
+  <rect x="570" y="520" width="460" height="284" rx="28" fill="#191315" stroke="#A34857"/>
+  <text x="606" y="574" fill="#FFB2BC" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Protect</text>
+  <text x="606" y="624" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">Early Warning, Mental Health, Resources</text>
+  <text x="606" y="668" fill="#EFCFD4" font-size="22" font-family="Arial, Helvetica, sans-serif">Spike matching, crisis indicators,</text>
+  <text x="606" y="700" fill="#EFCFD4" font-size="22" font-family="Arial, Helvetica, sans-serif">narrative refresh, support resources,</text>
+  <text x="606" y="732" fill="#EFCFD4" font-size="22" font-family="Arial, Helvetica, sans-serif">and danger-aware review flows.</text>
+
+  <rect x="1060" y="520" width="460" height="284" rx="28" fill="#161924" stroke="#506DD2"/>
+  <text x="1096" y="574" fill="#AFC6FF" font-size="24" font-weight="700" font-family="Arial, Helvetica, sans-serif">Build A Record</text>
+  <text x="1096" y="624" fill="#FFFFFF" font-size="28" font-weight="700" font-family="Arial, Helvetica, sans-serif">Detective, Proof Vault, Exports, Story</text>
+  <text x="1096" y="668" fill="#D6DDF7" font-size="22" font-family="Arial, Helvetica, sans-serif">Evidence logs, research, uploads,</text>
+  <text x="1096" y="700" fill="#D6DDF7" font-size="22" font-family="Arial, Helvetica, sans-serif">vault folders, clinician summaries,</text>
+  <text x="1096" y="732" fill="#D6DDF7" font-size="22" font-family="Arial, Helvetica, sans-serif">and reusable narrative drafts.</text>
+</svg>
