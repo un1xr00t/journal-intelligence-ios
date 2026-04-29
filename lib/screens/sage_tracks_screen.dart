@@ -101,193 +101,214 @@ class _SageTracksScreenState extends State<SageTracksScreen> {
     }
   }
 
+  Future<void> _editTrack(SageFocusTrack track) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => _EditTrackScreen(track: track),
+      ),
+    );
+    if (changed == true) {
+      await _load();
+    }
+  }
+
   List<SageFocusTrack> _sectionTracks(String status) {
     return _tracks.where((item) => item.status == status).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      backgroundColor: JournalColors.bgBase,
-      child: CustomScrollView(
-        slivers: [
-          CupertinoSliverNavigationBar(
-            largeTitle: const Text('Focus Tracks'),
-            trailing: CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 32),
-              onPressed: _createTrack,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _withAlpha(JournalColors.accent, 0.16),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: JournalColors.borderBright),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      CupertinoIcons.plus,
-                      color: JournalColors.textPrimary,
-                      size: 13,
-                    ),
-                    SizedBox(width: 6),
-                    Text(
-                      'New',
-                      style: TextStyle(
+    return DefaultTextStyle.merge(
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: CupertinoPageScaffold(
+        backgroundColor: JournalColors.bgBase,
+        child: CustomScrollView(
+          slivers: [
+            CupertinoSliverNavigationBar(
+              largeTitle: const Text('Focus Tracks'),
+              trailing: CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+                onPressed: _createTrack,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _withAlpha(JournalColors.accent, 0.16),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: JournalColors.borderBright),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.plus,
                         color: JournalColors.textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        size: 13,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
-            border: const Border(
-              bottom: BorderSide(color: JournalColors.border, width: 0.5),
-            ),
-          ),
-          if (_loading)
-            const SliverFillRemaining(
-              child: Center(
-                child: CupertinoActivityIndicator(color: JournalColors.accent),
-              ),
-            )
-          else if (_error != null)
-            SliverFillRemaining(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassCard(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          CupertinoIcons.exclamationmark_triangle,
-                          color: JournalColors.danger,
+                      SizedBox(width: 6),
+                      Text(
+                        'New',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: JournalColors.textSecondary,
-                            fontSize: 14,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        CupertinoButton(
-                          color: JournalColors.accent,
-                          onPressed: _load,
-                          child: const Text(
-                            'Retry',
-                            style: TextStyle(color: JournalColors.textPrimary),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  const GlassCard(
-                    accentBorder: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ongoing Coach',
-                          style: TextStyle(
-                            color: JournalColors.textPrimary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Focus tracks help Sage remember the goal, the hard parts, and what you are trying to do next across sessions.',
-                          style: TextStyle(
-                            color: JournalColors.textSecondary,
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  if (_tracks.isEmpty)
-                    GlassCard(
+              backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
+              border: const Border(
+                bottom: BorderSide(color: JournalColors.border, width: 0.5),
+              ),
+            ),
+            if (_loading)
+              const SliverFillRemaining(
+                child: Center(
+                  child:
+                      CupertinoActivityIndicator(color: JournalColors.accent),
+                ),
+              )
+            else if (_error != null)
+              SliverFillRemaining(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: GlassCard(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'No focus tracks yet',
-                            style: TextStyle(
-                              color: JournalColors.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
+                          const Icon(
+                            CupertinoIcons.exclamationmark_triangle,
+                            color: JournalColors.danger,
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Create one for breakup recovery, burnout, finances, sobriety, custody, or any other long-running thread you want Sage to stay with.',
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: JournalColors.textSecondary,
-                              fontSize: 13,
+                              fontSize: 14,
                               height: 1.45,
                             ),
                           ),
                           const SizedBox(height: 14),
                           CupertinoButton(
                             color: JournalColors.accent,
-                            onPressed: _createTrack,
+                            onPressed: _load,
                             child: const Text(
-                              'Start a Focus Track',
+                              'Retry',
                               style: TextStyle(color: JournalColors.textPrimary),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  if (_sectionTracks('active').isNotEmpty)
-                    _TrackSection(
-                      title: 'Active',
-                      tracks: _sectionTracks('active'),
-                      allowSelection: widget.allowSelection,
-                      initialSelectedTrackId: widget.initialSelectedTrackId,
-                      onTap: _openTrack,
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    const GlassCard(
+                      accentBorder: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ongoing Coach',
+                            style: TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Focus tracks help Sage remember the goal, the hard parts, and what you are trying to do next across sessions.',
+                            style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  if (_sectionTracks('paused').isNotEmpty)
-                    _TrackSection(
-                      title: 'Paused',
-                      tracks: _sectionTracks('paused'),
-                      allowSelection: widget.allowSelection,
-                      initialSelectedTrackId: widget.initialSelectedTrackId,
-                      onTap: _openTrack,
-                    ),
-                  if (_sectionTracks('archived').isNotEmpty)
-                    _TrackSection(
-                      title: 'Archived',
-                      tracks: _sectionTracks('archived'),
-                      allowSelection: widget.allowSelection,
-                      initialSelectedTrackId: widget.initialSelectedTrackId,
-                      onTap: _openTrack,
-                    ),
-                ]),
+                    const SizedBox(height: 18),
+                    if (_tracks.isEmpty)
+                      GlassCard(
+                        child: Column(
+                          children: [
+                            const Text(
+                              'No focus tracks yet',
+                              style: TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Create one for breakup recovery, burnout, finances, sobriety, custody, or any other long-running thread you want Sage to stay with.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: JournalColors.textSecondary,
+                                fontSize: 13,
+                                height: 1.45,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            CupertinoButton(
+                              color: JournalColors.accent,
+                              onPressed: _createTrack,
+                              child: const Text(
+                                'Start a Focus Track',
+                                style: TextStyle(
+                                  color: JournalColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (_sectionTracks('active').isNotEmpty)
+                      _TrackSection(
+                        title: 'Active',
+                        tracks: _sectionTracks('active'),
+                        allowSelection: widget.allowSelection,
+                        initialSelectedTrackId: widget.initialSelectedTrackId,
+                        onTap: _openTrack,
+                        onEdit: _editTrack,
+                      ),
+                    if (_sectionTracks('paused').isNotEmpty)
+                      _TrackSection(
+                        title: 'Paused',
+                        tracks: _sectionTracks('paused'),
+                        allowSelection: widget.allowSelection,
+                        initialSelectedTrackId: widget.initialSelectedTrackId,
+                        onTap: _openTrack,
+                        onEdit: _editTrack,
+                      ),
+                    if (_sectionTracks('archived').isNotEmpty)
+                      _TrackSection(
+                        title: 'Archived',
+                        tracks: _sectionTracks('archived'),
+                        allowSelection: widget.allowSelection,
+                        initialSelectedTrackId: widget.initialSelectedTrackId,
+                        onTap: _openTrack,
+                        onEdit: _editTrack,
+                      ),
+                  ]),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -300,6 +321,7 @@ class _TrackSection extends StatelessWidget {
     required this.allowSelection,
     required this.initialSelectedTrackId,
     required this.onTap,
+    required this.onEdit,
   });
 
   final String title;
@@ -307,6 +329,7 @@ class _TrackSection extends StatelessWidget {
   final bool allowSelection;
   final String? initialSelectedTrackId;
   final ValueChanged<SageFocusTrack> onTap;
+  final ValueChanged<SageFocusTrack> onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -327,95 +350,182 @@ class _TrackSection extends StatelessWidget {
         ...tracks.map(
           (track) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: GestureDetector(
-              onTap: () => allowSelection
-                  ? Navigator.pop(context, track)
-                  : onTap(track),
-              child: GlassCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            track.title,
-                            style: const TextStyle(
-                              color: JournalColors.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (track.isPrimary)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _withAlpha(JournalColors.accent, 0.16),
-                              borderRadius: BorderRadius.circular(999),
-                              border:
-                                  Border.all(color: JournalColors.borderBright),
-                            ),
-                            child: const Text(
-                              'Primary',
-                              style: TextStyle(
-                                color: JournalColors.accent,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          )
-                        else if (allowSelection &&
-                            initialSelectedTrackId == track.id)
-                          const Icon(
-                            CupertinoIcons.check_mark_circled_solid,
-                            color: JournalColors.accent,
-                          ),
-                      ],
+            child: allowSelection
+                ? _TrackCard(
+                    track: track,
+                    allowSelection: allowSelection,
+                    initialSelectedTrackId: initialSelectedTrackId,
+                    onTap: () => Navigator.pop(context, track),
+                  )
+                : Dismissible(
+                    key: ValueKey('track-${track.id}'),
+                    direction: DismissDirection.endToStart,
+                    confirmDismiss: (direction) async {
+                      onEdit(track);
+                      return false;
+                    },
+                    secondaryBackground: _trackSwipeBackground(
+                      alignment: Alignment.centerRight,
+                      color: JournalColors.accent,
+                      icon: CupertinoIcons.pencil,
+                      label: 'Edit',
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _labelForCategory(track.category),
-                      style: const TextStyle(
-                        color: JournalColors.info,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: _TrackCard(
+                      track: track,
+                      allowSelection: allowSelection,
+                      initialSelectedTrackId: initialSelectedTrackId,
+                      onTap: () => onTap(track),
                     ),
-                    if (track.currentGoal.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        track.currentGoal,
-                        style: const TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 14,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                    if (track.nextCommitment.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Next: ${track.nextCommitment}',
-                        style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 13,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+                  ),
           ),
         ),
       ],
     );
   }
+}
+
+class _TrackCard extends StatelessWidget {
+  const _TrackCard({
+    required this.track,
+    required this.allowSelection,
+    required this.initialSelectedTrackId,
+    required this.onTap,
+  });
+
+  final SageFocusTrack track;
+  final bool allowSelection;
+  final String? initialSelectedTrackId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    track.title,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (track.isPrimary)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.accent, 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: JournalColors.borderBright),
+                    ),
+                    child: const Text(
+                      'Primary',
+                      style: TextStyle(
+                        color: JournalColors.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else if (allowSelection && initialSelectedTrackId == track.id)
+                  const Icon(
+                    CupertinoIcons.check_mark_circled_solid,
+                    color: JournalColors.accent,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _labelForCategory(track.category),
+              style: const TextStyle(
+                color: JournalColors.info,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (track.currentGoal.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                track.currentGoal,
+                style: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+              ),
+            ],
+            if (track.nextCommitment.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Next: ${track.nextCommitment}',
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Widget _trackSwipeBackground({
+  required Alignment alignment,
+  required Color color,
+  required IconData icon,
+  required String label,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(26),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    alignment: alignment,
+    child: Row(
+      mainAxisAlignment: alignment == Alignment.centerLeft
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.end,
+      children: [
+        if (alignment == Alignment.centerRight) ...[
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(icon, color: color, size: 18),
+        ] else ...[
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
 }
 
 class _TrackDetailScreen extends StatefulWidget {

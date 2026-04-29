@@ -1879,9 +1879,12 @@ Return JSON only.
     final selected = await Navigator.push<SageFocusTrack>(
       context,
       CupertinoPageRoute(
-        builder: (_) => SageTracksScreen(
-          allowSelection: true,
-          initialSelectedTrackId: _activeTrack?.id,
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: SageTracksScreen(
+            allowSelection: true,
+            initialSelectedTrackId: _activeTrack?.id,
+          ),
         ),
       ),
     );
