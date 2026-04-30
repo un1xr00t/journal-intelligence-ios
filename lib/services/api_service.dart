@@ -338,6 +338,9 @@ class ApiService {
   String? _accessToken;
   String? _inviteAccessToken;
   String? _floatchatContextString;
+  Map<String, dynamic>? _voiceSettingsCache;
+  DateTime? _voiceSettingsCachedAt;
+  static const Duration _voiceSettingsCacheTtl = Duration(minutes: 5);
 
   ApiService._internal() {
     _cookieJar = CookieJar();
@@ -1306,8 +1309,18 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getVoiceSettings() async {
+    final cached = _voiceSettingsCache;
+    final cachedAt = _voiceSettingsCachedAt;
+    if (cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _voiceSettingsCacheTtl) {
+      return Map<String, dynamic>.from(cached);
+    }
     final res = await _authedGet('/api/voice/settings');
-    return Map<String, dynamic>.from(res.data as Map);
+    final data = Map<String, dynamic>.from(res.data as Map);
+    _voiceSettingsCache = Map<String, dynamic>.from(data);
+    _voiceSettingsCachedAt = DateTime.now();
+    return data;
   }
 
   // ── Entries / Timeline ────────────────────────────────────────

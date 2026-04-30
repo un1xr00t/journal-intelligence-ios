@@ -9,6 +9,8 @@ class AiResponseLimits {
 
   static const int speechChunkMaxChars = 2800;
   static const int speechChunkMaxBytes = 3500;
+  static const int speechFirstChunkMaxChars = 900;
+  static const int speechFirstChunkMaxBytes = 1200;
 
   static const int livingSummarySpeechMaxChars = 5600;
   static const int livingSummarySpeechMaxBytes = 7200;
@@ -28,10 +30,18 @@ List<String> buildSpeechChunks(String raw) {
 
   final chunks = <String>[];
   var remaining = cleaned;
+  var firstChunk = true;
 
   while (remaining.isNotEmpty) {
-    if (remaining.length <= AiResponseLimits.speechChunkMaxChars &&
-        utf8.encode(remaining).length <= AiResponseLimits.speechChunkMaxBytes) {
+    final maxChars = firstChunk
+        ? AiResponseLimits.speechFirstChunkMaxChars
+        : AiResponseLimits.speechChunkMaxChars;
+    final maxBytes = firstChunk
+        ? AiResponseLimits.speechFirstChunkMaxBytes
+        : AiResponseLimits.speechChunkMaxBytes;
+
+    if (remaining.length <= maxChars &&
+        utf8.encode(remaining).length <= maxBytes) {
       chunks.add(remaining);
       break;
     }
@@ -40,16 +50,14 @@ List<String> buildSpeechChunks(String raw) {
     var bytes = 0;
     for (var i = 0; i < remaining.length; i++) {
       bytes += utf8.encode(remaining[i]).length;
-      if (i >= AiResponseLimits.speechChunkMaxChars ||
-          bytes >= AiResponseLimits.speechChunkMaxBytes) {
+      if (i >= maxChars || bytes >= maxBytes) {
         break;
       }
       hardLimit = i + 1;
     }
 
     if (hardLimit <= 0) {
-      hardLimit =
-          remaining.length.clamp(0, AiResponseLimits.speechChunkMaxChars);
+      hardLimit = remaining.length.clamp(0, maxChars);
     }
 
     var splitAt = remaining.lastIndexOf(RegExp(r'[.!?]\s'), hardLimit);
@@ -63,6 +71,7 @@ List<String> buildSpeechChunks(String raw) {
 
     chunks.add(remaining.substring(0, splitAt).trim());
     remaining = remaining.substring(splitAt).trim();
+    firstChunk = false;
   }
 
   return chunks.where((chunk) => chunk.isNotEmpty).toList();

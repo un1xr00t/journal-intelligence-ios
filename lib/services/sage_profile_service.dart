@@ -141,22 +141,32 @@ class SageProfileService {
   static const _settingsKey = 'sage_settings_v1';
   static const _memoryKey = 'sage_memory_items_v1';
   static const _maxMemoryItems = 24;
+  static SageSettings? _cachedSettings;
 
   final _storage = const FlutterSecureStorage();
 
   Future<SageSettings> loadSettings() async {
+    final cached = _cachedSettings;
+    if (cached != null) return cached;
     final raw = await _storage.read(key: _settingsKey);
-    if (raw == null || raw.isEmpty) return SageSettings.defaults;
+    if (raw == null || raw.isEmpty) {
+      _cachedSettings = SageSettings.defaults;
+      return SageSettings.defaults;
+    }
     try {
-      return SageSettings.fromJson(
+      final settings = SageSettings.fromJson(
         Map<String, dynamic>.from(jsonDecode(raw) as Map),
       );
+      _cachedSettings = settings;
+      return settings;
     } catch (_) {
+      _cachedSettings = SageSettings.defaults;
       return SageSettings.defaults;
     }
   }
 
   Future<void> saveSettings(SageSettings settings) {
+    _cachedSettings = settings;
     return _storage.write(
       key: _settingsKey,
       value: jsonEncode(settings.toJson()),

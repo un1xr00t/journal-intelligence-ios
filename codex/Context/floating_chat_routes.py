@@ -11,6 +11,7 @@ import base64
 from io import BytesIO
 import json
 import logging
+import time
 from typing import Optional
 
 import anthropic
@@ -26,6 +27,28 @@ SAGE_VISION_MODEL = "claude-sonnet-4-6"
 DEFAULT_SAGE_MAX_TOKENS = 1400
 MIN_SAGE_MAX_TOKENS = 200
 MAX_SAGE_MAX_TOKENS = 2500
+ANTHROPIC_PROMPT_CACHE = {"type": "ephemeral"}
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+SAGE_CORE_INSTRUCTIONS = (
+    "You are a deeply perceptive AI embedded inside someone's private journal dashboard. "
+    "You have read everything they've written — their entries, patterns, exit plan, evidence, detective cases. "
+    "You are not a generic chatbot. You speak like a trusted advisor who knows their full story.\n\n"
+    "RESPONSE FORMAT:\n"
+    "Write your reply as normal text (markdown ok: **bold**, bullet lists with -).\n"
+    "If and ONLY IF a specific tool would genuinely help right now, append an ACTIONS block at the very end:\n"
+    "---ACTIONS---\n"
+    "/route 🔎 Label for button\n"
+    "/route2 ⚔ Another button\n"
+    "---END---\n\n"
+    "Max 3 action lines. Valid routes: /exit-plan /evidence /detective /war-room /write /patterns /mental-health /people-intel /contradictions /nervous\n"
+    "Do NOT include the ACTIONS block if no specific action is needed — most replies won't need it.\n\n"
+    "Rules:\n"
+    "- Reference specific dates, names, events from context. Be specific, not vague.\n"
+    "- Never fabricate. If you don't see it in context, say so.\n"
+    "- Speak directly. Like a trusted friend who has read everything.\n"
+    "- Default to concise answers, but go deeper when the question clearly needs it.\n"
+    "- If they seem in crisis or danger, acknowledge it directly and include /war-room or /exit-plan action.\n"
+)
 
 
 class ChatMessage(BaseModel):
@@ -49,6 +72,73 @@ class ChatRequest(BaseModel):
     )
     images: list[ImageAttachment] = Field(default_factory=list)            # top-level shorthand
     image_attachments: list[ImageAttachment] = Field(default_factory=list) # alternate key iOS may send
+
+
+def _text_block(text: str, *, cache: bool = False) -> dict:
+    block = {"type": "text", "text": text}
+    if cache and text.strip():
+        block["cache_control"] = dict(ANTHROPIC_PROMPT_CACHE)
+    return block
+
+
+def _build_sage_system_blocks(context_string: str) -> list[dict]:
+    return [
+        _text_block(SAGE_CORE_INSTRUCTIONS),
+        _text_block(
+            "=== YOUR CONTEXT ===\n"
+            f"{context_string}\n"
+            "=== END CONTEXT ===",
+            cache=True,
+        ),
+    ]
+
+
+def _anthropic_usage_dict(msg) -> dict:
+    usage = getattr(msg, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", None),
+        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
+    }
+
+
+def _extract_text_response(msg) -> str:
+    return "".join(
+        getattr(block, "text", "")
+        for block in (msg.content or [])
+        if getattr(block, "type", None) == "text"
+    )
+
+
+def _load_ai_provider_settings(user_id: int) -> dict:
+    from src.auth.auth_db import get_db
+    from src.config import load_config
+
+    cfg = load_config()
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT ai_api_key, ai_provider, ai_model FROM user_settings WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    provider = ((row["ai_provider"] if row else None) or "anthropic").strip().lower()
+    api_key = ((row["ai_api_key"] if row else None) or cfg.get("anthropic", {}).get("api_key"))
+    model = (
+        (row["ai_model"] if row else None)
+        or cfg.get("anthropic", {}).get("model")
+        or DEFAULT_ANTHROPIC_MODEL
+    )
+    return {"provider": provider, "api_key": api_key, "model": model}
+
+
+def _is_anthropic_request(provider: str, model: str) -> bool:
+    return provider == "anthropic" or model.startswith("claude")
 
 
 def _normalize_image_for_anthropic(
@@ -378,29 +468,7 @@ def register_floating_chat_routes(app, require_any_user):
             min(body.max_tokens, MAX_SAGE_MAX_TOKENS),
         )
 
-        system_prompt = (
-            "You are a deeply perceptive AI embedded inside someone's private journal dashboard. "
-            "You have read everything they've written — their entries, patterns, exit plan, evidence, detective cases. "
-            "You are not a generic chatbot. You speak like a trusted advisor who knows their full story.\n\n"
-            "RESPONSE FORMAT:\n"
-            "Write your reply as normal text (markdown ok: **bold**, bullet lists with -).\n"
-            "If and ONLY IF a specific tool would genuinely help right now, append an ACTIONS block at the very end:\n"
-            "---ACTIONS---\n"
-            "/route 🔎 Label for button\n"
-            "/route2 ⚔ Another button\n"
-            "---END---\n\n"
-            "Max 3 action lines. Valid routes: /exit-plan /evidence /detective /war-room /write /patterns /mental-health /people-intel /contradictions /nervous\n"
-            "Do NOT include the ACTIONS block if no specific action is needed — most replies won't need it.\n\n"
-            "Rules:\n"
-            "- Reference specific dates, names, events from context. Be specific, not vague.\n"
-            "- Never fabricate. If you don't see it in context, say so.\n"
-            "- Speak directly. Like a trusted friend who has read everything.\n"
-            "- Default to concise answers, but go deeper when the question clearly needs it.\n"
-            "- If they seem in crisis or danger, acknowledge it directly and include /war-room or /exit-plan action.\n\n"
-            "=== YOUR CONTEXT ===\n"
-            f"{body.context_string}\n"
-            "=== END CONTEXT ==="
-        )
+        system_blocks = _build_sage_system_blocks(body.context_string)
 
         # Cap at last 20 messages
         history = body.messages[-20:]
@@ -409,11 +477,21 @@ def register_floating_chat_routes(app, require_any_user):
         all_images = list(body.images or []) + list(body.image_attachments or [])
 
         # ── Build Anthropic messages payload ──────────────────────────────────
-        # History messages (all except the last) are always text-only.
-        messages_payload = [
-            {"role": m.role, "content": m.content}
-            for m in history[:-1]
-        ]
+        # History messages (all except the last) are text-only and stable enough
+        # to cache as the conversation prefix grows turn by turn.
+        messages_payload = []
+        history_without_latest = history[:-1]
+        cacheable_history_index = len(history_without_latest) - 1
+        for idx, history_msg in enumerate(history_without_latest):
+            text = (history_msg.content or "").strip()
+            if not text:
+                continue
+            messages_payload.append(
+                {
+                    "role": history_msg.role,
+                    "content": [_text_block(text, cache=(idx == cacheable_history_index))],
+                }
+            )
 
         # The last user message may carry image content blocks.
         last_msg  = history[-1]
@@ -458,35 +536,52 @@ def register_floating_chat_routes(app, require_any_user):
             messages_payload.append({"role": "user", "content": fallback_content})
 
         try:
-            if all_images:
-                # Vision path — call Anthropic directly so we can pass content blocks.
-                # Use the same per-user key source as the rest of the app.
-                from src.api.ai_client import get_anthropic_key
-                api_key = get_anthropic_key(user_id)
+            settings = _load_ai_provider_settings(user_id)
+            provider = settings["provider"]
+            model = settings["model"] or DEFAULT_ANTHROPIC_MODEL
+
+            if _is_anthropic_request(provider, model):
+                api_key = settings["api_key"]
                 if not api_key:
                     raise RuntimeError("No Anthropic API key configured for this user.")
 
+                started = time.perf_counter()
                 client = anthropic.Anthropic(api_key=api_key)
-                msg    = client.messages.create(
-                    model=SAGE_VISION_MODEL,
+                response_model = SAGE_VISION_MODEL if all_images else model
+                msg = client.messages.create(
+                    model=response_model,
                     max_tokens=requested_max_tokens,
-                    system=system_prompt,
+                    system=system_blocks,
                     messages=messages_payload,
                 )
-                raw_response = "".join(
-                    getattr(block, "text", "")
-                    for block in (msg.content or [])
-                    if getattr(block, "type", None) == "text"
+                elapsed_ms = round((time.perf_counter() - started) * 1000)
+                usage = _anthropic_usage_dict(msg)
+                logger.info(
+                    "[floatchat/message] anthropic model=%s latency_ms=%s history=%s images=%s cache_read_tokens=%s cache_write_tokens=%s input_tokens=%s output_tokens=%s",
+                    response_model,
+                    elapsed_ms,
+                    len(messages_payload),
+                    len(all_images),
+                    usage.get("cache_read_input_tokens"),
+                    usage.get("cache_creation_input_tokens"),
+                    usage.get("input_tokens"),
+                    usage.get("output_tokens"),
                 )
+                raw_response = _extract_text_response(msg)
             else:
-                # Text-only path — use the standard abstraction unchanged
+                # Non-Anthropic providers still use the standard abstraction unchanged.
                 from src.api.ai_client import create_message
                 raw_response = create_message(
                     user_id=user_id,
-                    system=system_prompt,
+                    system="\n\n".join(block["text"] for block in system_blocks),
                     user_prompt=last_text,
                     max_tokens=requested_max_tokens,
                     call_type="floating_chat",
+                )
+                logger.info(
+                    "[floatchat/message] provider=%s model=%s used non-Anthropic fallback path",
+                    provider,
+                    model,
                 )
         except Exception as e:
             logger.exception("[floatchat/message] AI call failed for user %s", user_id)

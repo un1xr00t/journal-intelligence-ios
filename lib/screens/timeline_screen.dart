@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'dart:math' as math;
 
@@ -252,6 +253,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
     });
 
     try {
+      final stopwatch = Stopwatch()..start();
       await configureTtsAudioPlayer(_summaryAudioPlayer);
       await _summaryAudioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
@@ -266,6 +268,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
       final chunks = buildSpeechChunks(insight);
       if (chunks.isEmpty) throw Exception('No text to speak.');
       final sageSettings = await _sageProfile.loadSettings();
+      developer.log(
+        'Timeline TTS prepared ${chunks.length} chunk(s) for ${insight.length} chars',
+        name: 'journal.tts',
+      );
 
       if (!mounted) return;
       setState(() {
@@ -274,18 +280,31 @@ class _TimelineScreenState extends State<TimelineScreen> {
       });
       _summaryTtsSequenceActive = true;
 
-      for (final chunk in chunks) {
+      Future<List<int>>? nextBytesFuture;
+      for (var i = 0; i < chunks.length; i++) {
         if (requestId != _summaryTtsRequestCounter) return;
         if (!mounted) return;
-        setState(() => _summaryTtsLoading = true);
-        final bytes = await _api.voiceSpeak(
-          text: chunk,
-          voiceId: sageSettings.voiceId,
-        );
+        final isFirstChunk = i == 0;
+        if (isFirstChunk) {
+          setState(() => _summaryTtsLoading = true);
+          nextBytesFuture = _api.voiceSpeak(
+            text: chunks[i],
+            voiceId: sageSettings.voiceId,
+          );
+        }
+        final bytes = await nextBytesFuture!;
         if (bytes.isEmpty) throw Exception('No audio returned.');
         if (requestId != _summaryTtsRequestCounter) return;
         if (!mounted) return;
         setState(() => _summaryTtsLoading = false);
+        if (i + 1 < chunks.length) {
+          nextBytesFuture = _api.voiceSpeak(
+            text: chunks[i + 1],
+            voiceId: sageSettings.voiceId,
+          );
+        } else {
+          nextBytesFuture = null;
+        }
         await deleteTtsAudioTempFile(_summaryTtsTempAudioPath);
         _summaryTtsTempAudioPath = await writeTtsAudioTempFile(
           prefix: 'timeline-summary-tts',
@@ -295,11 +314,21 @@ class _TimelineScreenState extends State<TimelineScreen> {
           _summaryAudioPlayer,
           path: _summaryTtsTempAudioPath!,
         );
+        if (isFirstChunk) {
+          developer.log(
+            'Timeline TTS first audio started after ${stopwatch.elapsedMilliseconds} ms',
+            name: 'journal.tts',
+          );
+        }
         await _waitForSummaryAudioToFinish();
       }
 
       if (requestId != _summaryTtsRequestCounter) return;
       _summaryTtsSequenceActive = false;
+      developer.log(
+        'Timeline TTS completed in ${stopwatch.elapsedMilliseconds} ms',
+        name: 'journal.tts',
+      );
       if (!mounted) return;
       setState(() {
         _summarySpeaking = false;

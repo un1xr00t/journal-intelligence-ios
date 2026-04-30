@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -1947,6 +1948,7 @@ Return JSON only.
     });
 
     try {
+      final stopwatch = Stopwatch()..start();
       await configureTtsAudioPlayer(_audioPlayer);
       await _audioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
@@ -1959,6 +1961,10 @@ Return JSON only.
       }
       final chunks = buildSpeechChunks(message.text);
       if (chunks.isEmpty) throw Exception('No text to speak.');
+      developer.log(
+        'Sage TTS prepared ${chunks.length} chunk(s) for message ${message.id}',
+        name: 'journal.tts',
+      );
 
       if (!mounted) return;
       setState(() {
@@ -1967,20 +1973,33 @@ Return JSON only.
       });
       _ttsSequenceActive = true;
 
-      for (final chunk in chunks) {
+      Future<List<int>>? nextBytesFuture;
+      for (var i = 0; i < chunks.length; i++) {
         if (requestId != _ttsRequestCounter) return;
         if (!mounted) return;
-        setState(() => _ttsLoadingMessageId = message.id);
-        final bytes = await _api.voiceSpeak(
-          text: chunk,
-          voiceId: _settings.voiceId,
-        );
+        final isFirstChunk = i == 0;
+        if (isFirstChunk) {
+          setState(() => _ttsLoadingMessageId = message.id);
+          nextBytesFuture = _api.voiceSpeak(
+            text: chunks[i],
+            voiceId: _settings.voiceId,
+          );
+        }
+        final bytes = await nextBytesFuture!;
         if (bytes.isEmpty) {
           throw Exception('No audio returned.');
         }
         if (requestId != _ttsRequestCounter) return;
         if (!mounted) return;
         setState(() => _ttsLoadingMessageId = null);
+        if (i + 1 < chunks.length) {
+          nextBytesFuture = _api.voiceSpeak(
+            text: chunks[i + 1],
+            voiceId: _settings.voiceId,
+          );
+        } else {
+          nextBytesFuture = null;
+        }
         await deleteTtsAudioTempFile(_ttsTempAudioPath);
         _ttsTempAudioPath = await writeTtsAudioTempFile(
           prefix: 'sage-tts',
@@ -1990,11 +2009,21 @@ Return JSON only.
           _audioPlayer,
           path: _ttsTempAudioPath!,
         );
+        if (isFirstChunk) {
+          developer.log(
+            'Sage TTS first audio for ${message.id} started after ${stopwatch.elapsedMilliseconds} ms',
+            name: 'journal.tts',
+          );
+        }
         await _waitForAudioToFinish();
       }
 
       if (requestId != _ttsRequestCounter) return;
       _ttsSequenceActive = false;
+      developer.log(
+        'Sage TTS completed for ${message.id} in ${stopwatch.elapsedMilliseconds} ms',
+        name: 'journal.tts',
+      );
       if (!mounted) return;
       setState(() {
         _speakingMessageId = null;
