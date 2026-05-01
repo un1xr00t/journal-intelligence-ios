@@ -14,6 +14,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'ai_response_limits.dart';
+import 'native_session_bridge.dart';
 
 // Returns the correct MediaType for an image filename so the backend
 // can pass a valid media_type to the Anthropic API.
@@ -345,7 +346,6 @@ class ApiService {
   static const Duration _voiceSettingsCacheTtl = Duration(minutes: 5);
 
   ApiService._internal() {
-    _cookieJar = CookieJar();
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 15),
@@ -396,6 +396,11 @@ class ApiService {
     _floatchatContextString = null;
     await _cookieJar.deleteAll();
     await _storage.delete(key: 'username');
+    try {
+      await NativeSessionBridge.clear();
+    } catch (_) {
+      // Keep normal auth/logout flows working even if the Siri bridge is unavailable.
+    }
   }
 
   Future<void> setInviteAccessToken(String token) async {
@@ -410,6 +415,25 @@ class ApiService {
 
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _accessToken != null;
+
+  List<String> _extractSetCookieHeaders(Response response) {
+    final headers = response.headers.map['set-cookie'];
+    if (headers == null || headers.isEmpty) return const <String>[];
+    return headers
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _syncNativeSessionFromResponse(Response response) async {
+    final headers = _extractSetCookieHeaders(response);
+    if (headers.isEmpty) return;
+    try {
+      await NativeSessionBridge.syncFromSetCookieHeaders(headers);
+    } catch (_) {
+      // Keep app auth resilient even if native Siri session sync fails.
+    }
+  }
 
   bool _isRouteMissing(DioException error) => error.response?.statusCode == 404;
 
@@ -967,6 +991,7 @@ class ApiService {
       'username': username,
       'password': password,
     });
+    await _syncNativeSessionFromResponse(res);
     return res.data as Map<String, dynamic>;
   }
 
@@ -977,6 +1002,7 @@ class ApiService {
       'partial_token': partialToken,
       'totp_code': code,
     });
+    await _syncNativeSessionFromResponse(res);
     return res.data as Map<String, dynamic>;
   }
 
@@ -1115,6 +1141,7 @@ class ApiService {
     try {
       // Cookie jar automatically sends the refresh_token cookie
       final res = await _dio.post('/auth/refresh');
+      await _syncNativeSessionFromResponse(res);
       return (res.data as Map<String, dynamic>)['access_token'] as String?;
     } catch (_) {
       return null;
@@ -1589,6 +1616,7 @@ class ApiService {
       'challenge_id': challengeId,
       'credential': credential,
     });
+    await _syncNativeSessionFromResponse(res);
     return res.data as Map<String, dynamic>;
   }
 
@@ -1600,6 +1628,7 @@ class ApiService {
       'partial_token': partialToken,
       'backup_code': backupCode,
     });
+    await _syncNativeSessionFromResponse(res);
     return res.data as Map<String, dynamic>;
   }
 

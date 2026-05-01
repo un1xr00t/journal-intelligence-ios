@@ -3,6 +3,8 @@ import Foundation
 
 final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
   static let shared = LaunchRouteStreamHandler()
+  private static let pendingRouteDefaultsKey =
+    "journal_intelligence.native_pending_launch_route"
 
   private var eventSink: FlutterEventSink?
   private var pendingRoutes: [String] = []
@@ -23,9 +25,21 @@ final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
   }
 
   func emit(route: String) {
+    emit(route: route, persistForLaunch: false)
+  }
+
+  func prepareForegroundLaunch(route: String) {
+    emit(route: route, persistForLaunch: true)
+  }
+
+  private func emit(route: String, persistForLaunch: Bool) {
     let trimmedRoute = route.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedRoute.isEmpty else {
       return
+    }
+
+    if persistForLaunch {
+      UserDefaults.standard.set(trimmedRoute, forKey: Self.pendingRouteDefaultsKey)
     }
 
     if let eventSink {
@@ -36,10 +50,18 @@ final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
   }
 
   func takePendingRoute() -> String? {
-    guard let route = pendingRoutes.last else {
+    if let route = pendingRoutes.last {
+      pendingRoutes.removeAll()
+      UserDefaults.standard.removeObject(forKey: Self.pendingRouteDefaultsKey)
+      return route
+    }
+
+    guard let route = UserDefaults.standard.string(forKey: Self.pendingRouteDefaultsKey)?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+      !route.isEmpty else {
       return nil
     }
-    pendingRoutes.removeAll()
+    UserDefaults.standard.removeObject(forKey: Self.pendingRouteDefaultsKey)
     return route
   }
 

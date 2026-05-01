@@ -21,6 +21,9 @@ class SceneDelegate: FlutterSceneDelegate {
   private var launchRouteMethodChannel: FlutterMethodChannel?
   private let launchRouteMethodChannelName =
     "journal_intelligence/launch_route"
+  private var nativeSessionMethodChannel: FlutterMethodChannel?
+  private let nativeSessionMethodChannelName =
+    "journal_intelligence/native_session"
 
   override func scene(
     _ scene: UIScene,
@@ -73,6 +76,10 @@ class SceneDelegate: FlutterSceneDelegate {
       name: launchRouteMethodChannelName,
       binaryMessenger: controller.binaryMessenger
     )
+    let nativeSessionMethodChannel = FlutterMethodChannel(
+      name: nativeSessionMethodChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
 
     eventChannel.setStreamHandler(speechRecognitionService)
     launchRouteEventChannel.setStreamHandler(launchRouteStreamHandler)
@@ -83,6 +90,9 @@ class SceneDelegate: FlutterSceneDelegate {
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+    nativeSessionMethodChannel.setMethodCallHandler { call, result in
+      NativeRefreshSessionStore.shared.handle(call, result: result)
     }
     methodChannel.setMethodCallHandler { [weak self] call, result in
       guard let self else {
@@ -134,6 +144,7 @@ class SceneDelegate: FlutterSceneDelegate {
     self.eventChannel = eventChannel
     self.launchRouteEventChannel = launchRouteEventChannel
     self.launchRouteMethodChannel = launchRouteMethodChannel
+    self.nativeSessionMethodChannel = nativeSessionMethodChannel
     voiceChannelsConfigured = true
   }
 

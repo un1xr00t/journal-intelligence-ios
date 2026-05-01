@@ -67,9 +67,11 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
         persistedRoute ??
         WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     if (mounted) {
-      launchIntent.registerRoute(routeToRegister);
-      if (routeToRegister.trim().isNotEmpty) {
+      final handled = launchIntent.registerRoute(routeToRegister);
+      if (handled && routeToRegister.trim().isNotEmpty) {
         await _launchRouteService.persistPendingRoute(routeToRegister);
+      } else {
+        await _launchRouteService.clearPersistedPendingRoute();
       }
       auth.init();
     }

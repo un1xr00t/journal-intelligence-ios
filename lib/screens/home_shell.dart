@@ -126,6 +126,9 @@ class _HomeShellState extends State<HomeShell> {
         text: launchIntent.siriCaptureText ?? '',
         source: launchIntent.siriCaptureSource ?? 'siri_shortcut',
         autoSave: launchIntent.shouldAutoSaveSiriCapture,
+        reviewReason: launchIntent.siriCaptureReviewReason,
+        preferredFolderName: launchIntent.siriCapturePreferredFolder,
+        preferJournalOnly: launchIntent.siriCaptureJournalOnly,
       );
       return;
     }
@@ -200,6 +203,9 @@ class _HomeShellState extends State<HomeShell> {
     required String text,
     required String source,
     required bool autoSave,
+    String? reviewReason,
+    String? preferredFolderName,
+    required bool preferJournalOnly,
   }) {
     _siriCaptureVisible = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -215,6 +221,9 @@ class _HomeShellState extends State<HomeShell> {
               initialText: text,
               source: source,
               autoSave: autoSave,
+              reviewReason: reviewReason,
+              preferredFolderName: preferredFolderName,
+              preferJournalOnly: preferJournalOnly,
             ),
           ),
         ),

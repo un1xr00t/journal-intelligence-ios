@@ -56,13 +56,13 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _api.setAccessToken(data['access_token'] as String);
-      _user  = await _api.getMe();
+      _user = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return null;
     } catch (e) {
-      _error   = _parseError(e);
+      _error = _parseError(e);
       _loading = false;
       notifyListeners();
       return null;
@@ -83,7 +83,7 @@ class AuthProvider extends ChangeNotifier {
   Future<Map<String, dynamic>?> loginGetToken(
       String username, String password) async {
     _loading = true;
-    _error   = null;
+    _error = null;
     notifyListeners();
     try {
       final data = await _api.login(username, password);
@@ -98,7 +98,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return {'token': data['access_token'] as String, 'user': user};
     } catch (e) {
-      _error   = _parseError(e);
+      _error = _parseError(e);
       _loading = false;
       notifyListeners();
       return null;
@@ -107,7 +107,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Completes the auth transition after post-login UI is done.
   void completeAuthentication(Map<String, dynamic> user) {
-    _user  = user;
+    _user = user;
     _state = AuthState.authenticated;
     notifyListeners();
   }
@@ -116,18 +116,18 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> complete2FA(String partialToken, String code) async {
     _loading = true;
-    _error   = null;
+    _error = null;
     notifyListeners();
     try {
       final data = await _api.verify2FA(partialToken, code);
       _api.setAccessToken(data['access_token'] as String);
-      _user  = await _api.getMe();
+      _user = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _error   = _parseError(e);
+      _error = _parseError(e);
       _loading = false;
       notifyListeners();
       return false;
@@ -138,18 +138,18 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> completeWithBackupCode(String partialToken, String code) async {
     _loading = true;
-    _error   = null;
+    _error = null;
     notifyListeners();
     try {
       final data = await _api.useBackupCode(partialToken, code);
       _api.setAccessToken(data['access_token'] as String);
-      _user  = await _api.getMe();
+      _user = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _error   = _parseError(e);
+      _error = _parseError(e);
       _loading = false;
       notifyListeners();
       return false;
@@ -171,19 +171,19 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> passkeyAuthComplete(
       String challengeId, Map<String, dynamic> credential) async {
     _loading = true;
-    _error   = null;
+    _error = null;
     notifyListeners();
     try {
       final data = await _api.passkeyAuthComplete(
           challengeId: challengeId, credential: credential);
       _api.setAccessToken(data['access_token'] as String);
-      _user  = await _api.getMe();
+      _user = await _api.getMe();
       _state = AuthState.authenticated;
       _loading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _error   = _parseError(e);
+      _error = _parseError(e);
       _loading = false;
       notifyListeners();
       return false;
@@ -194,7 +194,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout() async {
     await _api.logout();
-    _user  = null;
+    _user = null;
     _state = AuthState.unauthenticated;
     notifyListeners();
   }
@@ -207,11 +207,18 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String _parseError(dynamic e) {
+    if (e is Error) {
+      return e.toString();
+    }
     if (e is Exception) {
       final str = e.toString();
       if (str.contains('"detail"')) {
         final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
         if (match != null) return match.group(1)!;
+      }
+      if (str.contains('PlatformException(') ||
+          str.contains('MissingPluginException')) {
+        return str;
       }
       if (str.contains('SocketException') || str.contains('connection')) {
         return 'Cannot reach the server. Check your connection.';

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
@@ -15,11 +16,17 @@ class SiriCaptureScreen extends StatefulWidget {
     required this.initialText,
     this.source = 'siri_shortcut',
     this.autoSave = false,
+    this.reviewReason,
+    this.preferredFolderName,
+    this.preferJournalOnly = false,
   });
 
   final String initialText;
   final String source;
   final bool autoSave;
+  final String? reviewReason;
+  final String? preferredFolderName;
+  final bool preferJournalOnly;
 
   @override
   State<SiriCaptureScreen> createState() => _SiriCaptureScreenState();
@@ -70,12 +77,17 @@ class _SiriCaptureScreenState extends State<SiriCaptureScreen> {
         normalizedFolders,
       );
       if (!mounted) return;
+      final preferredFolder = _matchFolderByName(
+        widget.preferredFolderName,
+        normalizedFolders,
+      );
       setState(() {
         _folders = normalizedFolders;
         _classification = classification;
-        _selectedFolderId = classification.folderId;
-        _saveToProofVault =
-            classification.folderId != null || normalizedFolders.isNotEmpty;
+        _selectedFolderId =
+            preferredFolder?['id']?.toString() ?? classification.folderId;
+        _saveToProofVault = !widget.preferJournalOnly &&
+            (preferredFolder != null || classification.folderId != null);
         _loading = false;
       });
       _tryAutoSave();
@@ -100,7 +112,7 @@ class _SiriCaptureScreenState extends State<SiriCaptureScreen> {
           .where((name) => name.isNotEmpty)
           .toList();
       final prompt = '''
-You are classifying one spoken caregiving or family-support note for Journal Intelligence.
+You are classifying one spoken journal note for Journal Intelligence.
 
 AVAILABLE PROOF VAULT FOLDERS:
 ${folderNames.isEmpty ? '- none yet' : folderNames.map((name) => '- $name').join('\n')}
@@ -109,14 +121,16 @@ RULES:
 - Return JSON only. No markdown. No commentary.
 - Keep "normalized_text" in first person and close to the user's meaning.
 - "folder_name" must be exactly one of the available folder names, or null.
+- For normal personal journaling, reflections, venting, memories, life updates, or notes that do not clearly belong in Proof Vault, set "folder_name" to null.
 - Prefer "Financial Support" for purchases, money spent, supplies bought, errands where the support being documented is financial or material.
 - Prefer "Activities" for outings, walks, playgrounds, parks, play time, shared activities, transportation, or quality-time events.
 - Prefer "Daily Care" for routines like meals, diapers, bedtime, baths, medication support that is not clearly medical.
 - Prefer "Medical & Health" for appointments, doctors, meds, illness, therapy, treatment, health monitoring.
 - Prefer "School & Education" for school, daycare, homework, conferences, dropoff, pickup, learning support.
 - Prefer "Communications" for calls, texts, emails, discussions, coordination, or updates with another person.
+- If a timeline-only journal save is appropriate, "needs_confirmation" can be false even when "folder_name" is null.
 - If confidence is below 0.90, set "needs_confirmation" to true.
-- If there are no folders, keep "folder_name" null and set "needs_confirmation" to true.
+- If there are no folders, keep "folder_name" null and only require confirmation when the note still needs manual review.
 
 Return this exact JSON shape:
 {
@@ -250,6 +264,10 @@ $text
       r'\b(call|text|email|talked|conversation|messaged)\b',
     ).hasMatch(lower);
 
+    final hasGeneralJournalSignal = RegExp(
+      r"\b(i felt|i feel|today|tonight|this morning|this afternoon|i want to remember|i need to remember|i was thinking|i realized|i'm feeling|i am feeling)\b",
+    ).hasMatch(lower);
+
     if (hasPurchaseSignal || hasSuppliesSignal) {
       preferredFolder = 'Financial Support';
       confidence = hasPurchaseSignal && hasSuppliesSignal ? 0.97 : 0.93;
@@ -273,17 +291,24 @@ $text
       preferredFolder = 'Communications';
       confidence = 0.9;
       reason = 'This sounds like a communication record.';
+    } else if (hasGeneralJournalSignal || widget.preferJournalOnly) {
+      preferredFolder = null;
+      confidence = widget.preferJournalOnly ? 0.98 : 0.94;
+      reason = 'This reads like a normal journal entry and can stay in the timeline.';
     } else {
-      preferredFolder = 'Daily Care';
-      confidence = 0.8;
-      reason = 'This reads like day-to-day caregiving support.';
+      preferredFolder = null;
+      confidence = 0.84;
+      reason = 'This can be saved as a journal entry unless you want to route it into Proof Vault.';
     }
 
     final matchedFolder = _matchFolderByName(preferredFolder, folders);
     final title = _deriveTitle(normalized);
     final notes = 'Captured from Siri: $normalized';
-    final resolvedConfidence =
-        matchedFolder == null ? (confidence - 0.1).clamp(0.0, 1.0) : confidence;
+    final resolvedConfidence = preferredFolder == null
+        ? confidence
+        : matchedFolder == null
+            ? (confidence - 0.1).clamp(0.0, 1.0)
+            : confidence;
 
     return _ShortcutClassification(
       normalizedText: normalized,
@@ -292,7 +317,9 @@ $text
       folderId: matchedFolder?['id']?.toString(),
       folderName: matchedFolder?['name']?.toString(),
       overallConfidence: resolvedConfidence,
-      needsConfirmation: resolvedConfidence < 0.90,
+      needsConfirmation: preferredFolder == null
+          ? resolvedConfidence < 0.88
+          : resolvedConfidence < 0.90,
       reason: reason,
     );
   }
@@ -337,6 +364,7 @@ $text
 
   Future<void> _tryAutoSave() async {
     if (!widget.autoSave || _autoSaveAttempted || _saving) return;
+    if (widget.reviewReason != null) return;
     _autoSaveAttempted = true;
     final classification = _classification;
     if (classification == null) return;
@@ -519,7 +547,35 @@ $text
   }
 
   bool get _showManualRoutingControls =>
-      _classification?.needsConfirmation == true || _attachedPhoto != null;
+      widget.reviewReason != null ||
+      _classification?.needsConfirmation == true ||
+      _attachedPhoto != null;
+
+  String get _reviewTitle {
+    return switch (widget.reviewReason) {
+      'auth_required' => 'Finish Siri save',
+      'missing_folder' => 'Review folder',
+      'save_failed' => 'Review and save',
+      _ => 'Review Siri note',
+    };
+  }
+
+  String get _reviewSubtitle {
+    return switch (widget.reviewReason) {
+      'auth_required' =>
+        'Your secure session needs attention before Siri can save in the background.',
+      'missing_folder' =>
+        'Siri found the note but needs you to confirm the Proof Vault destination.',
+      'save_failed' =>
+        'The background save did not finish cleanly, so this fallback review is keeping the final save in your hands.',
+      _ when widget.preferJournalOnly =>
+        'Siri captured a journal entry. Review it, attach a photo if you want, and save when ready.',
+      _ when _attachedPhoto != null =>
+        'You opened the fallback review so you can attach a photo before saving.',
+      _ =>
+        'Siri captured the note. Review the routing and save when you are ready.',
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -579,22 +635,22 @@ $text
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              const Expanded(
+                              Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Premium Siri logging',
-                                      style: TextStyle(
+                                      _reviewTitle,
+                                      style: const TextStyle(
                                         color: JournalColors.textPrimary,
                                         fontSize: 18,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    SizedBox(height: 4),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      'We classified your note, picked the best Proof Vault folder, and kept the final save under your control when confidence is not perfect.',
-                                      style: TextStyle(
+                                      _reviewSubtitle,
+                                      style: const TextStyle(
                                         color: JournalColors.textSecondary,
                                         fontSize: 13,
                                         height: 1.45,
@@ -646,40 +702,11 @@ $text
                           ),
                           if (_attachedPhoto != null) ...[
                             const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: JournalColors.bgSurface,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: JournalColors.border),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    CupertinoIcons.photo_fill,
-                                    color: JournalColors.accent,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _attachedPhoto!.name.trim().isNotEmpty
-                                          ? _attachedPhoto!.name
-                                          : _attachedPhoto!.path
-                                              .split('/')
-                                              .last,
-                                      style: const TextStyle(
-                                        color: JournalColors.textPrimary,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            _SiriAttachmentTile(
+                              photo: _attachedPhoto!,
+                              onTap: () => _showAttachedPhotoLightbox(
+                                context,
+                                _attachedPhoto!,
                               ),
                             ),
                           ],
@@ -714,7 +741,7 @@ $text
                         children: [
                           Text(
                             _showManualRoutingControls
-                                ? 'Routing'
+                                ? 'Review destinations'
                                 : 'Saving to',
                             style: const TextStyle(
                               color: JournalColors.textPrimary,
@@ -799,8 +826,10 @@ $text
                             const SizedBox(height: 10),
                             _DraftRow(
                               label: 'Proof Vault',
-                              value: _selectedFolder?['name']?.toString() ??
-                                  'No folder selected.',
+                              value: _saveToProofVault
+                                  ? (_selectedFolder?['name']?.toString() ??
+                                      'No folder selected.')
+                                  : 'Not included for this save.',
                             ),
                           ],
                           if ((_classification?.reason ?? '').isNotEmpty) ...[
@@ -823,7 +852,7 @@ $text
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Proof Vault draft',
+                            'Review draft',
                             style: TextStyle(
                               color: JournalColors.textPrimary,
                               fontSize: 17,
@@ -831,18 +860,28 @@ $text
                             ),
                           ),
                           const SizedBox(height: 12),
-                          _DraftRow(
-                            label: 'Title',
-                            value:
-                                _classification?.title ?? 'Captured care note',
-                          ),
-                          const SizedBox(height: 10),
-                          _DraftRow(
-                            label: 'Notes',
-                            value:
-                                _classification?.notes ?? 'Captured from Siri.',
-                            multiline: true,
-                          ),
+                          if (_saveToProofVault ||
+                              _classification?.folderName != null) ...[
+                            _DraftRow(
+                              label: 'Title',
+                              value:
+                                  _classification?.title ??
+                                      'Captured support note',
+                            ),
+                            const SizedBox(height: 10),
+                            _DraftRow(
+                              label: 'Notes',
+                              value: _classification?.notes ??
+                                  'Captured from Siri.',
+                              multiline: true,
+                            ),
+                          ] else
+                            const _DraftRow(
+                              label: 'Timeline save',
+                              value:
+                                  'This Siri note will save as a normal journal entry.',
+                              multiline: true,
+                            ),
                         ],
                       ),
                     ),
@@ -871,6 +910,150 @@ $text
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+Future<void> _showAttachedPhotoLightbox(BuildContext context, XFile photo) {
+  return showCupertinoDialog<void>(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      content: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Image.file(
+            File(photo.path),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Container(
+              height: 180,
+              color: JournalColors.bgSurface,
+              alignment: Alignment.center,
+              child: const Icon(
+                CupertinoIcons.photo_fill,
+                color: JournalColors.textMuted,
+                size: 36,
+              ),
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        CupertinoDialogAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _SiriAttachmentTile extends StatelessWidget {
+  const _SiriAttachmentTile({
+    required this.photo,
+    required this.onTap,
+  });
+
+  final XFile photo;
+  final VoidCallback onTap;
+
+  String get _displayName {
+    final name = photo.name.trim();
+    if (name.isNotEmpty) return name;
+    return photo.path.split('/').last;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 148,
+        height: 122,
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: JournalColors.borderBright),
+          boxShadow: [
+            BoxShadow(
+              color: JournalColors.accentGlow.withValues(alpha: 0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(17),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(
+                File(photo.path),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: JournalColors.bgCardAlt,
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    CupertinoIcons.photo_fill,
+                    color: JournalColors.textMuted,
+                    size: 30,
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        JournalColors.bgBase.withValues(alpha: 0),
+                        JournalColors.bgBase.withValues(alpha: 0.76),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Text(
+                  _displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: JournalColors.bgBase.withValues(alpha: 0.72),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: JournalColors.borderBright),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.arrow_up_left_arrow_down_right,
+                    color: JournalColors.textPrimary,
+                    size: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

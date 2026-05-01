@@ -16,6 +16,12 @@ class LaunchIntentProvider extends ChangeNotifier {
   String? get sagePrefillText => _lastUri?.queryParameters['prefill'];
   String? get siriCaptureText => _lastUri?.queryParameters['prefill'];
   String? get siriCaptureSource => _lastUri?.queryParameters['source'];
+  String? get siriCaptureReviewReason =>
+      _lastUri?.queryParameters['review_reason'];
+  String? get siriCapturePreferredFolder =>
+      _lastUri?.queryParameters['preferred_folder'];
+  bool get siriCaptureJournalOnly =>
+      _lastUri?.queryParameters['journal_only'] == '1';
   bool get shouldAutoSendSagePrefill =>
       _lastUri?.queryParameters['auto_send'] == '1';
   bool get shouldAutoSaveSiriCapture =>
