@@ -1,4 +1,6 @@
 // lib/main.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -35,7 +37,11 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
 
   Future<bool> _handleExternalRoute(String? route) async {
     if (!mounted) return false;
-    return context.read<LaunchIntentProvider>().registerRoute(route);
+    final handled = context.read<LaunchIntentProvider>().registerRoute(route);
+    if (handled && route != null && route.trim().isNotEmpty) {
+      await _launchRouteService.persistPendingRoute(route);
+    }
+    return handled;
   }
 
   @override
@@ -43,17 +49,30 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final launchIntent = context.read<LaunchIntentProvider>();
-      launchIntent.registerRoute(
-        WidgetsBinding.instance.platformDispatcher.defaultRouteName,
-      );
-      context.read<AuthProvider>().init();
+    _launchRouteService.routes.listen((route) {
+      unawaited(_handleExternalRoute(route));
     });
 
-    _launchRouteService.routes.listen((route) {
-      _handleExternalRoute(route);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_bootstrapAppLaunch());
     });
+  }
+
+  Future<void> _bootstrapAppLaunch() async {
+    final launchIntent = context.read<LaunchIntentProvider>();
+    final auth = context.read<AuthProvider>();
+    final initialRoute = await _launchRouteService.getInitialRoute();
+    final persistedRoute = await _launchRouteService.getPersistedPendingRoute();
+    final routeToRegister = initialRoute ??
+        persistedRoute ??
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    if (mounted) {
+      launchIntent.registerRoute(routeToRegister);
+      if (routeToRegister.trim().isNotEmpty) {
+        await _launchRouteService.persistPendingRoute(routeToRegister);
+      }
+      auth.init();
+    }
   }
 
   @override
@@ -88,6 +107,9 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
         style: const TextStyle(decoration: TextDecoration.none),
         child: Consumer2<AuthProvider, LaunchIntentProvider>(
           builder: (context, auth, launchIntent, _) {
+            if (!launchIntent.hasPendingIntent) {
+              unawaited(_launchRouteService.clearPersistedPendingRoute());
+            }
             return switch (auth.state) {
               AuthState.unknown => const SplashScreen(),
               AuthState.authenticated =>

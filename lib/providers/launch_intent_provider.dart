@@ -14,13 +14,19 @@ class LaunchIntentProvider extends ChangeNotifier {
   String? get routePath => _lastUri?.path;
   String? get writePrefillText => _lastUri?.queryParameters['prefill'];
   String? get sagePrefillText => _lastUri?.queryParameters['prefill'];
+  String? get siriCaptureText => _lastUri?.queryParameters['prefill'];
+  String? get siriCaptureSource => _lastUri?.queryParameters['source'];
   bool get shouldAutoSendSagePrefill =>
       _lastUri?.queryParameters['auto_send'] == '1';
+  bool get shouldAutoSaveSiriCapture =>
+      _lastUri?.queryParameters['auto_save'] == '1';
   String? get companionFocus => _lastUri?.queryParameters['focus'];
   bool get hasPendingIntent => _intentVersion != _handledVersion;
   bool get shouldOpenCarPlayCompanion =>
       hasPendingIntent && routePath == '/carplay';
   bool get shouldOpenSage => hasPendingIntent && routePath == '/sage';
+  bool get shouldOpenSiriCapture =>
+      hasPendingIntent && routePath == '/siri-capture';
 
   bool registerRoute(String? rawRoute) {
     final normalizedRoute = _normalizeRoute(rawRoute);
@@ -78,7 +84,7 @@ class LaunchIntentProvider extends ChangeNotifier {
       '/carplay' => 0,
       '/today' => 0,
       '/timeline' => 1,
-      '/write' || '/compose' => 2,
+      '/write' || '/compose' || '/siri-capture' => 2,
       '/ask' || '/intelligence' || '/sage' || '/detective' => 3,
       '/more' || '/settings' => 4,
       _ => null,

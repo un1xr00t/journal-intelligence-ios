@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'ai_response_limits.dart';
 
@@ -333,6 +334,7 @@ class ApiService {
 
   late final Dio _dio;
   late final CookieJar _cookieJar;
+  late final Future<void> _ready;
   final _storage = const FlutterSecureStorage();
 
   String? _accessToken;
@@ -352,10 +354,11 @@ class ApiService {
       headers: {'Accept': 'application/json'},
     ));
 
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    _ready = _initializeSessionStorage();
     // Inject auth header on every request
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        await _ready;
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
         }
@@ -369,6 +372,18 @@ class ApiService {
     _dio.interceptors.add(_AuthInterceptor(this));
   }
 
+  Future<void> _initializeSessionStorage() async {
+    final appSupportDir = await getApplicationSupportDirectory();
+    final cookiePath = '${appSupportDir.path}/http_cookies';
+    _cookieJar = PersistCookieJar(
+      ignoreExpires: false,
+      storage: FileStorage(cookiePath),
+    );
+    _dio.interceptors.insert(0, CookieManager(_cookieJar));
+  }
+
+  Future<void> ensureReady() => _ready;
+
   // ── Token management ──────────────────────────────────────────
 
   void setAccessToken(String token) {
@@ -376,6 +391,7 @@ class ApiService {
   }
 
   Future<void> clearTokens() async {
+    await _ready;
     _accessToken = null;
     _floatchatContextString = null;
     await _cookieJar.deleteAll();
@@ -673,10 +689,8 @@ class ApiService {
           ? body['category'].toString().trim()
           : 'general';
       final currentGoal = body['current_goal']?.toString().trim() ?? '';
-      final whyThisMatters =
-          body['why_this_matters']?.toString().trim() ?? '';
-      final nextCommitment =
-          body['next_commitment']?.toString().trim() ?? '';
+      final whyThisMatters = body['why_this_matters']?.toString().trim() ?? '';
+      final nextCommitment = body['next_commitment']?.toString().trim() ?? '';
       final stuckPoints = ((body['stuck_points'] as List?) ?? const [])
           .map((item) => item.toString().trim())
           .where((item) => item.isNotEmpty)
@@ -759,15 +773,16 @@ class ApiService {
       }
 
       final nextTrack = current.copyWith(
-        title: body.containsKey('title') ? body['title']?.toString() ?? '' : null,
+        title:
+            body.containsKey('title') ? body['title']?.toString() ?? '' : null,
         category: body.containsKey('category')
             ? body['category']?.toString() ?? ''
             : null,
-        status:
-            body.containsKey('status') ? body['status']?.toString() ?? '' : null,
-        isPrimary: body.containsKey('is_primary')
-            ? body['is_primary'] == true
+        status: body.containsKey('status')
+            ? body['status']?.toString() ?? ''
             : null,
+        isPrimary:
+            body.containsKey('is_primary') ? body['is_primary'] == true : null,
         checkInCadence: body.containsKey('check_in_cadence')
             ? body['check_in_cadence']?.toString() ?? ''
             : null,
@@ -854,7 +869,8 @@ class ApiService {
   }
 
   Future<SageFocusTrack> archiveSageTrack(String trackId) {
-    return updateSageTrack(trackId, {'status': 'archived', 'is_primary': false});
+    return updateSageTrack(
+        trackId, {'status': 'archived', 'is_primary': false});
   }
 
   Future<List<SageTrackCheckIn>> listSageTrackCheckIns(String trackId) async {
@@ -915,26 +931,28 @@ class ApiService {
       if (checkIn.nextStep.trim().isNotEmpty) {
         openLoops.insert(0, checkIn.nextStep.trim());
       }
-      final nextTrack = current.copyWith(
-        updatedAt: now,
-        lastCheckInAt: now,
-        nextCommitment: checkIn.nextStep.trim().isNotEmpty
-            ? checkIn.nextStep.trim()
-            : current.nextCommitment,
-        recentWins: recentWins.take(6).toList(),
-        openLoops: openLoops.take(6).toList(),
-        checkIns: [checkIn, ...current.checkIns].take(20).toList(),
-      ).copyWith(
-        summaryCompact: _buildTrackSummary(
-          title: current.title,
-          currentGoal: current.currentGoal,
-          recentWins: recentWins.take(6).toList(),
-          stuckPoints: current.stuckPoints,
-          nextCommitment: checkIn.nextStep.trim().isNotEmpty
-              ? checkIn.nextStep.trim()
-              : current.nextCommitment,
-        ),
-      );
+      final nextTrack = current
+          .copyWith(
+            updatedAt: now,
+            lastCheckInAt: now,
+            nextCommitment: checkIn.nextStep.trim().isNotEmpty
+                ? checkIn.nextStep.trim()
+                : current.nextCommitment,
+            recentWins: recentWins.take(6).toList(),
+            openLoops: openLoops.take(6).toList(),
+            checkIns: [checkIn, ...current.checkIns].take(20).toList(),
+          )
+          .copyWith(
+            summaryCompact: _buildTrackSummary(
+              title: current.title,
+              currentGoal: current.currentGoal,
+              recentWins: recentWins.take(6).toList(),
+              stuckPoints: current.stuckPoints,
+              nextCommitment: checkIn.nextStep.trim().isNotEmpty
+                  ? checkIn.nextStep.trim()
+                  : current.nextCommitment,
+            ),
+          );
       tracks[index] = nextTrack;
       await _writeLocalSageTracks(tracks);
       return checkIn;
@@ -944,6 +962,7 @@ class ApiService {
   // ── Auth ──────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String username, String password) async {
+    await _ready;
     final res = await _dio.post('/auth/login', data: {
       'username': username,
       'password': password,
@@ -953,6 +972,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> verify2FA(
       String partialToken, String code) async {
+    await _ready;
     final res = await _dio.post('/auth/2fa/verify-login', data: {
       'partial_token': partialToken,
       'totp_code': code,
@@ -964,6 +984,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> register(
       String username, String email, String password) async {
+    await _ready;
     final res = await _dio.post('/api/register', data: {
       'username': username,
       'email': email,
@@ -1064,6 +1085,7 @@ class ApiService {
   /// Returns { job_id, total } — poll getDayOneImportStatus for progress.
   Future<Map<String, dynamic>> importDayOne(
       String filePath, String fileName) async {
+    await _ready;
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(filePath, filename: fileName),
     });
@@ -1081,6 +1103,7 @@ class ApiService {
   }
 
   Future<void> logout() async {
+    await _ready;
     try {
       await _dio.post('/auth/logout');
     } catch (_) {}
@@ -1088,6 +1111,7 @@ class ApiService {
   }
 
   Future<String?> refreshAccessToken() async {
+    await _ready;
     try {
       // Cookie jar automatically sends the refresh_token cookie
       final res = await _dio.post('/auth/refresh');
@@ -1796,19 +1820,30 @@ class ApiService {
   }
 
   Future<Response> _authedGet(String path,
-          {Map<String, dynamic>? queryParameters}) =>
-      _dio.get(path, queryParameters: queryParameters);
+      {Map<String, dynamic>? queryParameters}) async {
+    await _ready;
+    return _dio.get(path, queryParameters: queryParameters);
+  }
 
-  Future<Response> _authedPost(String path, {dynamic data}) =>
-      _dio.post(path, data: data);
+  Future<Response> _authedPost(String path, {dynamic data}) async {
+    await _ready;
+    return _dio.post(path, data: data);
+  }
 
-  Future<Response> _authedPut(String path, {dynamic data}) =>
-      _dio.put(path, data: data);
+  Future<Response> _authedPut(String path, {dynamic data}) async {
+    await _ready;
+    return _dio.put(path, data: data);
+  }
 
-  Future<Response> _authedPatch(String path, {dynamic data}) =>
-      _dio.patch(path, data: data);
+  Future<Response> _authedPatch(String path, {dynamic data}) async {
+    await _ready;
+    return _dio.patch(path, data: data);
+  }
 
-  Future<Response> _authedDelete(String path) => _dio.delete(path);
+  Future<Response> _authedDelete(String path) async {
+    await _ready;
+    return _dio.delete(path);
+  }
 
   // ── Proof Vault ───────────────────────────────────────────────────────────
 

@@ -14,6 +14,7 @@ import 'carplay_companion_screen.dart';
 import 'budget_planner_screen.dart';
 import 'notification_nudges_screen.dart';
 import 'resources_screen.dart';
+import 'siri_capture_screen.dart';
 import 'today_screen.dart';
 import 'write_screen.dart';
 import 'timeline_screen.dart';
@@ -38,6 +39,7 @@ class _HomeShellState extends State<HomeShell> {
   int _lastHandledIntentVersion = 0;
   bool _carPlayCompanionVisible = false;
   bool _sageVisible = false;
+  bool _siriCaptureVisible = false;
   bool _overlayRouteVisible = false;
 
   static const _screens = [
@@ -118,6 +120,16 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
+    if (launchIntent.shouldOpenSiriCapture && !_siriCaptureVisible) {
+      launchIntent.markHandled(version);
+      _openSiriCapture(
+        text: launchIntent.siriCaptureText ?? '',
+        source: launchIntent.siriCaptureSource ?? 'siri_shortcut',
+        autoSave: launchIntent.shouldAutoSaveSiriCapture,
+      );
+      return;
+    }
+
     final overlayRoute = _overlayRouteFor(launchIntent.routePath);
     if (overlayRoute != null && !_overlayRouteVisible) {
       launchIntent.markHandled(version);
@@ -181,6 +193,33 @@ class _HomeShellState extends State<HomeShell> {
       }
       await pushSageScreen(context, handoff: handoff);
       _sageVisible = false;
+    });
+  }
+
+  void _openSiriCapture({
+    required String text,
+    required String source,
+    required bool autoSave,
+  }) {
+    _siriCaptureVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _siriCaptureVisible = false;
+        return;
+      }
+      await Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder: (_) => DefaultTextStyle.merge(
+            style: const TextStyle(decoration: TextDecoration.none),
+            child: SiriCaptureScreen(
+              initialText: text,
+              source: source,
+              autoSave: autoSave,
+            ),
+          ),
+        ),
+      );
+      _siriCaptureVisible = false;
     });
   }
 

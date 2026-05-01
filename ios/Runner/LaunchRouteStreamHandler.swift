@@ -35,6 +35,14 @@ final class LaunchRouteStreamHandler: NSObject, FlutterStreamHandler {
     }
   }
 
+  func takePendingRoute() -> String? {
+    guard let route = pendingRoutes.last else {
+      return nil
+    }
+    pendingRoutes.removeAll()
+    return route
+  }
+
   private func flushPendingRoutes() {
     guard let eventSink else { return }
     pendingRoutes.forEach { eventSink($0) }

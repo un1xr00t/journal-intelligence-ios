@@ -18,6 +18,9 @@ class SceneDelegate: FlutterSceneDelegate {
   private var launchRouteEventChannel: FlutterEventChannel?
   private let launchRouteEventChannelName =
     "journal_intelligence/launch_route/events"
+  private var launchRouteMethodChannel: FlutterMethodChannel?
+  private let launchRouteMethodChannelName =
+    "journal_intelligence/launch_route"
 
   override func scene(
     _ scene: UIScene,
@@ -66,9 +69,21 @@ class SceneDelegate: FlutterSceneDelegate {
       name: launchRouteEventChannelName,
       binaryMessenger: controller.binaryMessenger
     )
+    let launchRouteMethodChannel = FlutterMethodChannel(
+      name: launchRouteMethodChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
 
     eventChannel.setStreamHandler(speechRecognitionService)
     launchRouteEventChannel.setStreamHandler(launchRouteStreamHandler)
+    launchRouteMethodChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "getInitialRoute":
+        result(self.launchRouteStreamHandler.takePendingRoute())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
     methodChannel.setMethodCallHandler { [weak self] call, result in
       guard let self else {
         result(
@@ -118,6 +133,7 @@ class SceneDelegate: FlutterSceneDelegate {
     self.notificationMethodChannel = notificationMethodChannel
     self.eventChannel = eventChannel
     self.launchRouteEventChannel = launchRouteEventChannel
+    self.launchRouteMethodChannel = launchRouteMethodChannel
     voiceChannelsConfigured = true
   }
 
