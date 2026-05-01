@@ -1033,6 +1033,7 @@ class _ProofVaultFolderDetailState extends State<_ProofVaultFolderDetail> {
             Column(
               children: _items.map((item) {
                 return Padding(
+                  key: ValueKey('vault-entry-${item['id']}'),
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _VaultEntryCard(
                     item: item,
@@ -1283,6 +1284,9 @@ class _VaultEntryCard extends StatelessWidget {
               runSpacing: 8,
               children: photos.map((photo) {
                 return _VaultPhotoThumb(
+                  key: ValueKey(
+                    'vault-photo-${item['id']}-${photo['id']}',
+                  ),
                   itemId: item['id'].toString(),
                   photoId: photo['id'].toString(),
                   filename: photo['original_filename']?.toString(),
@@ -1299,6 +1303,7 @@ class _VaultEntryCard extends StatelessWidget {
 
 class _VaultPhotoThumb extends StatefulWidget {
   const _VaultPhotoThumb({
+    super.key,
     required this.itemId,
     required this.photoId,
     this.filename,
@@ -1322,6 +1327,16 @@ class _VaultPhotoThumbState extends State<_VaultPhotoThumb> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VaultPhotoThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.itemId != widget.itemId ||
+        oldWidget.photoId != widget.photoId) {
+      _bytes = null;
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -1708,25 +1723,11 @@ class _EntrySheetState extends State<_EntrySheet> {
           ),
           if (_files.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Column(
               children: _files.map((file) {
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: JournalColors.bgSurface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: JournalColors.border),
-                  ),
-                  child: Text(
-                    file.name,
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _PendingPhotoChip(filename: file.name),
                 );
               }).toList(),
             ),
@@ -2161,6 +2162,50 @@ class _StatPill extends StatelessWidget {
               color: JournalColors.textMuted,
               fontSize: 11,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingPhotoChip extends StatelessWidget {
+  const _PendingPhotoChip({
+    required this.filename,
+  });
+
+  final String filename;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: JournalColors.bgSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.photo,
+            color: JournalColors.textMuted,
+            size: 16,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              filename,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
         ],
