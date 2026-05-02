@@ -5,15 +5,18 @@
 // exactly like the web app — no backend changes required.
 
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http_parser/http_parser.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
 
 import 'ai_response_limits.dart';
+import 'local_storage_paths.dart';
 import 'native_session_bridge.dart';
 
 // Returns the correct MediaType for an image filename so the backend
@@ -33,6 +36,110 @@ MediaType _imageMimeType(String filename) {
     default:
       return MediaType('image', 'jpeg');
   }
+}
+
+const int _kEntryAttachmentTargetBytes = 12 * 1024 * 1024;
+const int _kEntryAttachmentMaxDimension = 2400;
+
+class _PreparedEntryAttachment {
+  const _PreparedEntryAttachment({
+    required this.bytes,
+    required this.filename,
+    required this.mediaType,
+  });
+
+  final Uint8List bytes;
+  final String filename;
+  final MediaType mediaType;
+}
+
+String _filenameStem(String filename) {
+  final trimmed = filename.trim();
+  if (trimmed.isEmpty) return 'attachment';
+  final dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex <= 0) return trimmed;
+  return trimmed.substring(0, dotIndex);
+}
+
+Future<_PreparedEntryAttachment> _prepareEntryAttachment({
+  required String filePath,
+  required String filename,
+}) async {
+  final originalBytes = await File(filePath).readAsBytes();
+  if (originalBytes.length <= _kEntryAttachmentTargetBytes) {
+    return _PreparedEntryAttachment(
+      bytes: originalBytes,
+      filename: filename,
+      mediaType: _imageMimeType(filename),
+    );
+  }
+
+  final decoded = img.decodeImage(originalBytes);
+  if (decoded == null) {
+    throw Exception(
+      'Attachment is too large to upload. Please choose a smaller photo.',
+    );
+  }
+
+  var working = img.bakeOrientation(decoded);
+  if (working.width > _kEntryAttachmentMaxDimension ||
+      working.height > _kEntryAttachmentMaxDimension) {
+    if (working.width >= working.height) {
+      working = img.copyResize(
+        working,
+        width: _kEntryAttachmentMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    } else {
+      working = img.copyResize(
+        working,
+        height: _kEntryAttachmentMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    }
+  }
+
+  Uint8List resizedBytes = Uint8List(0);
+  for (final quality in [88, 82, 76, 70, 64, 58, 52]) {
+    resizedBytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+    if (resizedBytes.length <= _kEntryAttachmentTargetBytes) {
+      return _PreparedEntryAttachment(
+        bytes: resizedBytes,
+        filename: '${_filenameStem(filename)}.jpg',
+        mediaType: MediaType('image', 'jpeg'),
+      );
+    }
+  }
+
+  var attempts = 0;
+  while (resizedBytes.length > _kEntryAttachmentTargetBytes && attempts < 6) {
+    attempts += 1;
+    final nextWidth = (working.width * 0.85).floor().clamp(1, working.width);
+    final nextHeight = (working.height * 0.85).floor().clamp(1, working.height);
+    if (nextWidth == working.width && nextHeight == working.height) {
+      break;
+    }
+    working = img.copyResize(
+      working,
+      width: nextWidth,
+      height: nextHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+    resizedBytes = Uint8List.fromList(img.encodeJpg(working, quality: 70));
+  }
+
+  if (resizedBytes.isEmpty ||
+      resizedBytes.length > _kEntryAttachmentTargetBytes) {
+    throw Exception(
+      'Attachment is too large to upload. Please choose a smaller photo.',
+    );
+  }
+
+  return _PreparedEntryAttachment(
+    bytes: resizedBytes,
+    filename: '${_filenameStem(filename)}.jpg',
+    mediaType: MediaType('image', 'jpeg'),
+  );
 }
 
 class SavedFloatchatMessage {
@@ -344,6 +451,9 @@ class ApiService {
   Map<String, dynamic>? _voiceSettingsCache;
   DateTime? _voiceSettingsCachedAt;
   static const Duration _voiceSettingsCacheTtl = Duration(minutes: 5);
+  static const int _maxCachedImageResponses = 120;
+  final _imageBytesCache = <String, List<int>>{};
+  final _imageBytesInFlight = <String, Future<List<int>>>{};
 
   ApiService._internal() {
     _dio = Dio(BaseOptions(
@@ -373,7 +483,7 @@ class ApiService {
   }
 
   Future<void> _initializeSessionStorage() async {
-    final appSupportDir = await getApplicationSupportDirectory();
+    final appSupportDir = await resolveAppSupportDirectory();
     final cookiePath = '${appSupportDir.path}/http_cookies';
     _cookieJar = PersistCookieJar(
       ignoreExpires: false,
@@ -1410,8 +1520,16 @@ class ApiService {
 
   Future<Map<String, dynamic>> getEntry(int entryId) async {
     final res = await _authedGet('/api/entries/$entryId');
-    final outer = res.data as Map<String, dynamic>;
-    return outer['data'] as Map<String, dynamic>;
+    final body = Map<String, dynamic>.from(res.data as Map);
+    final nested = body['data'];
+    if (nested is Map) {
+      return Map<String, dynamic>.from(nested);
+    }
+    final entry = body['entry'];
+    if (entry is Map) {
+      return Map<String, dynamic>.from(entry);
+    }
+    return body;
   }
 
   Future<Map<String, dynamic>> createEntry({
@@ -1444,10 +1562,15 @@ class ApiService {
     required String filePath,
     required String filename,
   }) async {
+    final prepared = await _prepareEntryAttachment(
+      filePath: filePath,
+      filename: filename,
+    );
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        filePath,
-        filename: filename,
+      'file': MultipartFile.fromBytes(
+        prepared.bytes,
+        filename: prepared.filename,
+        contentType: prepared.mediaType,
       ),
     });
     final res = await _dio.post(
@@ -2091,6 +2214,25 @@ class ApiService {
   // Used by _AuthImage in detective_case_screen to bypass Flutter's URL-keyed
   // image cache, which doesn't re-send auth headers after a failed fetch.
   Future<List<int>> fetchImageBytes(String relativePath) async {
+    final cached = _imageBytesCache.remove(relativePath);
+    if (cached != null) {
+      _imageBytesCache[relativePath] = cached;
+      return cached;
+    }
+
+    final inFlight = _imageBytesInFlight[relativePath];
+    if (inFlight != null) return inFlight;
+
+    final request = _fetchAndCacheImageBytes(relativePath);
+    _imageBytesInFlight[relativePath] = request;
+    try {
+      return await request;
+    } finally {
+      _imageBytesInFlight.remove(relativePath);
+    }
+  }
+
+  Future<List<int>> _fetchAndCacheImageBytes(String relativePath) async {
     final r = await _dio.get<List<int>>(
       relativePath,
       options: Options(
@@ -2098,7 +2240,14 @@ class ApiService {
         headers: {'Authorization': 'Bearer $_accessToken'},
       ),
     );
-    return r.data ?? [];
+    final bytes = r.data ?? const <int>[];
+    if (bytes.isNotEmpty) {
+      _imageBytesCache[relativePath] = bytes;
+      while (_imageBytesCache.length > _maxCachedImageResponses) {
+        _imageBytesCache.remove(_imageBytesCache.keys.first);
+      }
+    }
+    return bytes;
   }
 
   // ── Case-level uploads (Photos tab) ─────────────────────────────────────

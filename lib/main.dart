@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
+import 'providers/app_shell_mode_provider.dart';
 import 'providers/launch_intent_provider.dart';
 import 'services/launch_route_service.dart';
+import 'screens/quiet_journal_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/splash_screen.dart';
@@ -18,6 +20,7 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AppShellModeProvider()),
         ChangeNotifierProvider(create: (_) => LaunchIntentProvider()),
       ],
       child: const JournalApp(),
@@ -107,15 +110,17 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       home: DefaultTextStyle.merge(
         style: const TextStyle(decoration: TextDecoration.none),
-        child: Consumer2<AuthProvider, LaunchIntentProvider>(
-          builder: (context, auth, launchIntent, _) {
+        child:
+            Consumer3<AuthProvider, LaunchIntentProvider, AppShellModeProvider>(
+          builder: (context, auth, launchIntent, shellMode, _) {
             if (!launchIntent.hasPendingIntent) {
               unawaited(_launchRouteService.clearPersistedPendingRoute());
             }
             return switch (auth.state) {
               AuthState.unknown => const SplashScreen(),
-              AuthState.authenticated =>
-                HomeShell(initialTab: launchIntent.activeTab),
+              AuthState.authenticated => shellMode.isQuietJournal
+                  ? QuietJournalShell(initialTab: launchIntent.activeTab)
+                  : HomeShell(initialTab: launchIntent.activeTab),
               AuthState.unauthenticated => const LoginScreen(),
             };
           },

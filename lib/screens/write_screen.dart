@@ -219,6 +219,9 @@ class _WriteScreenState extends State<WriteScreen> {
       if (str.contains('401')) {
         return 'Session expired. Please log out and back in.';
       }
+      if (str.contains('413')) {
+        return 'That photo is still too large to upload. Try a smaller image.';
+      }
       if (str.contains('422')) return 'Invalid entry format (422).';
       if (str.contains('500')) return 'Server error (500). Try again.';
       return 'Save failed: $str';

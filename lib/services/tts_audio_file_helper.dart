@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+
+import 'local_storage_paths.dart';
 
 Future<void> configureTtsAudioPlayer(AudioPlayer player) async {
   final context = AudioContext(
@@ -49,7 +50,7 @@ Future<String> writeTtsAudioTempFile({
   required String prefix,
   required List<int> bytes,
 }) async {
-  final dir = await getTemporaryDirectory();
+  final dir = await resolveTemporaryDirectory();
   final safePrefix = prefix.replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
   final file = File(
     '${dir.path}/$safePrefix-${DateTime.now().microsecondsSinceEpoch}.mp3',

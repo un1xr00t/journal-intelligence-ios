@@ -76,3 +76,20 @@ codex*
 codex/*
 # Local Codex repo instructions
 AGENTS.md
+
+# Ruflo / Claude Code
+.claude/memory.db
+.claude/helpers/
+.claude/agents/*
+.claude/commands/*
+.claude/skills/*
+.swarm/
+.claude-flow/
+.mcp.json
+ruvector.db
+security_audit_report.txt
+CLAUDE.md
+.claude/settings.json
+
+# Temp files from Ruflo init
+.tmp_backend/

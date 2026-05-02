@@ -470,6 +470,9 @@ $text
   String _parseError(dynamic e) {
     final str = e.toString();
     final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
+    if (str.contains('413')) {
+      return 'That photo is still too large to upload. Try a smaller image.';
+    }
     return match?.group(1) ?? 'Something went wrong.';
   }
 

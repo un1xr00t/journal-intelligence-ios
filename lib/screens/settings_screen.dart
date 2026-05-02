@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/app_shell_mode_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -319,9 +320,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _toggleQuietJournalMode(bool enabled) async {
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    if (rootNavigator.canPop()) {
+      rootNavigator.popUntil((route) => route.isFirst);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    if (!mounted) return;
+    await context.read<AppShellModeProvider>().setQuietJournal(enabled);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final shellMode = context.watch<AppShellModeProvider>();
     final user = auth.user;
 
     return CupertinoPageScaffold(
@@ -525,6 +537,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _SettingsSectionCard(
                       accentColor: JournalColors.orange,
                       children: [
+                        _SettingsSwitchRow(
+                          icon: CupertinoIcons.book_circle_fill,
+                          iconColor: JournalColors.severity,
+                          label: 'Quiet Journal',
+                          subtitle: shellMode.isQuietJournal
+                              ? 'Return to the full intelligence workspace with Sage, analysis, and the current advanced shell.'
+                              : 'Switch into a calmer, memory-first journal shell with a minimal writing flow and photo-friendly entries.',
+                          value: shellMode.isQuietJournal,
+                          onChanged: _toggleQuietJournalMode,
+                        ),
+                        const _SectionDivider(),
                         _SettingsActionRow(
                           icon: CupertinoIcons.bell_fill,
                           iconColor: JournalColors.accent,
