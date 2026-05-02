@@ -1295,19 +1295,51 @@ class _QuietJournalComposeScreenState
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _picker = ImagePicker();
+  final _scrollController = ScrollController();
 
   bool _saving = false;
   bool _saved = false;
   String? _error;
   final List<XFile> _pendingImages = [];
+  double _lastKeyboardInset = 0;
 
   bool get _canSave => !_saving && _controller.text.trim().isNotEmpty;
 
   @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
     _controller.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) {
+      _scheduleComposerReveal();
+    }
+  }
+
+  void _scheduleComposerReveal() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      const revealNudge = 120.0;
+      final target =
+          (position.pixels + revealNudge).clamp(0.0, position.maxScrollExtent);
+      if ((target - position.pixels).abs() < 12) return;
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _pickImage() async {
@@ -1440,202 +1472,228 @@ class _QuietJournalComposeScreenState
   @override
   Widget build(BuildContext context) {
     final todayLabel = DateFormat('EEEE, MMMM d').format(DateTime.now());
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomComposerPadding = keyboardInset > 0 ? keyboardInset + 28 : 32.0;
+    if (keyboardInset > _lastKeyboardInset && _focusNode.hasFocus) {
+      _scheduleComposerReveal();
+    }
+    _lastKeyboardInset = keyboardInset;
 
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
-      child: CustomScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        slivers: [
-          CupertinoSliverNavigationBar(
-            largeTitle: const Text('Write'),
-            backgroundColor: _withAlpha(JournalColors.bgBase, 0.94),
-            border: const Border(
-              bottom: BorderSide(color: JournalColors.border, width: 0.5),
-            ),
-            trailing: GestureDetector(
-              onTap: _canSave ? _save : null,
-              child: Text(
-                _saving ? 'Saving…' : 'Save',
-                style: TextStyle(
-                  color:
-                      _canSave ? JournalColors.accent : JournalColors.textMuted,
-                  fontWeight: FontWeight.w600,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: keyboardInset > 0 ? 10 : 0),
+        child: CustomScrollView(
+          controller: _scrollController,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          slivers: [
+            CupertinoSliverNavigationBar(
+              largeTitle: const Text('Write'),
+              backgroundColor: _withAlpha(JournalColors.bgBase, 0.94),
+              border: const Border(
+                bottom: BorderSide(color: JournalColors.border, width: 0.5),
+              ),
+              trailing: GestureDetector(
+                onTap: _canSave ? _save : null,
+                child: Text(
+                  _saving ? 'Saving…' : 'Save',
+                  style: TextStyle(
+                    color: _canSave
+                        ? JournalColors.accent
+                        : JournalColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    color: _withAlpha(JournalColors.bgCardAlt, 0.86),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: JournalColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        todayLabel,
-                        style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'What do you want to remember from today?',
-                        style: TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: _withAlpha(JournalColors.bgSurface, 0.72),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: _focusNode.hasFocus
-                                ? JournalColors.borderBright
-                                : JournalColors.border,
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                bottomComposerPadding,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.bgCardAlt, 0.86),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: JournalColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          todayLabel,
+                          style: const TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        child: Column(
-                          children: [
-                            CupertinoTextField(
-                              controller: _controller,
-                              focusNode: _focusNode,
-                              padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-                              decoration: null,
-                              minLines: 10,
-                              maxLines: null,
-                              textCapitalization: TextCapitalization.sentences,
-                              placeholder:
-                                  'A moment, a feeling, a small scene, a photo, a sentence. It all counts.',
-                              placeholderStyle: const TextStyle(
-                                color: JournalColors.textMuted,
-                                fontSize: 16,
-                                height: 1.55,
-                                decoration: TextDecoration.none,
-                              ),
-                              style: const TextStyle(
-                                color: JournalColors.textPrimary,
-                                fontSize: 17,
-                                height: 1.7,
-                                decoration: TextDecoration.none,
-                              ),
-                              onChanged: (_) => setState(() => _saved = false),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'What do you want to remember from today?',
+                          style: TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _withAlpha(JournalColors.bgSurface, 0.72),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: _focusNode.hasFocus
+                                  ? JournalColors.borderBright
+                                  : JournalColors.border,
                             ),
-                            if (_pendingImages.isNotEmpty) ...[
-                              Padding(
+                          ),
+                          child: Column(
+                            children: [
+                              CupertinoTextField(
+                                controller: _controller,
+                                focusNode: _focusNode,
                                 padding:
-                                    const EdgeInsets.fromLTRB(14, 6, 14, 10),
-                                child: _InlineComposerPhotoGrid(
-                                  images: _pendingImages,
-                                  onRemove: _removeImage,
+                                    const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                                decoration: null,
+                                minLines: 10,
+                                maxLines: null,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                placeholder:
+                                    'A moment, a feeling, a small scene, a photo, a sentence. It all counts.',
+                                placeholderStyle: const TextStyle(
+                                  color: JournalColors.textMuted,
+                                  fontSize: 16,
+                                  height: 1.55,
+                                  decoration: TextDecoration.none,
+                                ),
+                                style: const TextStyle(
+                                  color: JournalColors.textPrimary,
+                                  fontSize: 17,
+                                  height: 1.7,
+                                  decoration: TextDecoration.none,
+                                ),
+                                onChanged: (_) =>
+                                    setState(() => _saved = false),
+                              ),
+                              if (_pendingImages.isNotEmpty) ...[
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(14, 6, 14, 10),
+                                  child: _InlineComposerPhotoGrid(
+                                    images: _pendingImages,
+                                    onRemove: _removeImage,
+                                  ),
+                                ),
+                              ],
+                              Container(
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    top:
+                                        BorderSide(color: JournalColors.border),
+                                  ),
+                                ),
+                                padding:
+                                    const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                                child: Row(
+                                  children: [
+                                    _ComposerToolButton(
+                                      icon: CupertinoIcons.bold,
+                                      label: 'Bold',
+                                      onTap: () =>
+                                          _insertFormatting('**', '**'),
+                                    ),
+                                    _ComposerToolButton(
+                                      icon: CupertinoIcons.italic,
+                                      label: 'Italic',
+                                      onTap: () => _insertFormatting('_', '_'),
+                                    ),
+                                    _ComposerToolButton(
+                                      icon: CupertinoIcons.list_bullet,
+                                      label: 'List',
+                                      onTap: () => _insertLinePrefix('- '),
+                                    ),
+                                    _ComposerToolButton(
+                                      icon: CupertinoIcons.quote_bubble,
+                                      label: 'Quote',
+                                      onTap: () => _insertLinePrefix('> '),
+                                    ),
+                                    const Spacer(),
+                                    _ComposerToolButton(
+                                      icon: CupertinoIcons.photo_on_rectangle,
+                                      label: 'Photo',
+                                      onTap: _saving ? null : _pickImage,
+                                      active: _pendingImages.isNotEmpty,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
-                            Container(
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  top: BorderSide(color: JournalColors.border),
-                                ),
-                              ),
-                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                              child: Row(
-                                children: [
-                                  _ComposerToolButton(
-                                    icon: CupertinoIcons.bold,
-                                    label: 'Bold',
-                                    onTap: () => _insertFormatting('**', '**'),
-                                  ),
-                                  _ComposerToolButton(
-                                    icon: CupertinoIcons.italic,
-                                    label: 'Italic',
-                                    onTap: () => _insertFormatting('_', '_'),
-                                  ),
-                                  _ComposerToolButton(
-                                    icon: CupertinoIcons.list_bullet,
-                                    label: 'List',
-                                    onTap: () => _insertLinePrefix('- '),
-                                  ),
-                                  _ComposerToolButton(
-                                    icon: CupertinoIcons.quote_bubble,
-                                    label: 'Quote',
-                                    onTap: () => _insertLinePrefix('> '),
-                                  ),
-                                  const Spacer(),
-                                  _ComposerToolButton(
-                                    icon: CupertinoIcons.photo_on_rectangle,
-                                    label: 'Photo',
-                                    onTap: _saving ? null : _pickImage,
-                                    active: _pendingImages.isNotEmpty,
-                                  ),
-                                ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Text(
+                              '${_wordCount(_controller.text)} words',
+                              style: const TextStyle(
+                                color: JournalColors.textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Text(
-                            '${_wordCount(_controller.text)} words',
-                            style: const TextStyle(
-                              color: JournalColors.textMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (_saved || _error != null) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: _withAlpha(
-                        _saved ? JournalColors.success : JournalColors.danger,
-                        0.12,
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
+                  if (_saved || _error != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
                         color: _withAlpha(
                           _saved ? JournalColors.success : JournalColors.danger,
-                          0.28,
+                          0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: _withAlpha(
+                            _saved
+                                ? JournalColors.success
+                                : JournalColors.danger,
+                            0.28,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        _saved
+                            ? 'Saved. Your entry is now in Quiet Journal.'
+                            : _error!,
+                        style: TextStyle(
+                          color: _saved
+                              ? JournalColors.success
+                              : JournalColors.danger,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                    child: Text(
-                      _saved
-                          ? 'Saved. Your entry is now in Quiet Journal.'
-                          : _error!,
-                      style: TextStyle(
-                        color: _saved
-                            ? JournalColors.success
-                            : JournalColors.danger,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ]),
+                  ],
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
