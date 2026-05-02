@@ -1394,34 +1394,6 @@ class _QuietJournalComposeScreenState
     setState(() => _pendingImages.removeAt(index));
   }
 
-  void _insertFormatting(String prefix, [String suffix = '']) {
-    final selection = _controller.selection;
-    final text = _controller.text;
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : text.length;
-    final selected = start == end ? '' : text.substring(start, end);
-    final replacement = '$prefix$selected$suffix';
-    _controller.value = TextEditingValue(
-      text: text.replaceRange(start, end, replacement),
-      selection: TextSelection.collapsed(
-        offset: start + prefix.length + selected.length,
-      ),
-    );
-    setState(() => _saved = false);
-  }
-
-  void _insertLinePrefix(String prefix) {
-    final selection = _controller.selection;
-    final text = _controller.text;
-    final cursor = selection.isValid ? selection.baseOffset : text.length;
-    final lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
-    _controller.value = TextEditingValue(
-      text: text.replaceRange(lineStart, lineStart, prefix),
-      selection: TextSelection.collapsed(offset: cursor + prefix.length),
-    );
-    setState(() => _saved = false);
-  }
-
   Future<void> _save() async {
     if (!_canSave) return;
 
@@ -1606,28 +1578,6 @@ class _QuietJournalComposeScreenState
                                     const EdgeInsets.fromLTRB(10, 8, 10, 10),
                                 child: Row(
                                   children: [
-                                    _ComposerToolButton(
-                                      icon: CupertinoIcons.bold,
-                                      label: 'Bold',
-                                      onTap: () =>
-                                          _insertFormatting('**', '**'),
-                                    ),
-                                    _ComposerToolButton(
-                                      icon: CupertinoIcons.italic,
-                                      label: 'Italic',
-                                      onTap: () => _insertFormatting('_', '_'),
-                                    ),
-                                    _ComposerToolButton(
-                                      icon: CupertinoIcons.list_bullet,
-                                      label: 'List',
-                                      onTap: () => _insertLinePrefix('- '),
-                                    ),
-                                    _ComposerToolButton(
-                                      icon: CupertinoIcons.quote_bubble,
-                                      label: 'Quote',
-                                      onTap: () => _insertLinePrefix('> '),
-                                    ),
-                                    const Spacer(),
                                     _ComposerToolButton(
                                       icon: CupertinoIcons.photo_on_rectangle,
                                       label: 'Photo',
