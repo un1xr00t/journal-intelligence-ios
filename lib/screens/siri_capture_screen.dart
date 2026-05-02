@@ -294,11 +294,13 @@ $text
     } else if (hasGeneralJournalSignal || widget.preferJournalOnly) {
       preferredFolder = null;
       confidence = widget.preferJournalOnly ? 0.98 : 0.94;
-      reason = 'This reads like a normal journal entry and can stay in the timeline.';
+      reason =
+          'This reads like a normal journal entry and can stay in the timeline.';
     } else {
       preferredFolder = null;
       confidence = 0.84;
-      reason = 'This can be saved as a journal entry unless you want to route it into Proof Vault.';
+      reason =
+          'This can be saved as a journal entry unless you want to route it into Proof Vault.';
     }
 
     final matchedFolder = _matchFolderByName(preferredFolder, folders);
@@ -395,6 +397,20 @@ $text
       final classification =
           _classification ?? _heuristicClassification(text, _folders);
       final normalizedText = text;
+      final attachedPhoto = _attachedPhoto;
+      String? attachedFilename;
+      if (attachedPhoto != null) {
+        attachedFilename = attachedPhoto.name.trim().isNotEmpty
+            ? attachedPhoto.name
+            : attachedPhoto.path.split('/').last;
+        if (_saveToTimeline) {
+          await _api.validateEntryAttachmentForUpload(
+            filePath: attachedPhoto.path,
+            filename: attachedFilename,
+          );
+        }
+      }
+
       int? entryId;
       String? vaultItemId;
       if (_saveToTimeline) {
@@ -412,11 +428,8 @@ $text
         });
         vaultItemId = itemRes['id']?.toString();
       }
-      final attachedPhoto = _attachedPhoto;
       if (attachedPhoto != null) {
-        final filename = attachedPhoto.name.trim().isNotEmpty
-            ? attachedPhoto.name
-            : attachedPhoto.path.split('/').last;
+        final filename = attachedFilename!;
         if (entryId != null) {
           await _api.uploadEntryAttachment(
             entryId: entryId,
@@ -468,10 +481,13 @@ $text
   }
 
   String _parseError(dynamic e) {
+    if (e is EntryAttachmentUploadException) {
+      return e.message;
+    }
     final str = e.toString();
     final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
     if (str.contains('413')) {
-      return 'That photo is still too large to upload. Try a smaller image.';
+      return 'A photo is too large. Journal photos must be under 8 MB each.';
     }
     return match?.group(1) ?? 'Something went wrong.';
   }
@@ -535,7 +551,12 @@ $text
     }
     final source =
         choice == 'camera' ? ImageSource.camera : ImageSource.gallery;
-    final image = await _imagePicker.pickImage(source: source);
+    final image = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 2000,
+      maxHeight: 2000,
+    );
     if (!mounted || image == null) return;
     setState(() => _attachedPhoto = image);
   }
@@ -867,9 +888,8 @@ $text
                               _classification?.folderName != null) ...[
                             _DraftRow(
                               label: 'Title',
-                              value:
-                                  _classification?.title ??
-                                      'Captured support note',
+                              value: _classification?.title ??
+                                  'Captured support note',
                             ),
                             const SizedBox(height: 10),
                             _DraftRow(

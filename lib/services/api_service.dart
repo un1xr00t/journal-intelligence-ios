@@ -6,11 +6,11 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
@@ -38,8 +38,28 @@ MediaType _imageMimeType(String filename) {
   }
 }
 
-const int _kEntryAttachmentTargetBytes = 12 * 1024 * 1024;
-const int _kEntryAttachmentMaxDimension = 2400;
+const _kAllowedEntryAttachmentExtensions = <String>{
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp'
+};
+
+const int _kEntryAttachmentTargetBytes = 4 * 1024 * 1024;
+const int _kEntryAttachmentMaxDimension = 2000;
+
+class EntryAttachmentUploadException implements Exception {
+  const EntryAttachmentUploadException({
+    required this.filename,
+    required this.message,
+  });
+
+  final String filename;
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 class _PreparedEntryAttachment {
   const _PreparedEntryAttachment({
@@ -61,23 +81,41 @@ String _filenameStem(String filename) {
   return trimmed.substring(0, dotIndex);
 }
 
+String _filenameExtension(String filename) {
+  final trimmed = filename.trim();
+  final dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex < 0) return '';
+  return trimmed.substring(dotIndex).toLowerCase();
+}
+
 Future<_PreparedEntryAttachment> _prepareEntryAttachment({
   required String filePath,
   required String filename,
 }) async {
   final originalBytes = await File(filePath).readAsBytes();
-  if (originalBytes.length <= _kEntryAttachmentTargetBytes) {
-    return _PreparedEntryAttachment(
-      bytes: originalBytes,
+  final extension = _filenameExtension(filename);
+
+  if (!_kAllowedEntryAttachmentExtensions.contains(extension)) {
+    throw EntryAttachmentUploadException(
       filename: filename,
-      mediaType: _imageMimeType(filename),
+      message:
+          '$filename is not supported. Journal photos must be JPG, PNG, or WEBP.',
     );
   }
 
   final decoded = img.decodeImage(originalBytes);
   if (decoded == null) {
-    throw Exception(
-      'Attachment is too large to upload. Please choose a smaller photo.',
+    if (originalBytes.length <= _kEntryAttachmentTargetBytes) {
+      return _PreparedEntryAttachment(
+        bytes: originalBytes,
+        filename: filename,
+        mediaType: _imageMimeType(filename),
+      );
+    }
+    throw EntryAttachmentUploadException(
+      filename: filename,
+      message:
+          '$filename could not be resized automatically. Try a smaller image or re-save it as JPG.',
     );
   }
 
@@ -130,8 +168,17 @@ Future<_PreparedEntryAttachment> _prepareEntryAttachment({
 
   if (resizedBytes.isEmpty ||
       resizedBytes.length > _kEntryAttachmentTargetBytes) {
-    throw Exception(
-      'Attachment is too large to upload. Please choose a smaller photo.',
+    throw EntryAttachmentUploadException(
+      filename: filename,
+      message:
+          '$filename is still too large after resizing. Journal photos must be under 8 MB each.',
+    );
+  }
+
+  if (kDebugMode) {
+    debugPrint(
+      'uploadEntryAttachment normalized $filename '
+      'from ${originalBytes.length} bytes to ${resizedBytes.length} bytes',
     );
   }
 
@@ -1562,22 +1609,44 @@ class ApiService {
     required String filePath,
     required String filename,
   }) async {
-    final prepared = await _prepareEntryAttachment(
-      filePath: filePath,
-      filename: filename,
-    );
-    final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(
-        prepared.bytes,
-        filename: prepared.filename,
-        contentType: prepared.mediaType,
-      ),
-    });
-    final res = await _dio.post(
-      '/api/entries/$entryId/attachments',
-      data: formData,
-    );
-    return res.data as Map<String, dynamic>;
+    try {
+      final prepared = await _prepareEntryAttachment(
+        filePath: filePath,
+        filename: filename,
+      );
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          prepared.bytes,
+          filename: prepared.filename,
+          contentType: prepared.mediaType,
+        ),
+      });
+      final res = await _dio.post(
+        '/api/entries/$entryId/attachments',
+        data: formData,
+      );
+      return res.data as Map<String, dynamic>;
+    } on EntryAttachmentUploadException {
+      rethrow;
+    } on DioException catch (e) {
+      final detail = e.response?.data is Map
+          ? (e.response?.data['detail']?.toString() ?? '')
+          : '';
+      if (detail.isNotEmpty) {
+        throw EntryAttachmentUploadException(
+          filename: filename,
+          message: '$filename: $detail',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> validateEntryAttachmentForUpload({
+    required String filePath,
+    required String filename,
+  }) async {
+    await _prepareEntryAttachment(filePath: filePath, filename: filename);
   }
 
   Future<List<dynamic>> getEntryAttachments(int entryId) async {

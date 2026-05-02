@@ -12,6 +12,8 @@ import '../widgets/glass_card.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
+const double _kPickedImageMaxDimension = 2000;
+
 class WriteScreen extends StatefulWidget {
   const WriteScreen({super.key, this.initialText});
 
@@ -120,13 +122,21 @@ class _WriteScreenState extends State<WriteScreen> {
     if (source == null) return;
     try {
       if (source == ImageSource.gallery) {
-        final picked = await _picker.pickMultiImage(imageQuality: 85);
+        final picked = await _picker.pickMultiImage(
+          imageQuality: 85,
+          maxWidth: _kPickedImageMaxDimension,
+          maxHeight: _kPickedImageMaxDimension,
+        );
         if (picked.isNotEmpty && mounted) {
           setState(() => _pendingImages.addAll(picked));
         }
       } else {
-        final picked =
-            await _picker.pickImage(source: source, imageQuality: 85);
+        final picked = await _picker.pickImage(
+          source: source,
+          imageQuality: 85,
+          maxWidth: _kPickedImageMaxDimension,
+          maxHeight: _kPickedImageMaxDimension,
+        );
         if (picked != null && mounted) {
           setState(() => _pendingImages.add(picked));
         }
@@ -170,6 +180,13 @@ class _WriteScreenState extends State<WriteScreen> {
       _saved = false;
     });
     try {
+      for (final img in _pendingImages) {
+        await _api.validateEntryAttachmentForUpload(
+          filePath: img.path,
+          filename: img.name,
+        );
+      }
+
       final result = await _api.createEntry(text: _ctrl.text.trim());
       final entryId = result['entry_id'] as int?;
 
@@ -207,6 +224,9 @@ class _WriteScreenState extends State<WriteScreen> {
   }
 
   String _parseError(dynamic e) {
+    if (e is EntryAttachmentUploadException) {
+      return e.message;
+    }
     try {
       // DioException with a response body
       final str = e.toString();
@@ -220,7 +240,7 @@ class _WriteScreenState extends State<WriteScreen> {
         return 'Session expired. Please log out and back in.';
       }
       if (str.contains('413')) {
-        return 'That photo is still too large to upload. Try a smaller image.';
+        return 'A photo is too large. Journal photos must be under 8 MB each.';
       }
       if (str.contains('422')) return 'Invalid entry format (422).';
       if (str.contains('500')) return 'Server error (500). Try again.';

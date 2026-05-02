@@ -14,6 +14,8 @@ import 'settings_screen.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
+const double _kQuietJournalPickedImageMaxDimension = 2000;
+
 enum _QuietJournalView {
   list('List'),
   calendar('Calendar'),
@@ -1334,7 +1336,11 @@ class _QuietJournalComposeScreenState
 
     try {
       if (source == ImageSource.gallery) {
-        final picked = await _picker.pickMultiImage(imageQuality: 86);
+        final picked = await _picker.pickMultiImage(
+          imageQuality: 86,
+          maxWidth: _kQuietJournalPickedImageMaxDimension,
+          maxHeight: _kQuietJournalPickedImageMaxDimension,
+        );
         if (picked.isNotEmpty && mounted) {
           setState(() => _pendingImages.addAll(picked));
         }
@@ -1342,6 +1348,8 @@ class _QuietJournalComposeScreenState
         final picked = await _picker.pickImage(
           source: source,
           imageQuality: 86,
+          maxWidth: _kQuietJournalPickedImageMaxDimension,
+          maxHeight: _kQuietJournalPickedImageMaxDimension,
         );
         if (picked != null && mounted) {
           setState(() => _pendingImages.add(picked));
@@ -1392,6 +1400,13 @@ class _QuietJournalComposeScreenState
     });
 
     try {
+      for (final image in _pendingImages) {
+        await _api.validateEntryAttachmentForUpload(
+          filePath: image.path,
+          filename: image.name,
+        );
+      }
+
       final result = await _api.createEntry(text: _controller.text.trim());
       final entryId = result['entry_id'] as int?;
 
@@ -2183,10 +2198,13 @@ int _wordCount(String value) {
 }
 
 String _parseError(dynamic e) {
+  if (e is EntryAttachmentUploadException) {
+    return e.message;
+  }
   final str = e.toString();
   final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
   if (str.contains('413')) {
-    return 'That photo is still too large to upload. Try a smaller image.';
+    return 'A photo is too large. Journal photos must be under 8 MB each.';
   }
   return match?.group(1) ?? 'Something went wrong.';
 }
