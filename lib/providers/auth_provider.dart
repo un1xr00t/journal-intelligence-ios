@@ -11,12 +11,14 @@ class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? _user;
   String? _error;
   bool _loading = false;
+  bool _lastAuthWasSessionRestore = false;
 
   AuthState get state => _state;
   Map<String, dynamic>? get user => _user;
   String? get error => _error;
   bool get loading => _loading;
   bool get isAuthenticated => _state == AuthState.authenticated;
+  bool get lastAuthWasSessionRestore => _lastAuthWasSessionRestore;
 
   // ── Init — try to restore session via refresh cookie ─────────
 
@@ -27,11 +29,14 @@ class AuthProvider extends ChangeNotifier {
         _api.setAccessToken(newToken);
         _user = await _api.getMe();
         _state = AuthState.authenticated;
+        _lastAuthWasSessionRestore = true;
       } else {
         _state = AuthState.unauthenticated;
+        _lastAuthWasSessionRestore = false;
       }
     } catch (_) {
       _state = AuthState.unauthenticated;
+      _lastAuthWasSessionRestore = false;
     }
     notifyListeners();
   }
@@ -58,6 +63,7 @@ class AuthProvider extends ChangeNotifier {
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
       _state = AuthState.authenticated;
+      _lastAuthWasSessionRestore = false;
       _loading = false;
       notifyListeners();
       return null;
@@ -109,6 +115,7 @@ class AuthProvider extends ChangeNotifier {
   void completeAuthentication(Map<String, dynamic> user) {
     _user = user;
     _state = AuthState.authenticated;
+    _lastAuthWasSessionRestore = false;
     notifyListeners();
   }
 
@@ -123,6 +130,7 @@ class AuthProvider extends ChangeNotifier {
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
       _state = AuthState.authenticated;
+      _lastAuthWasSessionRestore = false;
       _loading = false;
       notifyListeners();
       return true;
@@ -145,6 +153,7 @@ class AuthProvider extends ChangeNotifier {
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
       _state = AuthState.authenticated;
+      _lastAuthWasSessionRestore = false;
       _loading = false;
       notifyListeners();
       return true;
@@ -179,6 +188,7 @@ class AuthProvider extends ChangeNotifier {
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
       _state = AuthState.authenticated;
+      _lastAuthWasSessionRestore = false;
       _loading = false;
       notifyListeners();
       return true;
@@ -196,6 +206,7 @@ class AuthProvider extends ChangeNotifier {
     await _api.logout();
     _user = null;
     _state = AuthState.unauthenticated;
+    _lastAuthWasSessionRestore = false;
     notifyListeners();
   }
 

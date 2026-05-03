@@ -1,19 +1,23 @@
 // lib/screens/settings_screen.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/app_lock_provider.dart';
 import '../providers/app_shell_mode_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'notification_nudges_screen.dart';
+import 'pin_unlock_screen.dart';
 import 'resources_screen.dart';
 import 'sage_settings_screen.dart';
 
@@ -149,6 +153,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasRecoveryQuestions = false;
   bool _twoFAEnabled = false;
   bool _securityLoaded = false;
+  bool _journalExporting = false;
+  String? _journalExportStatus;
+  bool _journalExportError = false;
 
   @override
   void initState() {
@@ -309,8 +316,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _push(Widget screen) {
-    return Navigator.of(context, rootNavigator: true).push(
+  Future<T?> _push<T>(Widget screen) {
+    return Navigator.of(context, rootNavigator: true).push<T>(
       CupertinoPageRoute(
         builder: (_) => DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
@@ -330,9 +337,255 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await context.read<AppShellModeProvider>().setQuietJournal(enabled);
   }
 
+  Future<void> _manageJournalPin() async {
+    final appLock = context.read<AppLockProvider>();
+    if (!appLock.canManagePin) return;
+
+    if (!appLock.pinEnabled) {
+      final pin = await _push<String>(const PinUnlockScreen.create());
+      if (pin == null || !mounted) return;
+      await appLock.setPin(pin);
+      if (!mounted) return;
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: const Text('Journal PIN Enabled'),
+          content: const Text(
+            'This device will now ask for your 4-digit PIN before reopening a restored journal session.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Journal PIN'),
+        message: const Text(
+          'Change the local unlock PIN for this device or turn it off entirely.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context, 'change'),
+            child: const Text('Change PIN'),
+          ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, 'disable'),
+            child: const Text('Disable PIN'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context, 'cancel'),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+
+    if (!mounted || action == null || action == 'cancel') return;
+
+    if (action == 'change') {
+      final pin = await _push<String>(const PinUnlockScreen.create());
+      if (pin == null || !mounted) return;
+      await appLock.setPin(pin);
+      return;
+    }
+
+    if (action == 'disable') {
+      final confirm = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: const Text('Disable Journal PIN?'),
+          content: const Text(
+            'Restored sessions on this device will open directly again without the local unlock screen.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Disable'),
+            ),
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+      if (confirm == true) {
+        await appLock.disablePin();
+      }
+    }
+  }
+
+  Future<void> _confirmJournalExport() async {
+    if (_journalExporting) return;
+    final confirm = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Export Full Journal CSV'),
+        content: const Text(
+          'This creates a CSV backup of every journal entry with dates, timestamps, text, and entry metadata, then opens the share sheet so you can save it anywhere.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _exportJournalBackup();
+    }
+  }
+
+  Future<void> _exportJournalBackup() async {
+    setState(() {
+      _journalExporting = true;
+      _journalExportStatus = 'Preparing your full journal backup…';
+      _journalExportError = false;
+    });
+
+    try {
+      final entries = await _api.getAllEntriesForExport(pageSize: 100);
+      if (entries.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _journalExportStatus = 'No journal entries to export yet.';
+          _journalExportError = false;
+        });
+        return;
+      }
+
+      entries.sort(_compareEntriesForExport);
+      final csv = _buildJournalCsv(entries);
+      final dir = await Directory.systemTemp.createTemp('journal_backup_');
+      final timestamp = DateTime.now()
+          .toUtc()
+          .toIso8601String()
+          .replaceAll(RegExp(r'[:.]'), '-');
+      final file = File('${dir.path}/journal_backup_$timestamp.csv');
+      await file.writeAsString(csv, flush: true);
+
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'Journal backup CSV',
+        sharePositionOrigin:
+            box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _journalExportStatus =
+            'CSV ready. Use the share sheet to save or send your full journal backup.';
+        _journalExportError = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _journalExportStatus = _parseError(e);
+        _journalExportError = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _journalExporting = false);
+      }
+    }
+  }
+
+  int _compareEntriesForExport(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final aPrimary = _entrySortValue(a);
+    final bPrimary = _entrySortValue(b);
+    final primaryCompare = aPrimary.compareTo(bPrimary);
+    if (primaryCompare != 0) return primaryCompare;
+
+    final aId = (a['id'] as num?)?.toInt() ?? 0;
+    final bId = (b['id'] as num?)?.toInt() ?? 0;
+    return aId.compareTo(bId);
+  }
+
+  String _entrySortValue(Map<String, dynamic> entry) {
+    final entryDate = entry['entry_date']?.toString().trim() ?? '';
+    if (entryDate.isNotEmpty) return entryDate;
+    return entry['ingested_at']?.toString().trim() ?? '';
+  }
+
+  String _buildJournalCsv(List<Map<String, dynamic>> entries) {
+    const headers = <String>[
+      'id',
+      'user_id',
+      'entry_date',
+      'ingested_at',
+      'source',
+      'is_current',
+      'word_count',
+      'mood_score',
+      'severity_score',
+      'summary_text',
+      'text',
+      'normalized_text',
+    ];
+
+    final buffer = StringBuffer();
+    buffer.writeln(headers.map(_csvCell).join(','));
+    for (final entry in entries) {
+      final row = <String>[
+        _stringValue(entry['id']),
+        _stringValue(entry['user_id']),
+        _stringValue(entry['entry_date']),
+        _stringValue(entry['ingested_at']),
+        _stringValue(entry['source']),
+        _stringValue(entry['is_current']),
+        _stringValue(entry['word_count']),
+        _stringValue(entry['mood_score']),
+        _stringValue(entry['severity_score']),
+        _stringValue(entry['summary_text']),
+        _stringValue(entry['text']),
+        _stringValue(entry['normalized_text']),
+      ];
+      buffer.writeln(row.map(_csvCell).join(','));
+    }
+    return buffer.toString();
+  }
+
+  String _stringValue(dynamic value) {
+    if (value == null) return '';
+    return value.toString();
+  }
+
+  String _csvCell(String value) {
+    final normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final escaped = normalized.replaceAll('"', '""');
+    return '"$escaped"';
+  }
+
+  String _parseError(dynamic e) {
+    final str = e.toString();
+    final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
+    return match?.group(1) ?? 'Something went wrong.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final appLock = context.watch<AppLockProvider>();
     final shellMode = context.watch<AppShellModeProvider>();
     final user = auth.user;
 
@@ -359,6 +612,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       email: user?['email'] as String?,
                       biometricAvailable: _biometricAvailable,
                       biometricEnabled: _biometricEnabled,
+                      pinEnabled: appLock.pinEnabled,
                       reflectLoaded: _reflectLoaded,
                       autoReflect: _autoReflect,
                       securityLoaded: _securityLoaded,
@@ -446,13 +700,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 22),
                     const _SectionLabel(
-                      'Security',
-                      subtitle: 'Access controls and account recovery.',
+                      'Authentication',
+                      subtitle: 'Sign-in recovery, device sessions, and local unlock.',
                     ),
                     const SizedBox(height: 10),
                     _SettingsSectionCard(
                       accentColor: JournalColors.info,
                       children: [
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.lock_shield_fill,
+                          iconColor: JournalColors.accent2,
+                          label: 'Journal PIN',
+                          subtitle: appLock.pinEnabled
+                              ? 'Require a 4-digit PIN before this device can reopen your persistent journal session.'
+                              : 'Add a 4-digit PIN so restored sessions on this device stop opening straight into the journal.',
+                          trailing: _StatusBadge(
+                            label: appLock.pinEnabled ? 'Enabled' : 'Off',
+                            color: appLock.pinEnabled
+                                ? JournalColors.success
+                                : JournalColors.textMuted,
+                          ),
+                          onTap: _manageJournalPin,
+                        ),
+                        const _SectionDivider(),
                         if (_biometricAvailable) ...[
                           _SettingsActionRow(
                             icon: CupertinoIcons.person_crop_circle,
@@ -563,6 +833,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           label: 'Text Journal',
                           subtitle: 'Journal via SMS from your phone.',
                           onTap: () => _push(const _SmsScreen()),
+                        ),
+                        const _SectionDivider(),
+                        _SettingsActionRow(
+                          icon: CupertinoIcons.square_arrow_up_fill,
+                          iconColor: JournalColors.success,
+                          label: 'Backup Your Journal',
+                          subtitle: _journalExportStatus ??
+                              'Export every raw entry into a neatly organized CSV backup.',
+                          trailing: _journalExporting
+                              ? const CupertinoActivityIndicator(
+                                  color: JournalColors.accent,
+                                )
+                              : _journalExportStatus == null
+                                  ? const Icon(
+                                      CupertinoIcons.chevron_right,
+                                      color: JournalColors.textMuted,
+                                      size: 14,
+                                    )
+                                  : _StatusBadge(
+                                      label: _journalExportError
+                                          ? 'Error'
+                                          : 'Ready',
+                                      color: _journalExportError
+                                          ? JournalColors.danger
+                                          : JournalColors.success,
+                                    ),
+                          onTap: _confirmJournalExport,
                         ),
                         const _SectionDivider(),
                         _SettingsActionRow(
@@ -3646,6 +3943,7 @@ class _SettingsHero extends StatelessWidget {
     required this.email,
     required this.biometricAvailable,
     required this.biometricEnabled,
+    required this.pinEnabled,
     required this.reflectLoaded,
     required this.autoReflect,
     required this.securityLoaded,
@@ -3656,6 +3954,7 @@ class _SettingsHero extends StatelessWidget {
   final String? email;
   final bool biometricAvailable;
   final bool biometricEnabled;
+  final bool pinEnabled;
   final bool reflectLoaded;
   final bool autoReflect;
   final bool securityLoaded;
@@ -3802,6 +4101,12 @@ class _SettingsHero extends StatelessWidget {
                 color: biometricEnabled
                     ? JournalColors.success
                     : JournalColors.info,
+              ),
+              _HeroMetric(
+                label: 'Journal PIN',
+                value: pinEnabled ? 'Enabled' : 'Off',
+                color:
+                    pinEnabled ? JournalColors.accent2 : JournalColors.textMuted,
               ),
               _HeroMetric(
                 label: 'Auto-Reflect',
