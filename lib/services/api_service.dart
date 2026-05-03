@@ -1539,24 +1539,28 @@ class ApiService {
     final res = await _authedGet('/api/entries', queryParameters: {
       'page': page,
       'limit': limit,
+      'offset': (page - 1) * limit,
     });
     final data = Map<String, dynamic>.from(res.data as Map);
     final entries = (data['entries'] as List? ?? const [])
         .whereType<Map>()
         .map((entry) => Map<String, dynamic>.from(entry))
         .toList();
-    final responsePage = (data['page'] as num?)?.toInt() ?? page;
+    final responsePage = (data['page'] as num?)?.toInt();
+    final resolvedPage = responsePage != null && responsePage >= page
+        ? responsePage
+        : page;
     final pages = (data['pages'] as num?)?.toInt();
     final total = (data['total'] as num?)?.toInt();
     final hasMore = pages != null
-        ? responsePage < pages
+        ? resolvedPage < pages
         : total != null
-            ? responsePage * limit < total
+            ? resolvedPage * limit < total
             : entries.length == limit;
 
     return TimelinePage(
       entries: entries,
-      page: responsePage,
+      page: resolvedPage,
       hasMore: hasMore,
     );
   }

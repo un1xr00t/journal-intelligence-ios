@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -19,6 +20,14 @@ Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 const double _kQuietJournalPickedImageMaxDimension = 2000;
 const String _kQuietJournalImageAttachmentCacheKey =
     'quiet_journal_image_attachments_v1';
+const String _kQuietJournalHideEmptyCalendarDaysKey =
+    'quiet_journal_hide_empty_calendar_days_v1';
+const String _kQuietJournalCalendarBlockScaleKey =
+    'quiet_journal_calendar_block_scale_v1';
+const String _kQuietJournalShowCalendarPhotoPreviewsKey =
+    'quiet_journal_show_calendar_photo_previews_v1';
+const String _kQuietJournalAutoFocusCalendarMonthKey =
+    'quiet_journal_auto_focus_calendar_month_v1';
 
 enum _QuietJournalView {
   list('List'),
@@ -27,6 +36,35 @@ enum _QuietJournalView {
 
   const _QuietJournalView(this.label);
   final String label;
+}
+
+class _QuietJournalCalendarSettings {
+  const _QuietJournalCalendarSettings({
+    this.hideEmptyDays = false,
+    this.blockScale = 1.0,
+    this.showPhotoPreviews = true,
+    this.autoFocusCurrentMonth = true,
+  });
+
+  final bool hideEmptyDays;
+  final double blockScale;
+  final bool showPhotoPreviews;
+  final bool autoFocusCurrentMonth;
+
+  _QuietJournalCalendarSettings copyWith({
+    bool? hideEmptyDays,
+    double? blockScale,
+    bool? showPhotoPreviews,
+    bool? autoFocusCurrentMonth,
+  }) {
+    return _QuietJournalCalendarSettings(
+      hideEmptyDays: hideEmptyDays ?? this.hideEmptyDays,
+      blockScale: blockScale ?? this.blockScale,
+      showPhotoPreviews: showPhotoPreviews ?? this.showPhotoPreviews,
+      autoFocusCurrentMonth:
+          autoFocusCurrentMonth ?? this.autoFocusCurrentMonth,
+    );
+  }
 }
 
 class QuietJournalShell extends StatefulWidget {
@@ -171,6 +209,8 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 
   List<Map<String, dynamic>> _entries = [];
   Map<int, List<_QuietImageAttachment>> _imageAttachmentsByEntry = {};
+  _QuietJournalCalendarSettings _calendarSettings =
+      const _QuietJournalCalendarSettings();
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -189,6 +229,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     );
     _mediaScrollController
         .addListener(() => _onScroll(_QuietJournalView.media));
+    _restoreCalendarSettings();
     _load();
   }
 
@@ -236,7 +277,8 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _hasMore = page.hasMore;
         _page = page.page;
         _loading = false;
-        _focusCalendarAfterBuild = _activeView == _QuietJournalView.calendar;
+        _focusCalendarAfterBuild = _activeView == _QuietJournalView.calendar &&
+            _calendarSettings.autoFocusCurrentMonth;
       });
 
       await _restoreCachedPreviewImages(entries);
@@ -249,6 +291,89 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _restoreCalendarSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final restored = _QuietJournalCalendarSettings(
+        hideEmptyDays:
+            prefs.getBool(_kQuietJournalHideEmptyCalendarDaysKey) ?? false,
+        blockScale:
+            (prefs.getDouble(_kQuietJournalCalendarBlockScaleKey) ?? 1.0)
+                .clamp(0.8, 1.2),
+        showPhotoPreviews:
+            prefs.getBool(_kQuietJournalShowCalendarPhotoPreviewsKey) ?? true,
+        autoFocusCurrentMonth:
+            prefs.getBool(_kQuietJournalAutoFocusCalendarMonthKey) ?? true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _calendarSettings = restored;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _persistCalendarSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        _kQuietJournalHideEmptyCalendarDaysKey,
+        _calendarSettings.hideEmptyDays,
+      );
+      await prefs.setDouble(
+        _kQuietJournalCalendarBlockScaleKey,
+        _calendarSettings.blockScale,
+      );
+      await prefs.setBool(
+        _kQuietJournalShowCalendarPhotoPreviewsKey,
+        _calendarSettings.showPhotoPreviews,
+      );
+      await prefs.setBool(
+        _kQuietJournalAutoFocusCalendarMonthKey,
+        _calendarSettings.autoFocusCurrentMonth,
+      );
+    } catch (_) {}
+  }
+
+  void _updateCalendarSettings(_QuietJournalCalendarSettings next) {
+    final normalized = next.copyWith(
+      blockScale: next.blockScale.clamp(0.8, 1.2),
+    );
+    setState(() {
+      _calendarSettings = normalized;
+      if (!normalized.autoFocusCurrentMonth) {
+        _focusCalendarAfterBuild = false;
+      }
+    });
+    _persistCalendarSettings();
+  }
+
+  Future<void> _openMiniSettingsMenu() async {
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: _QuietJournalMiniSettingsSheet(
+          activeView: _activeView,
+          calendarSettings: _calendarSettings,
+          onCalendarSettingsChanged: _updateCalendarSettings,
+          onJumpToCalendar: () {
+            Navigator.of(sheetContext).pop();
+            setState(() {
+              _activeView = _QuietJournalView.calendar;
+              if (_calendarSettings.autoFocusCurrentMonth) {
+                _focusCalendarAfterBuild = true;
+              }
+            });
+            _maybeHydrateCalendarHistory();
+          },
+          onResetCalendarDefaults: () {
+            _updateCalendarSettings(const _QuietJournalCalendarSettings());
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _loadMore({
@@ -597,40 +722,51 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      backgroundColor: JournalColors.bgBase,
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Column(
-                children: [
-                  _QuietJournalHeader(
-                    activeView: _activeView,
-                    onViewChanged: (view) {
-                      setState(() {
-                        _activeView = view;
-                        if (view == _QuietJournalView.calendar) {
-                          _focusCalendarAfterBuild = true;
-                        }
-                      });
-                      if (view == _QuietJournalView.calendar) {
-                        _maybeHydrateCalendarHistory();
-                      }
-                    },
-                    onRefresh: _load,
+    return Material(
+      type: MaterialType.transparency,
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent,
+        ),
+        child: CupertinoPageScaffold(
+          backgroundColor: JournalColors.bgBase,
+          child: SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Column(
+                    children: [
+                      _QuietJournalHeader(
+                        activeView: _activeView,
+                        onMenuTap: _openMiniSettingsMenu,
+                        onViewChanged: (view) {
+                          setState(() {
+                            _activeView = view;
+                            if (view == _QuietJournalView.calendar &&
+                                _calendarSettings.autoFocusCurrentMonth) {
+                              _focusCalendarAfterBuild = true;
+                            }
+                          });
+                          if (view == _QuietJournalView.calendar) {
+                            _maybeHydrateCalendarHistory();
+                          }
+                        },
+                        onRefresh: _load,
+                      ),
+                      Expanded(child: _buildBody()),
+                    ],
                   ),
-                  Expanded(child: _buildBody()),
-                ],
-              ),
+                ),
+                Positioned(
+                  right: 20,
+                  bottom: 24,
+                  child: _ComposeFab(onTap: widget.onComposeTap),
+                ),
+              ],
             ),
-            Positioned(
-              right: 20,
-              bottom: 24,
-              child: _ComposeFab(onTap: widget.onComposeTap),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -686,6 +822,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
           monthKeys: _calendarMonthKeys,
           controller: _calendarScrollController,
           loadingMore: _loadingMore,
+          settings: _calendarSettings,
         ),
       _QuietJournalView.media => _QuietMediaView(
           entries: _entries,
@@ -701,11 +838,13 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 class _QuietJournalHeader extends StatelessWidget {
   const _QuietJournalHeader({
     required this.activeView,
+    required this.onMenuTap,
     required this.onViewChanged,
     required this.onRefresh,
   });
 
   final _QuietJournalView activeView;
+  final VoidCallback onMenuTap;
   final ValueChanged<_QuietJournalView> onViewChanged;
   final VoidCallback onRefresh;
 
@@ -718,10 +857,10 @@ class _QuietJournalHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                CupertinoIcons.line_horizontal_3,
-                color: JournalColors.info,
-                size: 24,
+              _HeaderIconButton(
+                icon: CupertinoIcons.line_horizontal_3,
+                iconColor: JournalColors.info,
+                onTap: onMenuTap,
               ),
               const SizedBox(width: 14),
               const Expanded(
@@ -797,6 +936,452 @@ class _QuietJournalHeader extends StatelessWidget {
             color: _withAlpha(JournalColors.border, 1),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuietJournalMiniSettingsSheet extends StatefulWidget {
+  const _QuietJournalMiniSettingsSheet({
+    required this.activeView,
+    required this.calendarSettings,
+    required this.onCalendarSettingsChanged,
+    required this.onJumpToCalendar,
+    required this.onResetCalendarDefaults,
+  });
+
+  final _QuietJournalView activeView;
+  final _QuietJournalCalendarSettings calendarSettings;
+  final ValueChanged<_QuietJournalCalendarSettings> onCalendarSettingsChanged;
+  final VoidCallback onJumpToCalendar;
+  final VoidCallback onResetCalendarDefaults;
+
+  @override
+  State<_QuietJournalMiniSettingsSheet> createState() =>
+      _QuietJournalMiniSettingsSheetState();
+}
+
+class _QuietJournalMiniSettingsSheetState
+    extends State<_QuietJournalMiniSettingsSheet> {
+  late _QuietJournalCalendarSettings _draft;
+
+  @override
+  void initState() {
+    super.initState();
+    _draft = widget.calendarSettings;
+  }
+
+  void _apply(_QuietJournalCalendarSettings next) {
+    setState(() {
+      _draft = next;
+    });
+    widget.onCalendarSettingsChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final maxHeight = MediaQuery.of(context).size.height * 0.82;
+    return CupertinoPopupSurface(
+      isSurfacePainted: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: _withAlpha(JournalColors.bgCard, 0.98),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          border: Border.all(color: JournalColors.border),
+        ),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 16),
+        child: SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.textMuted, 0.6),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Quiet Journal Controls',
+                    style: TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Tune the calendar without leaving the journal.',
+                    style: TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _SettingsSectionLabel(
+                    title: 'Calendar',
+                    trailing: widget.activeView != _QuietJournalView.calendar
+                        ? 'Jump there'
+                        : 'Live now',
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsActionTile(
+                    icon: CupertinoIcons.calendar,
+                    title: 'Open calendar view',
+                    subtitle: 'Jump straight into your month grid.',
+                    onTap: widget.onJumpToCalendar,
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsToggleTile(
+                    title: 'Hide empty days',
+                    subtitle: 'Only show saved days in each month grid.',
+                    value: _draft.hideEmptyDays,
+                    onChanged: (value) {
+                      _apply(_draft.copyWith(hideEmptyDays: value));
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsToggleTile(
+                    title: 'Show photo previews',
+                    subtitle: 'Use image thumbnails inside calendar blocks.',
+                    value: _draft.showPhotoPreviews,
+                    onChanged: (value) {
+                      _apply(_draft.copyWith(showPhotoPreviews: value));
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsToggleTile(
+                    title: 'Jump to current month on open',
+                    subtitle: 'Keep calendar landing on the latest month.',
+                    value: _draft.autoFocusCurrentMonth,
+                    onChanged: (value) {
+                      _apply(_draft.copyWith(autoFocusCurrentMonth: value));
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsSliderTile(
+                    title: 'Calendar block size',
+                    subtitle:
+                        'Default is exactly what you have now. Slide for denser or bigger cards.',
+                    value: _draft.blockScale,
+                    min: 0.8,
+                    max: 1.2,
+                    valueLabel: _draft.blockScale == 1.0
+                        ? 'Default'
+                        : _draft.blockScale < 1.0
+                            ? 'Smaller'
+                            : 'Larger',
+                    onChanged: (value) {
+                      _apply(_draft.copyWith(blockScale: value));
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  const _SettingsSectionLabel(
+                    title: 'Shortcuts',
+                    trailing: 'Quick reset',
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingsActionTile(
+                    icon: CupertinoIcons.arrow_counterclockwise,
+                    title: 'Reset calendar defaults',
+                    subtitle:
+                        'Restore default day sizes and visibility settings.',
+                    onTap: () {
+                      widget.onResetCalendarDefaults();
+                      setState(() {
+                        _draft = const _QuietJournalCalendarSettings();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    color: _withAlpha(JournalColors.bgSurface, 0.92),
+                    borderRadius: BorderRadius.circular(16),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Center(
+                      child: Text(
+                        'Done',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel({
+    required this.title,
+    required this.trailing,
+  });
+
+  final String title;
+  final String trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            color: JournalColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          trailing,
+          style: const TextStyle(
+            color: JournalColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsToggleTile extends StatelessWidget {
+  const _SettingsToggleTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.86),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          CupertinoSwitch(
+            value: value,
+            activeTrackColor: JournalColors.info,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSliderTile extends StatelessWidget {
+  const _SettingsSliderTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.valueLabel,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final double value;
+  final double min;
+  final double max;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.86),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.info, 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: Text(
+                  valueLabel,
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          CupertinoSlider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: 8,
+            activeColor: JournalColors.info,
+            thumbColor: JournalColors.textPrimary,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsActionTile extends StatelessWidget {
+  const _SettingsActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _withAlpha(JournalColors.bgSurface, 0.86),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _withAlpha(JournalColors.info, 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: JournalColors.info, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              CupertinoIcons.chevron_right,
+              color: JournalColors.textMuted,
+              size: 16,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1074,6 +1659,7 @@ class _QuietCalendarView extends StatelessWidget {
     required this.monthKeys,
     required this.controller,
     required this.loadingMore,
+    required this.settings,
   });
 
   final List<Map<String, dynamic>> entries;
@@ -1081,6 +1667,7 @@ class _QuietCalendarView extends StatelessWidget {
   final Map<DateTime, GlobalKey> monthKeys;
   final ScrollController controller;
   final bool loadingMore;
+  final _QuietJournalCalendarSettings settings;
 
   @override
   Widget build(BuildContext context) {
@@ -1113,6 +1700,7 @@ class _QuietCalendarView extends StatelessWidget {
             month: month.key,
             entries: month.value,
             imageAttachmentsByEntry: imageAttachmentsByEntry,
+            settings: settings,
           ),
         );
       },
@@ -1125,11 +1713,13 @@ class _CalendarMonthCard extends StatelessWidget {
     required this.month,
     required this.entries,
     required this.imageAttachmentsByEntry,
+    required this.settings,
   });
 
   final DateTime month;
   final List<Map<String, dynamic>> entries;
   final Map<int, List<_QuietImageAttachment>> imageAttachmentsByEntry;
+  final _QuietJournalCalendarSettings settings;
 
   @override
   Widget build(BuildContext context) {
@@ -1163,6 +1753,13 @@ class _CalendarMonthCard extends StatelessWidget {
       );
     }
 
+    final visibleCells = settings.hideEmptyDays
+        ? cells.where((cell) => cell.entries.isNotEmpty).toList()
+        : cells;
+    final blockScale = settings.blockScale.clamp(0.8, 1.2);
+    final gridSpacing = (12 / blockScale).clamp(8.0, 16.0);
+    final childAspectRatio = 0.92 / blockScale;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
       decoration: BoxDecoration(
@@ -1182,18 +1779,40 @@ class _CalendarMonthCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          if (visibleCells.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: BoxDecoration(
+                color: _withAlpha(JournalColors.bgSurface, 0.52),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: JournalColors.border),
+              ),
+              child: const Text(
+                'No saved days in this month with the current filter.',
+                style: TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            )
+          else
           GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
-            itemCount: cells.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            itemCount: visibleCells.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.92,
+              mainAxisSpacing: gridSpacing,
+              crossAxisSpacing: gridSpacing,
+              childAspectRatio: childAspectRatio,
             ),
             itemBuilder: (context, index) {
-              return _CalendarDayCell(data: cells[index]);
+              return _CalendarDayCell(
+                data: visibleCells[index],
+                settings: settings,
+              );
             },
           ),
         ],
@@ -1307,20 +1926,25 @@ class _CalendarCellData {
 }
 
 class _CalendarDayCell extends StatelessWidget {
-  const _CalendarDayCell({required this.data});
+  const _CalendarDayCell({
+    required this.data,
+    required this.settings,
+  });
 
   final _CalendarCellData data;
+  final _QuietJournalCalendarSettings settings;
 
   @override
   Widget build(BuildContext context) {
     final hasEntry = data.entries.isNotEmpty;
     final hasImage = data.previewPath != null && data.previewPath!.isNotEmpty;
-    final overlay = hasImage
+    final showImagePreview = settings.showPhotoPreviews && hasImage;
+    final overlay = data.photoCount > 0
         ? _CalendarStatsPill(
             entryCount: data.entryCount,
             photoCount: data.photoCount,
           )
-        : data.entryCount > 1
+        : hasEntry
             ? _CalendarTextPill(entryCount: data.entryCount)
             : null;
 
@@ -1341,14 +1965,14 @@ class _CalendarDayCell extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (hasImage)
+              if (showImagePreview)
                 _QuietAuthImage(
                   path: data.previewPath!,
                   cacheWidth: 360,
                 )
               else
                 const SizedBox.shrink(),
-              if (hasImage)
+              if (showImagePreview)
                 DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1369,7 +1993,7 @@ class _CalendarDayCell extends StatelessWidget {
                     Text(
                       data.weekdayLabel,
                       style: TextStyle(
-                        color: hasImage
+                        color: showImagePreview
                             ? CupertinoColors.white.withValues(alpha: 0.72)
                             : JournalColors.textMuted,
                         fontSize: 10,
@@ -1382,7 +2006,7 @@ class _CalendarDayCell extends StatelessWidget {
                     Text(
                       '${data.day}',
                       style: TextStyle(
-                        color: hasImage
+                        color: showImagePreview
                             ? CupertinoColors.white
                             : JournalColors.textPrimary,
                         fontSize: 28,
@@ -1972,10 +2596,12 @@ class _HeaderIconButton extends StatelessWidget {
   const _HeaderIconButton({
     required this.icon,
     required this.onTap,
+    this.iconColor = JournalColors.textPrimary,
   });
 
   final IconData icon;
   final VoidCallback onTap;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1989,7 +2615,7 @@ class _HeaderIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: JournalColors.border),
         ),
-        child: Icon(icon, color: JournalColors.textPrimary, size: 18),
+        child: Icon(icon, color: iconColor, size: 18),
       ),
     );
   }
