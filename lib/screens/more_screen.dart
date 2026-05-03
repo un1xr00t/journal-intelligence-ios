@@ -16,6 +16,7 @@ import 'exports_screen.dart';
 import 'fairness_ledger_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
+import 'orbit_ledger_screen.dart';
 import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
 import 'sage_screen.dart';
@@ -191,6 +192,14 @@ class MoreScreen extends StatelessWidget {
         ]),
         _Section(
             'Tools', 'Planning and support tools.', const Color(0xFF10B981), [
+          _Item(
+            label: 'Orbit Ledger',
+            subtitle: 'Log requests, favors, errands, and attention pulls',
+            icon: CupertinoIcons.check_mark_circled,
+            iconColor: JournalColors.info,
+            badge: 'Track',
+            builder: (_) => const OrbitLedgerScreen(),
+          ),
           _Item(
             label: 'Budget Planner',
             subtitle: 'Plan finances and run AI comparisons',

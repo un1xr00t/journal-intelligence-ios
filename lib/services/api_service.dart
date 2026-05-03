@@ -1547,9 +1547,8 @@ class ApiService {
         .map((entry) => Map<String, dynamic>.from(entry))
         .toList();
     final responsePage = (data['page'] as num?)?.toInt();
-    final resolvedPage = responsePage != null && responsePage >= page
-        ? responsePage
-        : page;
+    final resolvedPage =
+        responsePage != null && responsePage >= page ? responsePage : page;
     final pages = (data['pages'] as num?)?.toInt();
     final total = (data['total'] as num?)?.toInt();
     final hasMore = pages != null
@@ -1568,6 +1567,26 @@ class ApiService {
   Future<List<dynamic>> getTimeline({int page = 1, int limit = 20}) async {
     final timelinePage = await getTimelinePage(page: page, limit: limit);
     return timelinePage.entries;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllEntriesForExport({
+    int pageSize = 100,
+  }) async {
+    final entries = <Map<String, dynamic>>[];
+    var page = 1;
+
+    while (true) {
+      final timelinePage = await getTimelinePage(page: page, limit: pageSize);
+      entries.addAll(timelinePage.entries);
+
+      if (!timelinePage.hasMore || timelinePage.entries.isEmpty) {
+        break;
+      }
+
+      page = timelinePage.page + 1;
+    }
+
+    return entries;
   }
 
   Future<Map<String, dynamic>> getEntry(int entryId) async {
