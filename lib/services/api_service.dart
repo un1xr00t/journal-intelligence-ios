@@ -499,8 +499,10 @@ class ApiService {
   DateTime? _voiceSettingsCachedAt;
   static const Duration _voiceSettingsCacheTtl = Duration(minutes: 5);
   static const int _maxCachedImageResponses = 120;
+  static const String _imageCacheFolderName = 'authenticated_image_cache_v1';
   final _imageBytesCache = <String, List<int>>{};
   final _imageBytesInFlight = <String, Future<List<int>>>{};
+  Future<Directory>? _imageCacheDirectoryFuture;
 
   ApiService._internal() {
     _dio = Dio(BaseOptions(
@@ -1537,7 +1539,6 @@ class ApiService {
     final res = await _authedGet('/api/entries', queryParameters: {
       'page': page,
       'limit': limit,
-      'offset': (page - 1) * limit,
     });
     final data = Map<String, dynamic>.from(res.data as Map);
     final entries = (data['entries'] as List? ?? const [])
@@ -2302,6 +2303,12 @@ class ApiService {
   }
 
   Future<List<int>> _fetchAndCacheImageBytes(String relativePath) async {
+    final persisted = await _readPersistedImageBytes(relativePath);
+    if (persisted.isNotEmpty) {
+      _rememberImageBytes(relativePath, persisted);
+      return persisted;
+    }
+
     final r = await _dio.get<List<int>>(
       relativePath,
       options: Options(
@@ -2311,12 +2318,57 @@ class ApiService {
     );
     final bytes = r.data ?? const <int>[];
     if (bytes.isNotEmpty) {
-      _imageBytesCache[relativePath] = bytes;
-      while (_imageBytesCache.length > _maxCachedImageResponses) {
-        _imageBytesCache.remove(_imageBytesCache.keys.first);
-      }
+      _rememberImageBytes(relativePath, bytes);
+      await _persistImageBytes(relativePath, bytes);
     }
     return bytes;
+  }
+
+  void _rememberImageBytes(String relativePath, List<int> bytes) {
+    _imageBytesCache[relativePath] = bytes;
+    while (_imageBytesCache.length > _maxCachedImageResponses) {
+      _imageBytesCache.remove(_imageBytesCache.keys.first);
+    }
+  }
+
+  Future<Directory> _resolveImageCacheDirectory() {
+    return _imageCacheDirectoryFuture ??= (() async {
+      final baseDir = await resolveAppSupportDirectory();
+      final cacheDir = Directory(
+        '${baseDir.path}/$_imageCacheFolderName',
+      );
+      await cacheDir.create(recursive: true);
+      return cacheDir;
+    })();
+  }
+
+  String _imageCacheFilename(String relativePath) {
+    final encoded = base64Url.encode(utf8.encode(relativePath));
+    return encoded.replaceAll('=', '');
+  }
+
+  Future<File> _resolveImageCacheFile(String relativePath) async {
+    final directory = await _resolveImageCacheDirectory();
+    return File('${directory.path}/${_imageCacheFilename(relativePath)}.bin');
+  }
+
+  Future<List<int>> _readPersistedImageBytes(String relativePath) async {
+    try {
+      final file = await _resolveImageCacheFile(relativePath);
+      if (!await file.exists()) return const <int>[];
+      return await file.readAsBytes();
+    } catch (_) {
+      return const <int>[];
+    }
+  }
+
+  Future<void> _persistImageBytes(String relativePath, List<int> bytes) async {
+    try {
+      final file = await _resolveImageCacheFile(relativePath);
+      await file.writeAsBytes(bytes, flush: false);
+    } catch (_) {
+      // Non-fatal: memory cache still covers the active session.
+    }
   }
 
   // ── Case-level uploads (Photos tab) ─────────────────────────────────────

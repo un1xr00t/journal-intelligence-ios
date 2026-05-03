@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
@@ -15,6 +17,8 @@ import 'settings_screen.dart';
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 const double _kQuietJournalPickedImageMaxDimension = 2000;
+const String _kQuietJournalImageAttachmentCacheKey =
+    'quiet_journal_image_attachments_v1';
 
 enum _QuietJournalView {
   list('List'),
@@ -160,7 +164,9 @@ class _QuietJournalHomeScreen extends StatefulWidget {
 
 class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   final _api = ApiService();
-  final _scrollController = ScrollController();
+  final _listScrollController = ScrollController();
+  final _calendarScrollController = ScrollController();
+  final _mediaScrollController = ScrollController();
   final Map<DateTime, GlobalKey> _calendarMonthKeys = <DateTime, GlobalKey>{};
 
   List<Map<String, dynamic>> _entries = [];
@@ -172,19 +178,34 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   _QuietJournalView _activeView = _QuietJournalView.list;
   int _page = 1;
   bool _focusCalendarAfterBuild = false;
+  bool _calendarHistoryHydrating = false;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    _listScrollController.addListener(() => _onScroll(_QuietJournalView.list));
+    _calendarScrollController.addListener(
+      () => _onScroll(_QuietJournalView.calendar),
+    );
+    _mediaScrollController
+        .addListener(() => _onScroll(_QuietJournalView.media));
     _load();
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    _listScrollController.dispose();
+    _calendarScrollController.dispose();
+    _mediaScrollController.dispose();
     super.dispose();
+  }
+
+  ScrollController _controllerFor(_QuietJournalView view) {
+    return switch (view) {
+      _QuietJournalView.list => _listScrollController,
+      _QuietJournalView.calendar => _calendarScrollController,
+      _QuietJournalView.media => _mediaScrollController,
+    };
   }
 
   @override
@@ -218,7 +239,9 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _focusCalendarAfterBuild = _activeView == _QuietJournalView.calendar;
       });
 
+      await _restoreCachedPreviewImages(entries);
       _loadPreviewImages(entries);
+      _maybeHydrateCalendarHistory();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -228,14 +251,20 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     }
   }
 
-  Future<void> _loadMore() async {
+  Future<void> _loadMore({
+    bool preserveScrollPosition = true,
+  }) async {
     if (_loading || _loadingMore || !_hasMore) return;
 
-    final previousPixels =
-        _scrollController.hasClients ? _scrollController.position.pixels : 0.0;
-    final previousMaxScrollExtent = _scrollController.hasClients
-        ? _scrollController.position.maxScrollExtent
+    final controller = _controllerFor(_activeView);
+
+    final previousPixels = preserveScrollPosition && controller.hasClients
+        ? controller.position.pixels
         : 0.0;
+    final previousMaxScrollExtent =
+        preserveScrollPosition && controller.hasClients
+            ? controller.position.maxScrollExtent
+            : 0.0;
 
     setState(() => _loadingMore = true);
 
@@ -257,12 +286,16 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _loadingMore = false;
       });
 
-      _maintainScrollOffsetAfterPrepend(
-        previousPixels: previousPixels,
-        previousMaxScrollExtent: previousMaxScrollExtent,
-      );
+      if (preserveScrollPosition) {
+        _maintainScrollOffsetAfterPrepend(
+          controller: controller,
+          previousPixels: previousPixels,
+          previousMaxScrollExtent: previousMaxScrollExtent,
+        );
+      }
 
       if (incoming.isNotEmpty) {
+        await _restoreCachedPreviewImages(incoming);
         _loadPreviewImages(incoming);
       }
     } catch (_) {
@@ -271,28 +304,39 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     }
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (position.pixels <= 320) {
-      _loadMore();
+  void _onScroll(_QuietJournalView view) {
+    if (_activeView != view) return;
+    final controller = _controllerFor(view);
+    if (!controller.hasClients) return;
+    final position = controller.position;
+    switch (view) {
+      case _QuietJournalView.calendar:
+        if (position.pixels <= 320) {
+          _loadMore();
+        }
+      case _QuietJournalView.list:
+      case _QuietJournalView.media:
+        if (position.pixels >= position.maxScrollExtent - 320) {
+          _loadMore();
+        }
     }
   }
 
   void _maintainScrollOffsetAfterPrepend({
+    required ScrollController controller,
     required double previousPixels,
     required double previousMaxScrollExtent,
   }) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final currentPosition = _scrollController.position;
+      if (!mounted || !controller.hasClients) return;
+      final currentPosition = controller.position;
       final delta = currentPosition.maxScrollExtent - previousMaxScrollExtent;
       final target = (previousPixels + delta).clamp(
         0.0,
         currentPosition.maxScrollExtent,
       );
       if ((target - currentPosition.pixels).abs() < 1) return;
-      _scrollController.jumpTo(target);
+      controller.jumpTo(target);
     });
   }
 
@@ -313,10 +357,47 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     });
   }
 
+  void _maybeHydrateCalendarHistory() {
+    if (_activeView != _QuietJournalView.calendar ||
+        _loading ||
+        _loadingMore ||
+        _calendarHistoryHydrating ||
+        !_hasMore) {
+      return;
+    }
+    _hydrateCalendarHistory();
+  }
+
+  Future<void> _hydrateCalendarHistory() async {
+    if (_calendarHistoryHydrating) return;
+    setState(() {
+      _calendarHistoryHydrating = true;
+      _focusCalendarAfterBuild = false;
+    });
+    try {
+      while (mounted && _activeView == _QuietJournalView.calendar && _hasMore) {
+        final previousPage = _page;
+
+        await _loadMore(preserveScrollPosition: false);
+
+        if (!mounted || _page == previousPage) {
+          break;
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _calendarHistoryHydrating = false;
+          _focusCalendarAfterBuild = true;
+        });
+      }
+    }
+  }
+
   void _focusCalendarOnLatestMonth([int attempt = 0]) {
     if (!mounted ||
         _activeView != _QuietJournalView.calendar ||
-        !_scrollController.hasClients) {
+        !_calendarScrollController.hasClients) {
       return;
     }
 
@@ -328,7 +409,9 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 
     if (context == null) {
       if (attempt == 0) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        _calendarScrollController.jumpTo(
+          _calendarScrollController.position.maxScrollExtent,
+        );
       }
       if (attempt < 6) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -382,6 +465,73 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         ...attachmentsByEntry,
       },
     );
+    _persistPreviewImages();
+  }
+
+  Future<void> _restoreCachedPreviewImages(
+    List<Map<String, dynamic>> entries,
+  ) async {
+    final restored = await _readCachedPreviewImages(entries);
+    if (restored.isEmpty || !mounted) return;
+    setState(() {
+      _imageAttachmentsByEntry = {
+        ..._imageAttachmentsByEntry,
+        ...restored,
+      };
+    });
+  }
+
+  Future<Map<int, List<_QuietImageAttachment>>> _readCachedPreviewImages(
+    List<Map<String, dynamic>> entries,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kQuietJournalImageAttachmentCacheKey);
+      if (raw == null || raw.isEmpty) return const {};
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+
+      final restored = <int, List<_QuietImageAttachment>>{};
+      for (final entry in entries) {
+        final entryId = _entryId(entry);
+        if (entryId == null) continue;
+        final cachedItems = decoded[entryId.toString()];
+        if (cachedItems is! List) continue;
+        final images = cachedItems
+            .whereType<Map>()
+            .map(
+              (item) => _QuietImageAttachment.fromCache(
+                entry,
+                Map<String, dynamic>.from(item),
+              ),
+            )
+            .whereType<_QuietImageAttachment>()
+            .toList();
+        if (images.isNotEmpty) {
+          restored[entryId] = images;
+        }
+      }
+      return restored;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _persistPreviewImages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = <String, dynamic>{};
+      for (final entry in _imageAttachmentsByEntry.entries) {
+        if (entry.value.isEmpty) continue;
+        payload[entry.key.toString()] =
+            entry.value.map((image) => image.toCacheJson()).toList();
+      }
+      await prefs.setString(
+        _kQuietJournalImageAttachmentCacheKey,
+        jsonEncode(payload),
+      );
+    } catch (_) {}
   }
 
   Future<void> _deleteEntry(Map<String, dynamic> entry) async {
@@ -418,6 +568,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
           _imageAttachmentsByEntry,
         )..remove(entryId);
       });
+      _persistPreviewImages();
     } catch (_) {}
   }
 
@@ -464,6 +615,9 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
                           _focusCalendarAfterBuild = true;
                         }
                       });
+                      if (view == _QuietJournalView.calendar) {
+                        _maybeHydrateCalendarHistory();
+                      }
                     },
                     onRefresh: _load,
                   ),
@@ -521,7 +675,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
       _QuietJournalView.list => _QuietListView(
           entries: _entries,
           imageAttachmentsByEntry: _imageAttachmentsByEntry,
-          controller: _scrollController,
+          controller: _listScrollController,
           loadingMore: _loadingMore,
           onDeleteEntry: _deleteEntry,
           onEditEntry: _editEntry,
@@ -530,14 +684,14 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
           entries: _entries,
           imageAttachmentsByEntry: _imageAttachmentsByEntry,
           monthKeys: _calendarMonthKeys,
-          controller: _scrollController,
+          controller: _calendarScrollController,
           loadingMore: _loadingMore,
         ),
       _QuietJournalView.media => _QuietMediaView(
           entries: _entries,
           imageAttachmentsByEntry: _imageAttachmentsByEntry,
           onComposeTap: widget.onComposeTap,
-          controller: _scrollController,
+          controller: _mediaScrollController,
           loadingMore: _loadingMore,
         ),
     };
@@ -669,7 +823,7 @@ class _QuietListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final grouped = _groupEntriesByMonth(entries);
     final sections = grouped.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+      ..sort((a, b) => b.key.compareTo(a.key));
 
     return ListView.builder(
       controller: controller,
@@ -685,6 +839,7 @@ class _QuietListView extends StatelessWidget {
           );
         }
         final month = sections[index];
+        final monthEntries = [...month.value]..sort(_sortEntriesDesc);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -704,7 +859,7 @@ class _QuietListView extends StatelessWidget {
                 ),
               ),
             ),
-            ...month.value.map(
+            ...monthEntries.map(
               (entry) => _QuietListEntryRow(
                 entry: entry,
                 previewPath: _firstImagePath(entry, imageAttachmentsByEntry),
@@ -1160,6 +1315,14 @@ class _CalendarDayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasEntry = data.entries.isNotEmpty;
     final hasImage = data.previewPath != null && data.previewPath!.isNotEmpty;
+    final overlay = hasImage
+        ? _CalendarStatsPill(
+            entryCount: data.entryCount,
+            photoCount: data.photoCount,
+          )
+        : data.entryCount > 1
+            ? _CalendarTextPill(entryCount: data.entryCount)
+            : null;
 
     return GestureDetector(
       onTap: hasEntry ? () => _openCalendarDay(context, data) : null,
@@ -1179,7 +1342,10 @@ class _CalendarDayCell extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               if (hasImage)
-                _QuietAuthImage(path: data.previewPath!)
+                _QuietAuthImage(
+                  path: data.previewPath!,
+                  cacheWidth: 360,
+                )
               else
                 const SizedBox.shrink(),
               if (hasImage)
@@ -1226,13 +1392,10 @@ class _CalendarDayCell extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (hasEntry)
+                    if (overlay != null)
                       Align(
                         alignment: Alignment.bottomRight,
-                        child: _CalendarStatsPill(
-                          entryCount: data.entryCount,
-                          photoCount: data.photoCount,
-                        ),
+                        child: overlay,
                       ),
                   ],
                 ),
@@ -1240,6 +1403,48 @@ class _CalendarDayCell extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CalendarTextPill extends StatelessWidget {
+  const _CalendarTextPill({
+    required this.entryCount,
+  });
+
+  final int entryCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: CupertinoColors.black.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: CupertinoColors.white.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            CupertinoIcons.doc_text,
+            color: CupertinoColors.white,
+            size: 10,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            '$entryCount',
+            style: const TextStyle(
+              color: CupertinoColors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1321,7 +1526,10 @@ class _MediaTile extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            _QuietAuthImage(path: item.path),
+            _QuietAuthImage(
+              path: item.path,
+              cacheWidth: 720,
+            ),
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1946,7 +2154,10 @@ class _PreviewThumb extends StatelessWidget {
       child: SizedBox(
         width: width,
         height: height,
-        child: _QuietAuthImage(path: path!),
+        child: _QuietAuthImage(
+          path: path!,
+          cacheWidth: width.round() * 3,
+        ),
       ),
     );
   }
@@ -1988,9 +2199,15 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _QuietAuthImage extends StatefulWidget {
-  const _QuietAuthImage({required this.path});
+  const _QuietAuthImage({
+    required this.path,
+    this.fit = BoxFit.cover,
+    this.cacheWidth,
+  });
 
   final String path;
+  final BoxFit fit;
+  final int? cacheWidth;
 
   @override
   State<_QuietAuthImage> createState() => _QuietAuthImageState();
@@ -2073,7 +2290,8 @@ class _QuietAuthImageState extends State<_QuietAuthImage> {
     }
     return Image.memory(
       _bytes!,
-      fit: BoxFit.cover,
+      fit: widget.fit,
+      cacheWidth: widget.cacheWidth,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => Container(
         color: JournalColors.bgSurface,
@@ -2203,6 +2421,34 @@ class _QuietImageAttachment {
       )?.toLocal(),
     );
   }
+
+  static _QuietImageAttachment? fromCache(
+    Map<String, dynamic> entry,
+    Map<String, dynamic> cached,
+  ) {
+    final entryId = _entryId(entry);
+    final attachmentId = cached['attachment_id']?.toString();
+    if (entryId == null || attachmentId == null || attachmentId.isEmpty) {
+      return null;
+    }
+
+    return _QuietImageAttachment(
+      entry: Map<String, dynamic>.from(entry),
+      entryId: entryId,
+      attachmentId: attachmentId,
+      path: '/api/entry-attachments/$attachmentId/file',
+      filename: cached['filename']?.toString(),
+      uploadedAt: DateTime.tryParse(cached['uploaded_at']?.toString() ?? ''),
+    );
+  }
+
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'attachment_id': attachmentId,
+      if (filename != null && filename!.isNotEmpty) 'filename': filename,
+      if (uploadedAt != null) 'uploaded_at': uploadedAt!.toIso8601String(),
+    };
+  }
 }
 
 _EntryTextParts _entryTextParts(Map<String, dynamic> entry) {
@@ -2313,6 +2559,15 @@ int _sortEntriesAsc(Map<String, dynamic> a, Map<String, dynamic> b) {
   if (aDate == null) return -1;
   if (bDate == null) return 1;
   return aDate.compareTo(bDate);
+}
+
+int _sortEntriesDesc(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final aDate = _entryDate(a);
+  final bDate = _entryDate(b);
+  if (aDate == null && bDate == null) return 0;
+  if (aDate == null) return 1;
+  if (bDate == null) return -1;
+  return bDate.compareTo(aDate);
 }
 
 void _openEntry(BuildContext context, Map<String, dynamic> entry) {
@@ -2697,7 +2952,10 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child: _QuietAuthImage(path: path),
+                      child: _QuietAuthImage(
+                        path: path,
+                        cacheWidth: 640,
+                      ),
                     ),
                   );
                 },
@@ -3185,7 +3443,10 @@ class _QuietDayEntryCard extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: _QuietAuthImage(path: image.path),
+                    child: _QuietAuthImage(
+                      path: image.path,
+                      cacheWidth: 640,
+                    ),
                   ),
                 );
               },
@@ -3217,7 +3478,10 @@ class _QuietImageLightbox extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(20, 64, 20, 20),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(24),
-                      child: _QuietAuthImage(path: path),
+                      child: _QuietAuthImage(
+                        path: path,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                 ),
