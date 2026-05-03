@@ -161,6 +161,7 @@ class _QuietJournalHomeScreen extends StatefulWidget {
 class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   final _api = ApiService();
   final _scrollController = ScrollController();
+  final Map<DateTime, GlobalKey> _calendarMonthKeys = <DateTime, GlobalKey>{};
 
   List<Map<String, dynamic>> _entries = [];
   Map<int, List<_QuietImageAttachment>> _imageAttachmentsByEntry = {};
@@ -170,6 +171,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   String? _error;
   _QuietJournalView _activeView = _QuietJournalView.list;
   int _page = 1;
+  bool _focusCalendarAfterBuild = false;
 
   @override
   void initState() {
@@ -205,7 +207,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 
     try {
       final page = await _api.getTimelinePage(page: 1, limit: 24);
-      final entries = [...page.entries]..sort(_sortEntriesDesc);
+      final entries = [...page.entries]..sort(_sortEntriesAsc);
       if (!mounted) return;
 
       setState(() {
@@ -213,6 +215,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _hasMore = page.hasMore;
         _page = page.page;
         _loading = false;
+        _focusCalendarAfterBuild = _activeView == _QuietJournalView.calendar;
       });
 
       _loadPreviewImages(entries);
@@ -228,6 +231,12 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   Future<void> _loadMore() async {
     if (_loading || _loadingMore || !_hasMore) return;
 
+    final previousPixels =
+        _scrollController.hasClients ? _scrollController.position.pixels : 0.0;
+    final previousMaxScrollExtent = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+
     setState(() => _loadingMore = true);
 
     try {
@@ -238,7 +247,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         final id = _entryId(entry);
         return id != null && !existingIds.contains(id);
       }).toList();
-      final merged = [..._entries, ...incoming]..sort(_sortEntriesDesc);
+      final merged = [..._entries, ...incoming]..sort(_sortEntriesAsc);
 
       if (!mounted) return;
       setState(() {
@@ -247,6 +256,11 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _page = page.page;
         _loadingMore = false;
       });
+
+      _maintainScrollOffsetAfterPrepend(
+        previousPixels: previousPixels,
+        previousMaxScrollExtent: previousMaxScrollExtent,
+      );
 
       if (incoming.isNotEmpty) {
         _loadPreviewImages(incoming);
@@ -260,9 +274,75 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 320) {
+    if (position.pixels <= 320) {
       _loadMore();
     }
+  }
+
+  void _maintainScrollOffsetAfterPrepend({
+    required double previousPixels,
+    required double previousMaxScrollExtent,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final currentPosition = _scrollController.position;
+      final delta = currentPosition.maxScrollExtent - previousMaxScrollExtent;
+      final target = (previousPixels + delta).clamp(
+        0.0,
+        currentPosition.maxScrollExtent,
+      );
+      if ((target - currentPosition.pixels).abs() < 1) return;
+      _scrollController.jumpTo(target);
+    });
+  }
+
+  DateTime? _latestEntryMonth() {
+    if (_entries.isEmpty) return null;
+    for (final entry in _entries.reversed) {
+      final date = _entryDate(entry);
+      if (date != null) {
+        return DateTime(date.year, date.month);
+      }
+    }
+    return null;
+  }
+
+  void _scheduleCalendarFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusCalendarOnLatestMonth();
+    });
+  }
+
+  void _focusCalendarOnLatestMonth([int attempt = 0]) {
+    if (!mounted ||
+        _activeView != _QuietJournalView.calendar ||
+        !_scrollController.hasClients) {
+      return;
+    }
+
+    final month = _latestEntryMonth();
+    if (month == null) return;
+
+    final key = _calendarMonthKeys[month];
+    final context = key?.currentContext;
+
+    if (context == null) {
+      if (attempt == 0) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+      if (attempt < 6) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _focusCalendarOnLatestMonth(attempt + 1);
+        });
+      }
+      return;
+    }
+
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0,
+      duration: Duration.zero,
+    );
   }
 
   Future<void> _loadPreviewImages(List<Map<String, dynamic>> entries) async {
@@ -359,7 +439,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
       _entries = _entries
           .map((item) => _entryId(item) == entryId ? updated : item)
           .toList()
-        ..sort(_sortEntriesDesc);
+        ..sort(_sortEntriesAsc);
     });
     _loadPreviewImages([updated]);
   }
@@ -378,7 +458,12 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
                   _QuietJournalHeader(
                     activeView: _activeView,
                     onViewChanged: (view) {
-                      setState(() => _activeView = view);
+                      setState(() {
+                        _activeView = view;
+                        if (view == _QuietJournalView.calendar) {
+                          _focusCalendarAfterBuild = true;
+                        }
+                      });
                     },
                     onRefresh: _load,
                   ),
@@ -398,6 +483,13 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   }
 
   Widget _buildBody() {
+    if (_focusCalendarAfterBuild &&
+        !_loading &&
+        _activeView == _QuietJournalView.calendar) {
+      _focusCalendarAfterBuild = false;
+      _scheduleCalendarFocus();
+    }
+
     if (_loading) {
       return const Center(
         child: CupertinoActivityIndicator(color: JournalColors.accent),
@@ -437,6 +529,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
       _QuietJournalView.calendar => _QuietCalendarView(
           entries: _entries,
           imageAttachmentsByEntry: _imageAttachmentsByEntry,
+          monthKeys: _calendarMonthKeys,
           controller: _scrollController,
           loadingMore: _loadingMore,
         ),
@@ -576,7 +669,7 @@ class _QuietListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final grouped = _groupEntriesByMonth(entries);
     final sections = grouped.entries.toList()
-      ..sort((a, b) => b.key.compareTo(a.key));
+      ..sort((a, b) => a.key.compareTo(b.key));
 
     return ListView.builder(
       controller: controller,
@@ -823,12 +916,14 @@ class _QuietCalendarView extends StatelessWidget {
   const _QuietCalendarView({
     required this.entries,
     required this.imageAttachmentsByEntry,
+    required this.monthKeys,
     required this.controller,
     required this.loadingMore,
   });
 
   final List<Map<String, dynamic>> entries;
   final Map<int, List<_QuietImageAttachment>> imageAttachmentsByEntry;
+  final Map<DateTime, GlobalKey> monthKeys;
   final ScrollController controller;
   final bool loadingMore;
 
@@ -836,7 +931,7 @@ class _QuietCalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final grouped = _groupEntriesByMonth(entries);
     final months = grouped.entries.toList()
-      ..sort((a, b) => b.key.compareTo(a.key));
+      ..sort((a, b) => a.key.compareTo(b.key));
 
     return ListView.builder(
       controller: controller,
@@ -852,7 +947,12 @@ class _QuietCalendarView extends StatelessWidget {
           );
         }
         final month = months[index];
+        final monthKey = monthKeys.putIfAbsent(
+          DateTime(month.key.year, month.key.month),
+          () => GlobalKey(),
+        );
         return Padding(
+          key: monthKey,
           padding: EdgeInsets.only(top: index == 0 ? 2 : 20),
           child: _CalendarMonthCard(
             month: month.key,
@@ -891,15 +991,16 @@ class _CalendarMonthCard extends StatelessWidget {
     for (var day = 1; day <= dayCount; day += 1) {
       final cellDate = DateTime(month.year, month.month, day);
       final dayEntries = byDay[day] ?? const <Map<String, dynamic>>[];
-      final firstEntry = dayEntries.isEmpty ? null : dayEntries.first;
       final dayImages = dayEntries
           .expand((entry) => _entryImages(entry, imageAttachmentsByEntry))
           .toList();
       cells.add(
         _CalendarCellData(
+          date: cellDate,
           day: day,
           weekdayLabel: DateFormat('EEE').format(cellDate).toUpperCase(),
-          entry: firstEntry,
+          entries: List<Map<String, dynamic>>.from(dayEntries),
+          imageAttachmentsByEntry: imageAttachmentsByEntry,
           entryCount: dayEntries.length,
           photoCount: dayImages.length,
           previewPath: dayImages.isEmpty ? null : dayImages.first.path,
@@ -1030,17 +1131,21 @@ class _QuietMediaView extends StatelessWidget {
 
 class _CalendarCellData {
   const _CalendarCellData({
+    required this.date,
     required this.day,
     required this.weekdayLabel,
-    required this.entry,
+    required this.entries,
+    required this.imageAttachmentsByEntry,
     required this.entryCount,
     required this.photoCount,
     required this.previewPath,
   });
 
+  final DateTime date;
   final int day;
   final String weekdayLabel;
-  final Map<String, dynamic>? entry;
+  final List<Map<String, dynamic>> entries;
+  final Map<int, List<_QuietImageAttachment>> imageAttachmentsByEntry;
   final int entryCount;
   final int photoCount;
   final String? previewPath;
@@ -1053,11 +1158,11 @@ class _CalendarDayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasEntry = data.entry != null;
+    final hasEntry = data.entries.isNotEmpty;
     final hasImage = data.previewPath != null && data.previewPath!.isNotEmpty;
 
     return GestureDetector(
-      onTap: hasEntry ? () => _openEntry(context, data.entry!) : null,
+      onTap: hasEntry ? () => _openCalendarDay(context, data) : null,
       child: Container(
         decoration: BoxDecoration(
           color: hasEntry
@@ -1121,20 +1226,12 @@ class _CalendarDayCell extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (data.photoCount > 1)
+                    if (hasEntry)
                       Align(
                         alignment: Alignment.bottomRight,
-                        child: _CalendarCountPill(
-                          label: '${data.photoCount}',
-                          icon: CupertinoIcons.photo,
-                        ),
-                      )
-                    else if (data.entryCount > 1)
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: _CalendarCountPill(
-                          label: '${data.entryCount}',
-                          icon: CupertinoIcons.doc_text,
+                        child: _CalendarStatsPill(
+                          entryCount: data.entryCount,
+                          photoCount: data.photoCount,
                         ),
                       ),
                   ],
@@ -1148,17 +1245,24 @@ class _CalendarDayCell extends StatelessWidget {
   }
 }
 
-class _CalendarCountPill extends StatelessWidget {
-  const _CalendarCountPill({
-    required this.label,
-    required this.icon,
+class _CalendarStatsPill extends StatelessWidget {
+  const _CalendarStatsPill({
+    required this.entryCount,
+    required this.photoCount,
   });
 
-  final String label;
-  final IconData icon;
+  final int entryCount;
+  final int photoCount;
 
   @override
   Widget build(BuildContext context) {
+    const itemTextStyle = TextStyle(
+      color: CupertinoColors.white,
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.none,
+    );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
@@ -1171,16 +1275,23 @@ class _CalendarCountPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: CupertinoColors.white, size: 10),
+          const Icon(CupertinoIcons.doc_text,
+              color: CupertinoColors.white, size: 10),
+          const SizedBox(width: 3),
+          Text('$entryCount', style: itemTextStyle),
+          const SizedBox(width: 6),
+          Container(
+            width: 1,
+            height: 10,
+            color: CupertinoColors.white.withValues(alpha: 0.18),
+          ),
+          const SizedBox(width: 6),
+          const Icon(CupertinoIcons.photo,
+              color: CupertinoColors.white, size: 10),
           const SizedBox(width: 3),
           Text(
-            label,
-            style: const TextStyle(
-              color: CupertinoColors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              decoration: TextDecoration.none,
-            ),
+            '$photoCount',
+            style: itemTextStyle,
           ),
         ],
       ),
@@ -1886,6 +1997,10 @@ class _QuietAuthImage extends StatefulWidget {
 }
 
 class _QuietAuthImageState extends State<_QuietAuthImage> {
+  static final Map<String, Uint8List> _memoryCache = <String, Uint8List>{};
+  static final Map<String, Future<Uint8List?>> _inFlight =
+      <String, Future<Uint8List?>>{};
+
   final _api = ApiService();
   Uint8List? _bytes;
   bool _loading = true;
@@ -1893,6 +2008,12 @@ class _QuietAuthImageState extends State<_QuietAuthImage> {
   @override
   void initState() {
     super.initState();
+    final cached = _memoryCache[widget.path];
+    if (cached != null) {
+      _bytes = cached;
+      _loading = false;
+      return;
+    }
     _fetch();
   }
 
@@ -1900,22 +2021,34 @@ class _QuietAuthImageState extends State<_QuietAuthImage> {
   void didUpdateWidget(covariant _QuietAuthImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
-      _bytes = null;
-      _loading = true;
-      _fetch();
+      final cached = _memoryCache[widget.path];
+      _bytes = cached;
+      _loading = cached == null;
+      if (cached == null) {
+        _fetch();
+      }
     }
   }
 
   Future<void> _fetch() async {
     try {
-      final bytes = await _api.fetchImageBytes(widget.path);
+      final bytes = await _inFlight.putIfAbsent(widget.path, () async {
+        final response = await _api.fetchImageBytes(widget.path);
+        if (response.isEmpty) return null;
+        return Uint8List.fromList(response);
+      });
+      _inFlight.remove(widget.path);
+      if (bytes != null) {
+        _memoryCache[widget.path] = bytes;
+      }
       if (mounted) {
         setState(() {
-          _bytes = Uint8List.fromList(bytes);
+          _bytes = bytes;
           _loading = false;
         });
       }
     } catch (_) {
+      _inFlight.remove(widget.path);
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -1941,6 +2074,7 @@ class _QuietAuthImageState extends State<_QuietAuthImage> {
     return Image.memory(
       _bytes!,
       fit: BoxFit.cover,
+      gaplessPlayback: true,
       errorBuilder: (_, __, ___) => Container(
         color: JournalColors.bgSurface,
         alignment: Alignment.center,
@@ -2172,13 +2306,13 @@ int? _entryId(Map<String, dynamic> entry) {
   return (entry['id'] as num?)?.toInt();
 }
 
-int _sortEntriesDesc(Map<String, dynamic> a, Map<String, dynamic> b) {
+int _sortEntriesAsc(Map<String, dynamic> a, Map<String, dynamic> b) {
   final aDate = _entryDate(a);
   final bDate = _entryDate(b);
   if (aDate == null && bDate == null) return 0;
-  if (aDate == null) return 1;
-  if (bDate == null) return -1;
-  return bDate.compareTo(aDate);
+  if (aDate == null) return -1;
+  if (bDate == null) return 1;
+  return aDate.compareTo(bDate);
 }
 
 void _openEntry(BuildContext context, Map<String, dynamic> entry) {
@@ -2191,6 +2325,22 @@ void _openEntry(BuildContext context, Map<String, dynamic> entry) {
         child: _QuietJournalEntryScreen(
           entryId: entryId,
           initialEntry: Map<String, dynamic>.from(entry),
+        ),
+      ),
+    ),
+  );
+}
+
+void _openCalendarDay(BuildContext context, _CalendarCellData data) {
+  if (data.entries.isEmpty) return;
+  Navigator.of(context).push(
+    CupertinoPageRoute(
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: _QuietJournalDayScreen(
+          date: data.date,
+          entries: List<Map<String, dynamic>>.from(data.entries),
+          imageAttachmentsByEntry: data.imageAttachmentsByEntry,
         ),
       ),
     ),
@@ -2431,7 +2581,12 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
 
   Future<void> _loadAttachments() async {
     try {
-      final attachments = (await _api.getEntryAttachments(widget.entryId))
+      final results = await Future.wait<dynamic>([
+        _api.getEntry(widget.entryId),
+        _api.getEntryAttachments(widget.entryId),
+      ]);
+      final entry = Map<String, dynamic>.from(results[0] as Map);
+      final attachments = (results[1] as List)
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .where(
@@ -2443,6 +2598,7 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
 
       if (!mounted) return;
       setState(() {
+        _entry = entry;
         _attachments = attachments;
         _attachmentsLoading = false;
       });
@@ -2460,6 +2616,8 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
     final date = _entryDate(_entry);
     final summary = _entrySummaryText(_entry);
     final hasSummary = summary.isNotEmpty;
+    final fullText = _entryOriginalText(_entry);
+    final hasFullText = fullText.isNotEmpty;
 
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
@@ -2480,10 +2638,11 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
           children: [
-            _QuietEntryHeroSummary(
+            _QuietEntrySwipeCard(
               summary: hasSummary
                   ? summary
                   : 'This entry does not have an AI summary yet.',
+              rawText: hasFullText ? fullText : null,
               isAiSummary: hasSummary,
             ),
             if (_error != null) ...[
@@ -2553,12 +2712,15 @@ class _QuietJournalEntryScreenState extends State<_QuietJournalEntryScreen> {
 
 class _QuietEntryHeroSummary extends StatelessWidget {
   const _QuietEntryHeroSummary({
+    super.key,
     required this.summary,
     required this.isAiSummary,
+    this.swipeHint,
   });
 
   final String summary;
   final bool isAiSummary;
+  final String? swipeHint;
 
   @override
   Widget build(BuildContext context) {
@@ -2623,6 +2785,31 @@ class _QuietEntryHeroSummary extends StatelessWidget {
               decoration: TextDecoration.none,
             ),
           ),
+          if (swipeHint != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _withAlpha(JournalColors.bgBase, 0.28),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: JournalColors.border),
+                  ),
+                  child: Text(
+                    swipeHint!,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -2644,6 +2831,367 @@ class _QuietEntrySectionLabel extends StatelessWidget {
         fontWeight: FontWeight.w700,
         letterSpacing: 1.2,
         decoration: TextDecoration.none,
+      ),
+    );
+  }
+}
+
+class _QuietEntrySwipeCard extends StatefulWidget {
+  const _QuietEntrySwipeCard({
+    required this.summary,
+    required this.rawText,
+    required this.isAiSummary,
+  });
+
+  final String summary;
+  final String? rawText;
+  final bool isAiSummary;
+
+  @override
+  State<_QuietEntrySwipeCard> createState() => _QuietEntrySwipeCardState();
+}
+
+class _QuietEntrySwipeCardState extends State<_QuietEntrySwipeCard> {
+  bool _showRawText = false;
+
+  bool get _canSwipe => (widget.rawText?.trim().isNotEmpty ?? false);
+
+  void _showSummary() {
+    if (!_showRawText) return;
+    setState(() => _showRawText = false);
+  }
+
+  void _showRawTextCard() {
+    if (!_canSwipe || _showRawText) return;
+    setState(() => _showRawText = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity < -120) {
+          _showRawTextCard();
+        } else if (velocity > 120) {
+          _showSummary();
+        }
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (child, animation) {
+          final offsetTween = Tween<Offset>(
+            begin:
+                _showRawText ? const Offset(0.12, 0) : const Offset(-0.12, 0),
+            end: Offset.zero,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: offsetTween.animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: _showRawText && _canSwipe
+            ? _QuietEntryTextSurface(
+                key: const ValueKey('raw-text'),
+                text: widget.rawText!,
+                swipeHint: 'Swipe right for AI summary',
+              )
+            : _QuietEntryHeroSummary(
+                key: const ValueKey('ai-summary'),
+                summary: widget.summary,
+                isAiSummary: widget.isAiSummary,
+                swipeHint: _canSwipe ? 'Swipe left for raw entry' : null,
+              ),
+      ),
+    );
+  }
+}
+
+class _QuietEntryTextSurface extends StatelessWidget {
+  const _QuietEntryTextSurface({
+    super.key,
+    required this.text,
+    this.swipeHint,
+  });
+
+  final String text;
+  final String? swipeHint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgCard, 0.96),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RAW ENTRY',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            text,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.6,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          if (swipeHint != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _withAlpha(JournalColors.bgBase, 0.28),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: JournalColors.border),
+                  ),
+                  child: Text(
+                    swipeHint!,
+                    style: const TextStyle(
+                      color: JournalColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _QuietDaySummaryCard extends StatelessWidget {
+  const _QuietDaySummaryCard({
+    required this.entryCount,
+    required this.photoCount,
+  });
+
+  final int entryCount;
+  final int photoCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgCardAlt, 0.94),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DAY VIEW',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '$entryCount ${entryCount == 1 ? 'post' : 'posts'} · $photoCount ${photoCount == 1 ? 'photo' : 'photos'}',
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Each card below is a separate journal post from this day. AI summaries are shown per post, not as one combined daily summary.',
+            style: TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 14,
+              height: 1.5,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuietJournalDayScreen extends StatelessWidget {
+  const _QuietJournalDayScreen({
+    required this.date,
+    required this.entries,
+    required this.imageAttachmentsByEntry,
+  });
+
+  final DateTime date;
+  final List<Map<String, dynamic>> entries;
+  final Map<int, List<_QuietImageAttachment>> imageAttachmentsByEntry;
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedEntries = [...entries]..sort(_sortEntriesAsc);
+    final photoCount = sortedEntries.fold<int>(
+      0,
+      (sum, entry) => sum + _entryImages(entry, imageAttachmentsByEntry).length,
+    );
+
+    return CupertinoPageScaffold(
+      backgroundColor: JournalColors.bgBase,
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: JournalColors.bgBase.withValues(alpha: 0.94),
+        border: const Border(
+          bottom: BorderSide(color: JournalColors.border, width: 0.5),
+        ),
+        middle: Text(
+          DateFormat('MMMM d, yyyy').format(date),
+          style: const TextStyle(
+            color: JournalColors.textPrimary,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+          children: [
+            _QuietDaySummaryCard(
+              entryCount: sortedEntries.length,
+              photoCount: photoCount,
+            ),
+            const SizedBox(height: 24),
+            ...sortedEntries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: _QuietDayEntryCard(
+                  entry: entry,
+                  images: _entryImages(entry, imageAttachmentsByEntry),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuietDayEntryCard extends StatelessWidget {
+  const _QuietDayEntryCard({
+    required this.entry,
+    required this.images,
+  });
+
+  final Map<String, dynamic> entry;
+  final List<_QuietImageAttachment> images;
+
+  @override
+  Widget build(BuildContext context) {
+    final timestamp = _entryDate(entry);
+    final summary = _entrySummaryText(entry);
+    final fullText = _entryOriginalText(entry);
+    final metaParts = <String>[
+      if (timestamp != null) DateFormat('h:mm a').format(timestamp),
+      '${_wordCount(fullText)} words',
+      if (images.isNotEmpty)
+        '${images.length} ${images.length == 1 ? 'photo' : 'photos'}',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgCard, 0.96),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            metaParts.join(' · '),
+            style: const TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          if (summary.isNotEmpty || fullText.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _QuietEntrySwipeCard(
+              summary: summary.isNotEmpty
+                  ? summary
+                  : 'This entry does not have an AI summary yet.',
+              rawText: fullText.isNotEmpty ? fullText : null,
+              isAiSummary: summary.isNotEmpty,
+            ),
+          ],
+          if (images.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _QuietEntrySectionLabel(
+              label: images.length == 1 ? '1 Photo' : '${images.length} Photos',
+            ),
+            const SizedBox(height: 10),
+            GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: images.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.92,
+              ),
+              itemBuilder: (context, index) {
+                final image = images[index];
+                return GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    CupertinoPageRoute(
+                      builder: (_) => DefaultTextStyle.merge(
+                        style: const TextStyle(
+                          decoration: TextDecoration.none,
+                        ),
+                        child: _QuietImageLightbox(path: image.path),
+                      ),
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: _QuietAuthImage(path: image.path),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
       ),
     );
   }
