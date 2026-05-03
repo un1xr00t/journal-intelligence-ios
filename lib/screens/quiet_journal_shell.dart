@@ -24,6 +24,8 @@ const String _kQuietJournalHideEmptyCalendarDaysKey =
     'quiet_journal_hide_empty_calendar_days_v1';
 const String _kQuietJournalCalendarBlockScaleKey =
     'quiet_journal_calendar_block_scale_v1';
+const String _kQuietJournalCalendarSortOrderKey =
+    'quiet_journal_calendar_sort_order_v1';
 const String _kQuietJournalShowCalendarPhotoPreviewsKey =
     'quiet_journal_show_calendar_photo_previews_v1';
 const String _kQuietJournalAutoFocusCalendarMonthKey =
@@ -38,28 +40,40 @@ enum _QuietJournalView {
   final String label;
 }
 
+enum _QuietJournalCalendarSortOrder {
+  ascending('Oldest first'),
+  descending('Newest first');
+
+  const _QuietJournalCalendarSortOrder(this.label);
+  final String label;
+}
+
 class _QuietJournalCalendarSettings {
   const _QuietJournalCalendarSettings({
     this.hideEmptyDays = false,
     this.blockScale = 1.0,
+    this.sortOrder = _QuietJournalCalendarSortOrder.ascending,
     this.showPhotoPreviews = true,
     this.autoFocusCurrentMonth = true,
   });
 
   final bool hideEmptyDays;
   final double blockScale;
+  final _QuietJournalCalendarSortOrder sortOrder;
   final bool showPhotoPreviews;
   final bool autoFocusCurrentMonth;
 
   _QuietJournalCalendarSettings copyWith({
     bool? hideEmptyDays,
     double? blockScale,
+    _QuietJournalCalendarSortOrder? sortOrder,
     bool? showPhotoPreviews,
     bool? autoFocusCurrentMonth,
   }) {
     return _QuietJournalCalendarSettings(
       hideEmptyDays: hideEmptyDays ?? this.hideEmptyDays,
       blockScale: blockScale ?? this.blockScale,
+      sortOrder: sortOrder ?? this.sortOrder,
       showPhotoPreviews: showPhotoPreviews ?? this.showPhotoPreviews,
       autoFocusCurrentMonth:
           autoFocusCurrentMonth ?? this.autoFocusCurrentMonth,
@@ -302,6 +316,11 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         blockScale:
             (prefs.getDouble(_kQuietJournalCalendarBlockScaleKey) ?? 1.0)
                 .clamp(0.8, 1.2),
+        sortOrder:
+            _calendarSortOrderFromName(
+              prefs.getString(_kQuietJournalCalendarSortOrderKey),
+            ) ??
+            _QuietJournalCalendarSortOrder.ascending,
         showPhotoPreviews:
             prefs.getBool(_kQuietJournalShowCalendarPhotoPreviewsKey) ?? true,
         autoFocusCurrentMonth:
@@ -325,6 +344,10 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _kQuietJournalCalendarBlockScaleKey,
         _calendarSettings.blockScale,
       );
+      await prefs.setString(
+        _kQuietJournalCalendarSortOrderKey,
+        _calendarSettings.sortOrder.name,
+      );
       await prefs.setBool(
         _kQuietJournalShowCalendarPhotoPreviewsKey,
         _calendarSettings.showPhotoPreviews,
@@ -340,10 +363,17 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     final normalized = next.copyWith(
       blockScale: next.blockScale.clamp(0.8, 1.2),
     );
+    final shouldRefocusCurrentMonth =
+        _activeView == _QuietJournalView.calendar &&
+        normalized.autoFocusCurrentMonth &&
+        (normalized.hideEmptyDays != _calendarSettings.hideEmptyDays ||
+            normalized.sortOrder != _calendarSettings.sortOrder);
     setState(() {
       _calendarSettings = normalized;
       if (!normalized.autoFocusCurrentMonth) {
         _focusCalendarAfterBuild = false;
+      } else if (shouldRefocusCurrentMonth) {
+        _focusCalendarAfterBuild = true;
       }
     });
     _persistCalendarSettings();
@@ -436,7 +466,12 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     final position = controller.position;
     switch (view) {
       case _QuietJournalView.calendar:
-        if (position.pixels <= 320) {
+        final shouldLoadMore =
+            _calendarSettings.sortOrder ==
+                    _QuietJournalCalendarSortOrder.ascending
+                ? position.pixels <= 320
+                : position.pixels >= position.maxScrollExtent - 320;
+        if (shouldLoadMore) {
           _loadMore();
         }
       case _QuietJournalView.list:
@@ -534,9 +569,13 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
 
     if (context == null) {
       if (attempt == 0) {
-        _calendarScrollController.jumpTo(
-          _calendarScrollController.position.maxScrollExtent,
-        );
+        final position = _calendarScrollController.position;
+        final target =
+            _calendarSettings.sortOrder ==
+                    _QuietJournalCalendarSortOrder.ascending
+                ? position.maxScrollExtent
+                : position.minScrollExtent;
+        _calendarScrollController.jumpTo(target);
       }
       if (attempt < 6) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1052,6 +1091,24 @@ class _QuietJournalMiniSettingsSheetState
                     },
                   ),
                   const SizedBox(height: 10),
+                  _SettingsSegmentedTile(
+                    title: 'Calendar order',
+                    subtitle:
+                        'Choose whether months stack from oldest to newest or newest to oldest.',
+                    labels: _QuietJournalCalendarSortOrder.values
+                        .map((order) => order.label)
+                        .toList(),
+                    selectedIndex: _draft.sortOrder.index,
+                    onChanged: (index) {
+                      _apply(
+                        _draft.copyWith(
+                          sortOrder:
+                              _QuietJournalCalendarSortOrder.values[index],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
                   _SettingsToggleTile(
                     title: 'Show photo previews',
                     subtitle: 'Use image thumbnails inside calendar blocks.',
@@ -1163,6 +1220,62 @@ class _SettingsSectionLabel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SettingsSegmentedTile extends StatelessWidget {
+  const _SettingsSegmentedTile({
+    required this.title,
+    required this.subtitle,
+    required this.labels,
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          AdaptiveSegmentedControl(
+            labels: labels,
+            selectedIndex: selectedIndex,
+            onValueChanged: onChanged,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1673,35 +1786,54 @@ class _QuietCalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final grouped = _groupEntriesByMonth(entries);
     final months = grouped.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+      ..sort((a, b) {
+        return settings.sortOrder == _QuietJournalCalendarSortOrder.ascending
+            ? a.key.compareTo(b.key)
+            : b.key.compareTo(a.key);
+      });
 
-    return ListView.builder(
-      controller: controller,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
-      itemCount: months.length + (loadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == months.length) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: CupertinoActivityIndicator(color: JournalColors.accent),
-            ),
-          );
-        }
-        final month = months[index];
-        final monthKey = monthKeys.putIfAbsent(
-          DateTime(month.key.year, month.key.month),
-          () => GlobalKey(),
-        );
-        return Padding(
-          key: monthKey,
-          padding: EdgeInsets.only(top: index == 0 ? 2 : 20),
-          child: _CalendarMonthCard(
-            month: month.key,
-            entries: month.value,
-            imageAttachmentsByEntry: imageAttachmentsByEntry,
-            settings: settings,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final extraBottomPadding = settings.hideEmptyDays
+            ? constraints.maxHeight * 0.58
+            : 0.0;
+
+        return ListView.builder(
+          controller: controller,
+          padding: EdgeInsets.fromLTRB(
+            16,
+            0,
+            16,
+            110 + extraBottomPadding,
           ),
+          itemCount: months.length + (loadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index == months.length) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CupertinoActivityIndicator(
+                    color: JournalColors.accent,
+                  ),
+                ),
+              );
+            }
+            final month = months[index];
+            final monthKey = monthKeys.putIfAbsent(
+              DateTime(month.key.year, month.key.month),
+              () => GlobalKey(),
+            );
+            return Padding(
+              key: monthKey,
+              padding: EdgeInsets.only(top: index == 0 ? 2 : 20),
+              child: _CalendarMonthCard(
+                month: month.key,
+                entries: month.value,
+                imageAttachmentsByEntry: imageAttachmentsByEntry,
+                settings: settings,
+              ),
+            );
+          },
         );
       },
     );
@@ -3194,6 +3326,14 @@ int _sortEntriesDesc(Map<String, dynamic> a, Map<String, dynamic> b) {
   if (aDate == null) return 1;
   if (bDate == null) return -1;
   return bDate.compareTo(aDate);
+}
+
+_QuietJournalCalendarSortOrder? _calendarSortOrderFromName(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  for (final value in _QuietJournalCalendarSortOrder.values) {
+    if (value.name == raw) return value;
+  }
+  return null;
 }
 
 void _openEntry(BuildContext context, Map<String, dynamic> entry) {
