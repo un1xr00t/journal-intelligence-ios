@@ -1423,32 +1423,36 @@ class _SummaryActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: loading ? null : () => onTap(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: accent.withValues(alpha: 0.08),
-          border: Border.all(color: accent.withValues(alpha: 0.22)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (loading)
-              CupertinoActivityIndicator(color: accent, radius: 6)
-            else if (icon != null)
-              Icon(icon, color: accent, size: 13),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: accent,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: loading ? null : () => onTap(),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: accent.withValues(alpha: 0.08),
+            border: Border.all(color: accent.withValues(alpha: 0.22)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (loading)
+                CupertinoActivityIndicator(color: accent, radius: 6)
+              else if (icon != null)
+                Icon(icon, color: accent, size: 13),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1515,6 +1519,7 @@ class _EntryTileState extends State<_EntryTile> {
   final _api = ApiService();
   bool _expanded = false;
   bool _attachmentsLoading = false;
+  bool _openingInSage = false;
   List<Map<String, dynamic>> _attachments = [];
 
   List<String> _parseTags(dynamic raw) {
@@ -1632,6 +1637,75 @@ class _EntryTileState extends State<_EntryTile> {
     );
   }
 
+  String _prepareEntryTextForSage(String raw) {
+    final cleaned = raw.replaceAll('\u0000', '').trim();
+    if (cleaned.isEmpty) return '';
+    return truncateUtf8Text(
+      cleaned,
+      maxChars: AiResponseLimits.livingSummarySageHandoffMaxChars,
+      maxBytes: AiResponseLimits.livingSummarySageHandoffMaxBytes,
+      truncatedSuffix:
+          '[Timeline note: this raw journal entry was trimmed slightly before handoff so Sage could continue reliably.]',
+    );
+  }
+
+  String _buildEntryHandoffPrompt(String entryText, String displayDate) {
+    return '''
+I want to continue the conversation from my timeline entry on $displayDate.
+Use the raw journal entry below as context, not an AI summary.
+Ground your response in the actual wording and details from what I wrote.
+
+[RAW JOURNAL ENTRY]
+$entryText
+''';
+  }
+
+  Future<String> _resolveEntryTextForSage() async {
+    final localRaw = (widget.entry['normalized_text'] as String? ??
+            widget.entry['text'] as String? ??
+            '')
+        .trim();
+    if (localRaw.isNotEmpty) return localRaw;
+
+    final entryId = widget.entry['id'];
+    if (entryId is! int) return '';
+
+    try {
+      final data = await _api.getEntry(entryId);
+      return (data['normalized_text'] as String? ??
+              data['text'] as String? ??
+              '')
+          .trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _openEntryInSage(String displayDate) async {
+    if (_openingInSage) return;
+
+    setState(() => _openingInSage = true);
+    try {
+      final rawEntryText = await _resolveEntryTextForSage();
+      final entryText = _prepareEntryTextForSage(rawEntryText);
+      if (entryText.isEmpty || !mounted) return;
+      if (!mounted) return;
+      await pushSageScreen(
+        context,
+        handoff: SageHandoff(
+          prefillText: _buildEntryHandoffPrompt(entryText, displayDate),
+          autoSendPrefill: true,
+          autoStartGreeting: false,
+          showDefaultWelcome: false,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _openingInSage = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entry = widget.entry;
@@ -1642,7 +1716,9 @@ class _EntryTileState extends State<_EntryTile> {
         date != null ? DateFormat('EEE, MMM d').format(date) : rawDate;
     final dayNumber = date != null ? DateFormat('d').format(date) : '--';
     final monthLabel = date != null ? DateFormat('MMM').format(date) : 'ENTRY';
-    final text = (entry['text'] as String? ?? '').trim();
+    final text =
+        (entry['normalized_text'] as String? ?? entry['text'] as String? ?? '')
+            .trim();
     final displayText = ((entry['summary_text'] ??
                 entry['normalized_text'] ??
                 entry['text']) as String? ??
@@ -1739,87 +1815,94 @@ class _EntryTileState extends State<_EntryTile> {
             ),
           ),
           Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggleExpanded,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(26),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      JournalColors.bgCard.withOpacity(0.96),
-                      const Color(0xFF121625).withOpacity(0.94),
-                    ],
-                  ),
-                  border: Border.all(color: Colors.white.withOpacity(0.08)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: railColor.withOpacity(0.10),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(26),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    JournalColors.bgCard.withOpacity(0.96),
+                    const Color(0xFF121625).withOpacity(0.94),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  displayDate,
-                                  style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                boxShadow: [
+                  BoxShadow(
+                    color: railColor.withOpacity(0.10),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(26),
+                  onTap: _toggleExpanded,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayDate,
+                                    style: const TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          if (moodLabel != null && moodLabel.isNotEmpty)
-                            _MetaBadge(
-                              label: moodLabel,
-                              color: railColor,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _SubtleMetaChip(
-                            icon: CupertinoIcons.text_alignleft,
-                            label: '$wordCount words',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        displayText,
-                        style: const TextStyle(
-                          color: JournalColors.textSecondary,
-                          fontSize: 15,
-                          height: 1.62,
+                            if (moodLabel != null && moodLabel.isNotEmpty)
+                              _MetaBadge(
+                                label: moodLabel,
+                                color: railColor,
+                              ),
+                          ],
                         ),
-                        maxLines: _expanded ? null : 5,
-                        overflow: _expanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: _toggleExpanded,
-                        child: Text(
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _SubtleMetaChip(
+                              icon: CupertinoIcons.text_alignleft,
+                              label: '$wordCount words',
+                            ),
+                            _SummaryActionPill(
+                              icon: CupertinoIcons.chat_bubble_2_fill,
+                              label: 'Continue in Sage',
+                              accent: JournalColors.info,
+                              loading: _openingInSage,
+                              onTap: () => _openEntryInSage(displayDate),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          displayText,
+                          style: const TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontSize: 15,
+                            height: 1.62,
+                          ),
+                          maxLines: _expanded ? null : 5,
+                          overflow: _expanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
                           _expanded
                               ? 'Show less'
                               : (isLong ? 'Read more' : 'Open entry'),
@@ -1829,88 +1912,88 @@ class _EntryTileState extends State<_EntryTile> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                      if (_expanded) ...[
-                        if (_attachmentsLoading) ...[
-                          const SizedBox(height: 16),
-                          const Center(
-                            child: CupertinoActivityIndicator(
-                              color: JournalColors.accent,
+                        if (_expanded) ...[
+                          if (_attachmentsLoading) ...[
+                            const SizedBox(height: 16),
+                            const Center(
+                              child: CupertinoActivityIndicator(
+                                color: JournalColors.accent,
+                              ),
                             ),
-                          ),
-                        ] else if (_attachments.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 72,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _attachments.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 10),
-                              itemBuilder: (context, index) {
-                                final attachment = _attachments[index];
-                                final path = _attachmentImagePath(
-                                    attachment['id'].toString());
-                                return GestureDetector(
-                                  onTap: () => _openImageLightbox(path),
-                                  child: Container(
-                                    width: 72,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.10),
+                          ] else if (_attachments.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 72,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _attachments.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 10),
+                                itemBuilder: (context, index) {
+                                  final attachment = _attachments[index];
+                                  final path = _attachmentImagePath(
+                                      attachment['id'].toString());
+                                  return GestureDetector(
+                                    onTap: () => _openImageLightbox(path),
+                                    child: Container(
+                                      width: 72,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.10),
+                                        ),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(15),
+                                        child: _AuthImage(path: path),
                                       ),
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(15),
-                                      child: _AuthImage(path: path),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
+                        if (tags.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ...visibleTags.map(
+                                (tag) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(999),
+                                    color: railColor.withOpacity(0.08),
+                                    border: Border.all(
+                                      color: railColor.withOpacity(0.16),
                                     ),
                                   ),
-                                );
-                              },
-                            ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      color: railColor.withOpacity(0.92),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (hiddenTagCount > 0)
+                                _SubtleMetaChip(
+                                  icon: CupertinoIcons.ellipsis,
+                                  label: '+$hiddenTagCount more',
+                                ),
+                            ],
                           ),
                         ],
                       ],
-                      if (tags.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ...visibleTags.map(
-                              (tag) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(999),
-                                  color: railColor.withOpacity(0.08),
-                                  border: Border.all(
-                                    color: railColor.withOpacity(0.16),
-                                  ),
-                                ),
-                                child: Text(
-                                  tag,
-                                  style: TextStyle(
-                                    color: railColor.withOpacity(0.92),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (hiddenTagCount > 0)
-                              _SubtleMetaChip(
-                                icon: CupertinoIcons.ellipsis,
-                                label: '+$hiddenTagCount more',
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
               ),
