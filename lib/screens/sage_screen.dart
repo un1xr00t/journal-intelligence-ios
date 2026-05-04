@@ -719,7 +719,7 @@ class SageScreen extends StatefulWidget {
   State<SageScreen> createState() => _SageScreenState();
 }
 
-class _SageScreenState extends State<SageScreen> {
+class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   final _api = ApiService();
   final _profile = SageProfileService();
   final _composerCtrl = TextEditingController();
@@ -756,6 +756,7 @@ class _SageScreenState extends State<SageScreen> {
   bool _sentInitialPrefill = false;
   bool _useTrackForSession = true;
   String? _actionPrefillLabel;
+  double _lastKeyboardInset = 0;
   late SageHandoff _handoff;
 
   bool get _canSend =>
@@ -766,6 +767,7 @@ class _SageScreenState extends State<SageScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _handoff = widget.handoff;
     _composerCtrl.addListener(_handleComposerChanged);
     unawaited(configureTtsAudioPlayer(_audioPlayer));
@@ -785,6 +787,7 @@ class _SageScreenState extends State<SageScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _composerCtrl.removeListener(_handleComposerChanged);
     _composerCtrl.dispose();
     _scroll.dispose();
@@ -792,6 +795,19 @@ class _SageScreenState extends State<SageScreen> {
     _audioPlayer.dispose();
     unawaited(deleteTtsAudioTempFile(_ttsTempAudioPath));
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+    final view = View.of(context);
+    final keyboardInset = view.viewInsets.bottom / view.devicePixelRatio;
+    final keyboardOpened = keyboardInset > _lastKeyboardInset + 8;
+    _lastKeyboardInset = keyboardInset;
+    if (keyboardOpened) {
+      _scrollDown();
+    }
   }
 
   void _handleComposerChanged() {
@@ -2639,6 +2655,9 @@ $excerpt
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final threadBottomClearance = keyboardInset > 0 ? 66.0 : 18.0;
+
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
       child: Stack(
@@ -2656,6 +2675,7 @@ $excerpt
               Expanded(
                 child: _SageThread(
                   scrollController: _scroll,
+                  bottomClearance: threadBottomClearance,
                   contextLoading: _contextLoading,
                   contextError: _contextError,
                   replyLoading: _replyLoading,
@@ -3220,6 +3240,7 @@ class _HeaderButton extends StatelessWidget {
 class _SageThread extends StatelessWidget {
   const _SageThread({
     required this.scrollController,
+    required this.bottomClearance,
     required this.contextLoading,
     required this.contextError,
     required this.replyLoading,
@@ -3245,6 +3266,7 @@ class _SageThread extends StatelessWidget {
   });
 
   final ScrollController scrollController;
+  final double bottomClearance;
   final bool contextLoading;
   final String? contextError;
   final bool replyLoading;
@@ -3344,7 +3366,7 @@ class _SageThread extends StatelessWidget {
         return SingleChildScrollView(
           controller: scrollController,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, bottomClearance),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight - 30),
             child: Column(
@@ -4380,6 +4402,7 @@ class _SageInputBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom = MediaQuery.of(context).padding.bottom;
+    final keyboardOpen = bottomInset > 0;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -4717,48 +4740,52 @@ class _SageInputBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              'Attach images, documents, or text files and Sage will inspect what it can see or extract inside the chat.',
-              style: TextStyle(
-                color: JournalColors.textMuted,
-                fontSize: 11,
-                height: 1.35,
+          if (!keyboardOpen) ...[
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Attach images, documents, or text files and Sage will inspect what it can see or extract inside the chat.',
+                style: TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 11,
+                  height: 1.35,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 30,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemBuilder: (_, index) => GestureDetector(
-                onTap: () =>
-                    onSuggestionTap(_kSageKnowledgeChips[index].prompt),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: _withAlpha(JournalColors.bgSurface, 0.82),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: JournalColors.border),
-                  ),
-                  child: Text(
-                    _kSageKnowledgeChips[index].label,
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 30,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemBuilder: (_, index) => GestureDetector(
+                  onTap: () =>
+                      onSuggestionTap(_kSageKnowledgeChips[index].prompt),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.bgSurface, 0.82),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: JournalColors.border),
+                    ),
+                    child: Text(
+                      _kSageKnowledgeChips[index].label,
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemCount: _kSageKnowledgeChips.length,
               ),
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemCount: _kSageKnowledgeChips.length,
             ),
-          ),
+          ],
         ],
       ),
     );
