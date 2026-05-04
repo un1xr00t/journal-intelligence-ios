@@ -17,6 +17,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../models/detective_entry_draft.dart';
 import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
+import '../services/follow_up_tasks_service.dart';
 import '../services/sage_profile_service.dart';
 import '../services/tts_audio_file_helper.dart';
 import '../theme/app_theme.dart';
@@ -28,6 +29,7 @@ import 'detective_screen.dart';
 import 'early_warning_screen.dart';
 import 'exit_plan_screen.dart';
 import 'fairness_ledger_screen.dart';
+import 'follow_ups_screen.dart';
 import 'invite_access_screen.dart';
 import 'mental_health_screen.dart';
 import 'proof_vault_screen.dart';
@@ -722,6 +724,7 @@ class SageScreen extends StatefulWidget {
 class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   final _api = ApiService();
   final _profile = SageProfileService();
+  final _followUpTasks = FollowUpTaskService();
   final _composerCtrl = TextEditingController();
   final _scroll = ScrollController();
   final _focusNode = FocusNode();
@@ -730,6 +733,7 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
 
   List<_SageMessage> _messages = const [];
   List<SageMemoryItem> _memoryItems = const [];
+  String _followUpContext = '';
   List<_SageFileDraft> _pendingAttachments = const [];
   SageFocusTrack? _activeTrack;
   SageSettings _settings = SageSettings.defaults;
@@ -847,13 +851,16 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
       final results = await Future.wait<dynamic>([
         _profile.loadSettings(),
         _profile.loadMemoryItems(),
+        _followUpTasks.loadTasks(),
       ]);
       final settings = results[0] as SageSettings;
       final memory = results[1] as List<SageMemoryItem>;
+      final followUps = results[2] as List<FollowUpTask>;
       if (!mounted) return;
       setState(() {
         _settings = settings;
         _memoryItems = memory;
+        _followUpContext = _followUpTasks.buildSageContext(followUps);
         _profileLoading = false;
       });
     } catch (_) {
@@ -1076,6 +1083,8 @@ $contextString
 $expandedContext
 
 $memoryContext
+
+$_followUpContext
 
 $activeTrackContext
 
@@ -2547,6 +2556,8 @@ $excerpt
         return const WarRoomScreen();
       case '/exit-plan':
         return const ExitPlanScreen();
+      case '/follow-ups':
+        return const FollowUpsScreen();
       case '/evidence':
         if (detectiveDraft != null) {
           return DetectiveScreen(
@@ -2598,6 +2609,11 @@ $excerpt
     }
     if (fields.contains('exit plan') || fields.contains('exit_plan')) {
       return const ExitPlanScreen();
+    }
+    if (fields.contains('follow-up') ||
+        fields.contains('follow ups') ||
+        fields.contains('job application')) {
+      return const FollowUpsScreen();
     }
     if (fields.contains('fairness')) {
       return const FairnessLedgerScreen();

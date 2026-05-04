@@ -14,6 +14,7 @@ import 'early_warning_screen.dart';
 import 'exit_plan_screen.dart';
 import 'exports_screen.dart';
 import 'fairness_ledger_screen.dart';
+import 'follow_ups_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
 import 'orbit_ledger_screen.dart';
@@ -96,6 +97,14 @@ class MoreScreen extends StatelessWidget {
             iconColor: JournalColors.severity,
             badge: 'Track',
             builder: (_) => const FairnessLedgerScreen(),
+          ),
+          _Item(
+            label: 'Follow-Ups',
+            subtitle: 'Track job applications, callbacks, and next actions',
+            icon: CupertinoIcons.briefcase,
+            iconColor: JournalColors.info,
+            badge: 'New',
+            builder: (_) => const FollowUpsScreen(),
           ),
           _Item(
             label: 'My Mental Health',
