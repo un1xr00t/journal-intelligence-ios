@@ -126,12 +126,13 @@ class _OrbitLedgerScreenState extends State<OrbitLedgerScreen> {
   }
 
   Future<void> _openEntrySheet({OrbitLedgerEntry? existing}) async {
-    final result = await showCupertinoModalPopup<OrbitLedgerEntry>(
-      context: context,
-      barrierColor: JournalColors.bgBase.withValues(alpha: 0.78),
-      builder: (context) => DefaultTextStyle.merge(
-        style: const TextStyle(decoration: TextDecoration.none),
-        child: _OrbitEntrySheet(existing: existing),
+    final result = await Navigator.push<OrbitLedgerEntry>(
+      context,
+      CupertinoPageRoute(
+        builder: (context) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _OrbitEntryScreen(existing: existing),
+        ),
       ),
     );
     if (result == null) return;
@@ -910,18 +911,18 @@ class _OrbitErrorState extends StatelessWidget {
   }
 }
 
-class _OrbitEntrySheet extends StatefulWidget {
-  const _OrbitEntrySheet({
+class _OrbitEntryScreen extends StatefulWidget {
+  const _OrbitEntryScreen({
     this.existing,
   });
 
   final OrbitLedgerEntry? existing;
 
   @override
-  State<_OrbitEntrySheet> createState() => _OrbitEntrySheetState();
+  State<_OrbitEntryScreen> createState() => _OrbitEntryScreenState();
 }
 
-class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
+class _OrbitEntryScreenState extends State<_OrbitEntryScreen> {
   late final TextEditingController _requestController;
   late final TextEditingController _noteController;
   late String _type;
@@ -1014,260 +1015,194 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
   Widget build(BuildContext context) {
     final loggedStamp = DateFormat('MMM d, yyyy h:mm a').format(_loggedAt);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final screenSize = MediaQuery.sizeOf(context);
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
     final canSave = _requestController.text.trim().isNotEmpty;
-    final availableHeight =
-        screenSize.height - keyboardInset - 24 - safeBottom;
-    final sheetMaxHeight = availableHeight.clamp(
-      420.0,
-      screenSize.height * 0.82,
-    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _dismissKeyboard,
-      child: SafeArea(
-        top: false,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            padding: EdgeInsets.fromLTRB(
-              16,
-              24,
-              16,
-              keyboardInset > 0 ? 12 : 12 + safeBottom,
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 720,
-                maxHeight: sheetMaxHeight,
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: JournalColors.bgCard,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: JournalColors.borderBright),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: JournalColors.accentGlow,
-                      blurRadius: 24,
-                      offset: Offset(0, 12),
-                    ),
-                  ],
+      child: CupertinoPageScaffold(
+        backgroundColor: JournalColors.bgBase,
+        navigationBar: CupertinoNavigationBar(
+          middle:
+              Text(widget.existing == null ? 'Log Request' : 'Edit Request'),
+          previousPageTitle: 'Orbit',
+          backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
+          border: const Border(
+            bottom: BorderSide(color: JournalColors.border, width: 0.5),
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(20, 20, 20, keyboardInset + 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.existing == null ? 'Log Request' : 'Edit Request',
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 44,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: JournalColors.borderBright,
-                        borderRadius: BorderRadius.circular(999),
+                const SizedBox(height: 8),
+                const Text(
+                  'Track the request, how urgent it felt, and any context you want later.',
+                  style: TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _OrbitInputField(
+                  controller: _requestController,
+                  placeholder: 'What was the request?',
+                  minLines: 2,
+                  maxLines: 4,
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 14),
+                _OrbitPickerRow(
+                  title: 'Type',
+                  value: _type,
+                  options: _orbitTypeOptions,
+                  onChanged: (value) => setState(() => _type = value),
+                ),
+                const SizedBox(height: 14),
+                _OrbitPickerRow(
+                  title: 'Urgency',
+                  value: _urgency,
+                  options: _orbitUrgencyOptions,
+                  onChanged: (value) => setState(() => _urgency = value),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: JournalColors.bgSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: JournalColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'TIME / DATE',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
-                      child: Row(
+                      const SizedBox(height: 8),
+                      Text(
+                        loggedStamp,
+                        style: const TextStyle(
+                          color: JournalColors.textSecondary,
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.existing == null
-                                      ? 'Log Request'
-                                      : 'Edit Request',
-                                  style: const TextStyle(
-                                    color: JournalColors.textPrimary,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Track the request, how urgent it felt, and any context you want later.',
-                                  style: TextStyle(
-                                    color: JournalColors.textSecondary,
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
+                            child: AdaptiveButton(
+                              onPressed: _pickDate,
+                              label: 'Pick date',
                             ),
                           ),
-                          CupertinoButton(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(38, 38),
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: JournalColors.bgCardAlt,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: JournalColors.border),
-                              ),
-                              child: const Icon(
-                                CupertinoIcons.xmark,
-                                color: JournalColors.textSecondary,
-                                size: 18,
-                              ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: AdaptiveButton(
+                              onPressed: _pickTime,
+                              label: 'Pick time',
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    Container(
-                      height: 1,
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'NOTES',
+                  style: TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CupertinoTextField(
+                  controller: _noteController,
+                  minLines: 3,
+                  maxLines: 5,
+                  padding: const EdgeInsets.all(14),
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    decoration: TextDecoration.none,
+                  ),
+                  placeholder:
+                      'Optional note: what it interrupted, how it landed, or any context you want later.',
+                  placeholderStyle: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 14,
+                    decoration: TextDecoration.none,
+                  ),
+                  decoration: BoxDecoration(
+                    color: JournalColors.bgSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
                       color: JournalColors.border,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
                     Expanded(
-                      child: SingleChildScrollView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                        child: Column(
-                          children: [
-                            _OrbitInputField(
-                              controller: _requestController,
-                              placeholder: 'What was the request?',
-                              minLines: 2,
-                              maxLines: 4,
-                              autofocus: true,
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            const SizedBox(height: 12),
-                            _OrbitPickerRow(
-                              title: 'Type',
-                              value: _type,
-                              options: _orbitTypeOptions,
-                              onChanged: (value) => setState(() => _type = value),
-                            ),
-                            const SizedBox(height: 12),
-                            _OrbitPickerRow(
-                              title: 'Urgency',
-                              value: _urgency,
-                              options: _orbitUrgencyOptions,
-                              onChanged: (value) =>
-                                  setState(() => _urgency = value),
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: JournalColors.bgSurface,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: JournalColors.border),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'TIME / DATE',
-                                    style: TextStyle(
-                                      color: JournalColors.textMuted,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    loggedStamp,
-                                    style: const TextStyle(
-                                      color: JournalColors.textSecondary,
-                                      fontSize: 14,
-                                      height: 1.45,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: AdaptiveButton(
-                                          onPressed: _pickDate,
-                                          label: 'Pick date',
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: AdaptiveButton(
-                                          onPressed: _pickTime,
-                                          label: 'Pick time',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _OrbitInputField(
-                              controller: _noteController,
-                              placeholder:
-                                  'Optional note: what it interrupted, how it landed, or any context you want later.',
-                              minLines: 2,
-                              maxLines: 4,
-                            ),
-                          ],
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        color: JournalColors.bgSurface,
+                        borderRadius: BorderRadius.circular(14),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: JournalColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                      decoration: const BoxDecoration(
-                        color: JournalColors.bgCardAlt,
-                        border: Border(
-                          top: BorderSide(
-                            color: JournalColors.border,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: CupertinoButton.filled(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        borderRadius: BorderRadius.circular(14),
+                        onPressed: canSave ? _submit : null,
+                        child: Text(
+                          widget.existing == null
+                              ? 'Save Request'
+                              : 'Update Request',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(28),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: CupertinoButton(
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              color: JournalColors.bgSurface,
-                              borderRadius: BorderRadius.circular(14),
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(
-                                  color: JournalColors.textSecondary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: CupertinoButton.filled(
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              borderRadius: BorderRadius.circular(14),
-                              onPressed: canSave ? _submit : null,
-                              child: Text(
-                                widget.existing == null ? 'Save Request' : 'Update Request',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
           ),
         ),

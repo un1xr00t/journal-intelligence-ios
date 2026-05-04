@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
@@ -56,6 +57,12 @@ const _kQuickEntries =
     folderHint: 'Activities',
   ),
 ];
+
+String _proofVaultExtensionLabel(String filename) {
+  final dot = filename.lastIndexOf('.');
+  if (dot <= 0 || dot == filename.length - 1) return 'IMG';
+  return filename.substring(dot + 1).toUpperCase();
+}
 
 class ProofVaultScreen extends StatefulWidget {
   const ProofVaultScreen({super.key});
@@ -1723,13 +1730,12 @@ class _EntrySheetState extends State<_EntrySheet> {
           ),
           if (_files.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Column(
-              children: _files.map((file) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _PendingPhotoChip(filename: file.name),
-                );
-              }).toList(),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: _files
+                  .map((file) => _PendingPickedPhotoTile(file: file))
+                  .toList(),
             ),
           ],
           const SizedBox(height: 18),
@@ -1988,12 +1994,38 @@ class _SummarySheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: JournalColors.border),
             ),
-            child: Text(
-              summary,
-              style: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 13,
-                height: 1.55,
+            child: MarkdownBody(
+              data: summary,
+              shrinkWrap: true,
+              selectable: false,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 13,
+                  height: 1.55,
+                  decoration: TextDecoration.none,
+                ),
+                strong: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+                em: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                  decoration: TextDecoration.none,
+                ),
+                listBullet: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  decoration: TextDecoration.none,
+                ),
+                blockquote: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.55,
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
           ),
@@ -2019,48 +2051,234 @@ class _VaultSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPopupSurface(
-      child: SafeArea(
-        top: false,
-        child: Container(
-          color: JournalColors.bgBase,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: JournalColors.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        decoration: TextDecoration.none,
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
+    final topInset = mediaQuery.padding.top;
+    final bottomInset = mediaQuery.padding.bottom;
+    final maxHeight = mediaQuery.size.height - topInset - 12;
+
+    return DefaultTextStyle.merge(
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: CupertinoPopupSurface(
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.fromLTRB(0, topInset + 8, 0, keyboardInset),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: Container(
+                color: JournalColors.bgBase,
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(16, 14, 16, bottomInset + 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                          const Spacer(),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(28, 28),
+                            onPressed: () => Navigator.pop(context),
+                            child: const Icon(
+                              CupertinoIcons.xmark_circle_fill,
+                              color: JournalColors.textMuted,
+                              size: 24,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const Spacer(),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(28, 28),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Icon(
-                        CupertinoIcons.xmark_circle_fill,
-                        color: JournalColors.textMuted,
-                        size: 24,
-                      ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      child,
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                child,
-              ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PendingPhotoPreview extends StatelessWidget {
+  const _PendingPhotoPreview({
+    required this.file,
+  });
+
+  final PlatformFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = file.bytes;
+    final extension = _proofVaultExtensionLabel(file.name);
+
+    return Container(
+      width: 108,
+      height: 112,
+      decoration: BoxDecoration(
+        color: JournalColors.bgSurface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JournalColors.borderBright),
+        boxShadow: [
+          BoxShadow(
+            color: JournalColors.bgBase.withValues(alpha: 0.36),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (bytes != null && bytes.isNotEmpty)
+              Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const _PendingPhotoFallback(),
+              )
+            else
+              const _PendingPhotoFallback(),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      JournalColors.bgBase.withValues(alpha: 0),
+                      JournalColors.bgBase.withValues(alpha: 0.74),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: _PendingPhotoBadge(label: extension),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: JournalColors.bgBase.withValues(alpha: 0.72),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: const Icon(
+                  CupertinoIcons.photo,
+                  color: JournalColors.textPrimary,
+                  size: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingPhotoFallback extends StatelessWidget {
+  const _PendingPhotoFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: JournalColors.bgCardAlt,
+      alignment: Alignment.center,
+      child: const Icon(
+        CupertinoIcons.photo,
+        color: JournalColors.textMuted,
+        size: 28,
+      ),
+    );
+  }
+}
+
+class _PendingPhotoBadge extends StatelessWidget {
+  const _PendingPhotoBadge({
+    required this.label,
+  });
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: JournalColors.bgBase.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingPickedPhotoTile extends StatelessWidget {
+  const _PendingPickedPhotoTile({
+    required this.file,
+  });
+
+  final PlatformFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PendingPhotoPreview(file: file),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 108,
+          child: Text(
+            file.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: JournalColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              decoration: TextDecoration.none,
+              height: 1.3,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2162,50 +2380,6 @@ class _StatPill extends StatelessWidget {
               color: JournalColors.textMuted,
               fontSize: 11,
               fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PendingPhotoChip extends StatelessWidget {
-  const _PendingPhotoChip({
-    required this.filename,
-  });
-
-  final String filename;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: JournalColors.bgSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JournalColors.border),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            CupertinoIcons.photo,
-            color: JournalColors.textMuted,
-            size: 16,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              filename,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: JournalColors.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                decoration: TextDecoration.none,
-              ),
             ),
           ),
         ],
