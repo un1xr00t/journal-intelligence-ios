@@ -129,7 +129,10 @@ class _OrbitLedgerScreenState extends State<OrbitLedgerScreen> {
     final result = await showCupertinoModalPopup<OrbitLedgerEntry>(
       context: context,
       barrierColor: JournalColors.bgBase.withValues(alpha: 0.78),
-      builder: (context) => _OrbitEntrySheet(existing: existing),
+      builder: (context) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: _OrbitEntrySheet(existing: existing),
+      ),
     );
     if (result == null) return;
 
@@ -1012,7 +1015,14 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
     final loggedStamp = DateFormat('MMM d, yyyy h:mm a').format(_loggedAt);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final screenSize = MediaQuery.sizeOf(context);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     final canSave = _requestController.text.trim().isNotEmpty;
+    final availableHeight =
+        screenSize.height - keyboardInset - 24 - safeBottom;
+    final sheetMaxHeight = availableHeight.clamp(
+      420.0,
+      screenSize.height * 0.82,
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1028,12 +1038,12 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
               16,
               24,
               16,
-              keyboardInset > 0 ? keyboardInset + 12 : 12,
+              keyboardInset > 0 ? 12 : 12 + safeBottom,
             ),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: 720,
-                maxHeight: screenSize.height * 0.82,
+                maxHeight: sheetMaxHeight,
               ),
               child: Container(
                 decoration: BoxDecoration(
@@ -1201,8 +1211,8 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
                               controller: _noteController,
                               placeholder:
                                   'Optional note: what it interrupted, how it landed, or any context you want later.',
-                              minLines: 3,
-                              maxLines: 6,
+                              minLines: 2,
+                              maxLines: 4,
                             ),
                           ],
                         ),
