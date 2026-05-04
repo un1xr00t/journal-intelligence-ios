@@ -1279,6 +1279,13 @@ class _LogTabState extends State<_LogTab> {
   final Map<String, bool> _synthesizingFor = {};
   bool _draftApplied = false;
 
+  void _dismissKeyboard() {
+    final focus = FocusScope.of(context);
+    if (!focus.hasPrimaryFocus) {
+      focus.unfocus();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1467,8 +1474,12 @@ class _LogTabState extends State<_LogTab> {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _dismissKeyboard,
+      child: CustomScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
         SliverToBoxAdapter(
           child: Padding(
             padding: _kScreenPadding,
@@ -1826,7 +1837,8 @@ class _LogTabState extends State<_LogTab> {
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }

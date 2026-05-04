@@ -128,6 +128,7 @@ class _OrbitLedgerScreenState extends State<OrbitLedgerScreen> {
   Future<void> _openEntrySheet({OrbitLedgerEntry? existing}) async {
     final result = await showCupertinoModalPopup<OrbitLedgerEntry>(
       context: context,
+      barrierColor: JournalColors.bgBase.withValues(alpha: 0.78),
       builder: (context) => _OrbitEntrySheet(existing: existing),
     );
     if (result == null) return;
@@ -924,6 +925,13 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
   late String _urgency;
   late DateTime _loggedAt;
 
+  void _dismissKeyboard() {
+    final focus = FocusScope.of(context);
+    if (!focus.hasPrimaryFocus) {
+      focus.unfocus();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1002,111 +1010,257 @@ class _OrbitEntrySheetState extends State<_OrbitEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final loggedStamp = DateFormat('MMM d, yyyy h:mm a').format(_loggedAt);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final screenSize = MediaQuery.sizeOf(context);
+    final canSave = _requestController.text.trim().isNotEmpty;
 
-    return CupertinoActionSheet(
-      title: Text(widget.existing == null ? 'Log Request' : 'Edit Request'),
-      message: Container(
-        margin: const EdgeInsets.only(top: 16),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: JournalColors.bgCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: JournalColors.border),
-        ),
-        child: Column(
-          children: [
-            _OrbitInputField(
-              controller: _requestController,
-              placeholder: 'What was the request?',
-              minLines: 2,
-              maxLines: 4,
-              autofocus: true,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _dismissKeyboard,
+      child: SafeArea(
+        top: false,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              24,
+              16,
+              keyboardInset > 0 ? keyboardInset + 12 : 12,
             ),
-            const SizedBox(height: 12),
-            _OrbitPickerRow(
-              title: 'Type',
-              value: _type,
-              options: _orbitTypeOptions,
-              onChanged: (value) => setState(() => _type = value),
-            ),
-            const SizedBox(height: 12),
-            _OrbitPickerRow(
-              title: 'Urgency',
-              value: _urgency,
-              options: _orbitUrgencyOptions,
-              onChanged: (value) => setState(() => _urgency = value),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: JournalColors.bgSurface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: JournalColors.border),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 720,
+                maxHeight: screenSize.height * 0.82,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'TIME / DATE',
-                    style: TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: JournalColors.bgCard,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: JournalColors.borderBright),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: JournalColors.accentGlow,
+                      blurRadius: 24,
+                      offset: Offset(0, 12),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    loggedStamp,
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 14,
-                      height: 1.45,
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: JournalColors.borderBright,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AdaptiveButton(
-                          onPressed: _pickDate,
-                          label: 'Pick date',
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.existing == null
+                                      ? 'Log Request'
+                                      : 'Edit Request',
+                                  style: const TextStyle(
+                                    color: JournalColors.textPrimary,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Track the request, how urgent it felt, and any context you want later.',
+                                  style: TextStyle(
+                                    color: JournalColors.textSecondary,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(38, 38),
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: JournalColors.bgCardAlt,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: JournalColors.border),
+                              ),
+                              child: const Icon(
+                                CupertinoIcons.xmark,
+                                color: JournalColors.textSecondary,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      height: 1,
+                      color: JournalColors.border,
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                        child: Column(
+                          children: [
+                            _OrbitInputField(
+                              controller: _requestController,
+                              placeholder: 'What was the request?',
+                              minLines: 2,
+                              maxLines: 4,
+                              autofocus: true,
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 12),
+                            _OrbitPickerRow(
+                              title: 'Type',
+                              value: _type,
+                              options: _orbitTypeOptions,
+                              onChanged: (value) => setState(() => _type = value),
+                            ),
+                            const SizedBox(height: 12),
+                            _OrbitPickerRow(
+                              title: 'Urgency',
+                              value: _urgency,
+                              options: _orbitUrgencyOptions,
+                              onChanged: (value) =>
+                                  setState(() => _urgency = value),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: JournalColors.bgSurface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: JournalColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'TIME / DATE',
+                                    style: TextStyle(
+                                      color: JournalColors.textMuted,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    loggedStamp,
+                                    style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 14,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: AdaptiveButton(
+                                          onPressed: _pickDate,
+                                          label: 'Pick date',
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: AdaptiveButton(
+                                          onPressed: _pickTime,
+                                          label: 'Pick time',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _OrbitInputField(
+                              controller: _noteController,
+                              placeholder:
+                                  'Optional note: what it interrupted, how it landed, or any context you want later.',
+                              minLines: 3,
+                              maxLines: 6,
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: AdaptiveButton(
-                          onPressed: _pickTime,
-                          label: 'Pick time',
+                    ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                      decoration: const BoxDecoration(
+                        color: JournalColors.bgCardAlt,
+                        border: Border(
+                          top: BorderSide(
+                            color: JournalColors.border,
+                          ),
+                        ),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(28),
                         ),
                       ),
-                    ],
-                  ),
-                ],
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              color: JournalColors.bgSurface,
+                              borderRadius: BorderRadius.circular(14),
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: JournalColors.textSecondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: CupertinoButton.filled(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              borderRadius: BorderRadius.circular(14),
+                              onPressed: canSave ? _submit : null,
+                              child: Text(
+                                widget.existing == null ? 'Save Request' : 'Update Request',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 12),
-            _OrbitInputField(
-              controller: _noteController,
-              placeholder:
-                  'Optional note: what it interrupted, how it landed, or any context you want later.',
-              minLines: 3,
-              maxLines: 6,
-            ),
-          ],
+          ),
         ),
-      ),
-      actions: [
-        CupertinoActionSheetAction(
-          onPressed: _submit,
-          child: const Text('Save'),
-        ),
-      ],
-      cancelButton: CupertinoActionSheetAction(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
       ),
     );
   }
@@ -1119,12 +1273,18 @@ Future<DateTime?> _showOrbitDatePicker(
   var selected = initial;
   return showCupertinoModalPopup<DateTime>(
     context: context,
+    barrierColor: JournalColors.bgBase.withValues(alpha: 0.78),
     builder: (context) => DefaultTextStyle.merge(
       style: const TextStyle(decoration: TextDecoration.none),
       child: CupertinoPopupSurface(
+        isSurfacePainted: false,
         child: Container(
           height: 320,
-          color: JournalColors.bgBase,
+          decoration: BoxDecoration(
+            color: JournalColors.bgCard,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: JournalColors.border),
+          ),
           child: Column(
             children: [
               Padding(
@@ -1191,56 +1351,64 @@ Future<DateTime?> _showOrbitTimePicker(
 
   return showCupertinoModalPopup<DateTime>(
     context: context,
+    barrierColor: JournalColors.bgBase.withValues(alpha: 0.78),
     builder: (context) => DefaultTextStyle.merge(
       style: const TextStyle(decoration: TextDecoration.none),
-      child: Container(
-        height: 320,
-        color: JournalColors.bgCard,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-              child: Row(
-                children: [
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(color: JournalColors.textSecondary),
-                    ),
-                  ),
-                  const Expanded(
-                    child: Text(
-                      'Pick Time',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: JournalColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+      child: CupertinoPopupSurface(
+        isSurfacePainted: false,
+        child: Container(
+          height: 320,
+          decoration: BoxDecoration(
+            color: JournalColors.bgCard,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: JournalColors.border),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  children: [
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: JournalColors.textSecondary),
                       ),
                     ),
-                  ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () => Navigator.of(context).pop(selected),
-                    child: const Text(
-                      'Done',
-                      style: TextStyle(color: JournalColors.accent),
+                    const Expanded(
+                      child: Text(
+                        'Pick Time',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => Navigator.of(context).pop(selected),
+                      child: const Text(
+                        'Done',
+                        style: TextStyle(color: JournalColors.accent),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.time,
-                initialDateTime: selected,
-                use24hFormat: false,
-                onDateTimeChanged: (value) => selected = value,
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  initialDateTime: selected,
+                  use24hFormat: false,
+                  onDateTimeChanged: (value) => selected = value,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
@@ -1254,6 +1422,7 @@ class _OrbitInputField extends StatelessWidget {
     this.minLines = 1,
     this.maxLines = 1,
     this.autofocus = false,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -1261,12 +1430,14 @@ class _OrbitInputField extends StatelessWidget {
   final int minLines;
   final int? maxLines;
   final bool autofocus;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return CupertinoTextField(
       controller: controller,
       autofocus: autofocus,
+      onChanged: onChanged,
       minLines: minLines,
       maxLines: maxLines,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
