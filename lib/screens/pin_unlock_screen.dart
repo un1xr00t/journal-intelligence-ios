@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/journal_pin_service.dart';
 import '../theme/app_theme.dart';
@@ -92,20 +93,22 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
 
   Future<void> _handleDigit(String digit) async {
     if (_submitting || _digits.length >= JournalPinService.pinLength) return;
+    await HapticFeedback.selectionClick();
     setState(() {
       _digits += digit;
       _error = null;
     });
     if (_digits.length == JournalPinService.pinLength) {
-      await Future<void>.delayed(const Duration(milliseconds: 90));
+      await WidgetsBinding.instance.endOfFrame;
       if (mounted) {
         await _submitDigits();
       }
     }
   }
 
-  void _handleDelete() {
+  Future<void> _handleDelete() async {
     if (_submitting || _digits.isEmpty) return;
+    await HapticFeedback.selectionClick();
     setState(() {
       _digits = _digits.substring(0, _digits.length - 1);
       _error = null;
@@ -125,6 +128,7 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
         return;
       }
       if (currentPin != _firstEntry) {
+        await HapticFeedback.heavyImpact();
         setState(() {
           _digits = '';
           _firstEntry = null;
@@ -133,6 +137,7 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
         });
         return;
       }
+      await HapticFeedback.lightImpact();
       if (!mounted) return;
       Navigator.of(context).pop(currentPin);
       return;
@@ -145,12 +150,14 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
     final unlocked = await onUnlock(currentPin);
     if (!mounted) return;
     if (unlocked) {
+      await HapticFeedback.lightImpact();
       setState(() {
         _submitting = false;
         _digits = '';
       });
       return;
     }
+    await HapticFeedback.heavyImpact();
     setState(() {
       _submitting = false;
       _digits = '';
@@ -480,7 +487,7 @@ class _PinKeypad extends StatelessWidget {
   });
 
   final Future<void> Function(String digit) onDigit;
-  final VoidCallback onDelete;
+  final Future<void> Function() onDelete;
   final bool deleteEnabled;
   final bool disabled;
 
@@ -514,7 +521,7 @@ class _PinKeypad extends StatelessWidget {
                   return _PinKeypadButton(
                     label: item,
                     enabled: !disabled,
-                    onPressed: () => unawaited(onDigit(item)),
+                    onPressed: () => onDigit(item),
                   );
                 }).toList(),
               ),
@@ -543,16 +550,18 @@ class _PinKeypadButton extends StatelessWidget {
   final String? label;
   final IconData? icon;
   final bool enabled;
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
   final bool isIcon;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: GestureDetector(
-        onTap: enabled ? onPressed : null,
-        behavior: HitTestBehavior.opaque,
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(76, 76),
+        pressedOpacity: 0.9,
+        onPressed: enabled ? () => unawaited(onPressed()) : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           width: 76,
