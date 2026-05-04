@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
+import 'follow_up_tasks_service.dart';
 
 class NotificationBridgeStatus {
   const NotificationBridgeStatus({
@@ -308,7 +309,11 @@ class NotificationNudgeService {
   static const _morningId = 'nudge.morning';
   static const _eveningId = 'nudge.evening';
   static const _weeklyWyattId = 'nudge.weekly_wyatt';
+  static const _followUpsOverdueId = 'nudge.followups.overdue';
+  static const _followUpsUpcomingId = 'nudge.followups.upcoming';
+  static const _followUpsWaitingId = 'nudge.followups.waiting';
   final _api = ApiService();
+  final _followUpTasks = FollowUpTaskService();
 
   Future<NotificationBridgeStatus> getStatus() async {
     final raw = await _channel.invokeMethod<Map<Object?, Object?>>('getStatus');
@@ -552,7 +557,13 @@ class NotificationNudgeService {
       }
     }
 
+    await _syncFollowUpReminders();
+
     await saveSettings(nextSettings);
+  }
+
+  Future<void> refreshFollowUpReminders() async {
+    await _syncFollowUpReminders();
   }
 
   List<String> _allNotificationIdsFor(NotificationNudgeSettings settings) {
@@ -560,6 +571,9 @@ class NotificationNudgeService {
     ids.add(_morningId);
     ids.add(_eveningId);
     ids.add(_weeklyWyattId);
+    ids.add(_followUpsOverdueId);
+    ids.add(_followUpsUpcomingId);
+    ids.add(_followUpsWaitingId);
     ids.addAll(
       settings.places.expand(
         (place) => [
@@ -596,6 +610,150 @@ class NotificationNudgeService {
         'source': 'nudge',
       },
     ).toString();
+  }
+
+  Future<void> _syncFollowUpReminders() async {
+    final status = await getStatus();
+    final ids = <String>[
+      _followUpsOverdueId,
+      _followUpsUpcomingId,
+      _followUpsWaitingId,
+    ];
+
+    await _channel.invokeMethod<void>('cancelNotifications', {'ids': ids});
+    if (!status.notificationsAuthorized) return;
+
+    final tasks = await _followUpTasks.loadTasks();
+    final summary = _followUpTasks.summarize(tasks);
+    final now = DateTime.now();
+
+    if (summary.overdueTasks.isNotEmpty) {
+      final first = summary.overdueTasks.first;
+      await _scheduleOneOffNotification(
+        id: _followUpsOverdueId,
+        title: summary.overdueCount == 1
+            ? 'Follow-up overdue'
+            : '${summary.overdueCount} follow-ups overdue',
+        body: summary.overdueCount == 1
+            ? '${first.title} needs a real next move.'
+            : 'Start with ${first.title} and clear the oldest stalled thread.',
+        when: _nextReminderTime(
+          now,
+          preferredHour: 10,
+          preferredMinute: 15,
+        ),
+        route: '/follow-ups',
+        routeSage: _buildSageRoute(
+          summary.overdueCount == 1
+              ? 'Pressure me to follow up on ${first.title}. Tell me the exact next move.'
+              : 'Use my Follow-Ups and pressure me about the overdue items. Tell me what to do first.',
+        ),
+      );
+    }
+
+    if (summary.dueSoonTasks.isNotEmpty) {
+      final first = summary.dueSoonTasks.first;
+      final dueDate = first.followUpAt ?? now;
+      final when = _dueSoonReminderTime(dueDate, now);
+      if (when.isAfter(now)) {
+        await _scheduleOneOffNotification(
+          id: _followUpsUpcomingId,
+          title: summary.dueSoonCount == 1
+              ? 'Follow-up due soon'
+              : '${summary.dueSoonCount} follow-ups due soon',
+          body: summary.dueSoonCount == 1
+              ? '${first.title} is coming up. Get ahead of it now.'
+              : '${first.title} is first in line. Knock out the next touch before it slips.',
+          when: when,
+          route: '/follow-ups',
+          routeSage: _buildSageRoute(
+            summary.dueSoonCount == 1
+                ? 'Use my Follow-Ups and help me get ahead of ${first.title} before it becomes overdue.'
+                : 'Use my Follow-Ups and tell me which due-soon item I should knock out first.',
+          ),
+        );
+      }
+    }
+
+    if (summary.overdueTasks.isEmpty && summary.staleWaitingTasks.isNotEmpty) {
+      final first = summary.staleWaitingTasks.first;
+      await _scheduleOneOffNotification(
+        id: _followUpsWaitingId,
+        title: 'Still waiting?',
+        body:
+            '${first.title} has been sitting quiet. Decide whether to ping, park it, or close the loop.',
+        when: _nextReminderTime(
+          now,
+          preferredHour: 18,
+          preferredMinute: 10,
+        ),
+        route: '/follow-ups',
+        routeSage: _buildSageRoute(
+          'Use my Follow-Ups and help me decide what to do about the waiting items that have gone stale.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _scheduleOneOffNotification({
+    required String id,
+    required String title,
+    required String body,
+    required DateTime when,
+    required String route,
+    String? routeSage,
+  }) async {
+    await _channel.invokeMethod<void>('scheduleCalendarNotification', {
+      'id': id,
+      'title': title,
+      'body': body,
+      'hour': when.hour,
+      'minute': when.minute,
+      'day': when.day,
+      'month': when.month,
+      'year': when.year,
+      'repeats': false,
+      'route': route,
+      if (routeSage != null && routeSage.isNotEmpty) 'routeSage': routeSage,
+    });
+  }
+
+  DateTime _nextReminderTime(
+    DateTime now, {
+    required int preferredHour,
+    required int preferredMinute,
+  }) {
+    var scheduled = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      preferredHour,
+      preferredMinute,
+    );
+    if (!scheduled.isAfter(now.add(const Duration(minutes: 5)))) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
+  }
+
+  DateTime _dueSoonReminderTime(DateTime dueDate, DateTime now) {
+    final sameDayMorning = DateTime(
+      dueDate.year,
+      dueDate.month,
+      dueDate.day,
+      8,
+      45,
+    );
+    if (sameDayMorning.isAfter(now.add(const Duration(minutes: 5)))) {
+      return sameDayMorning;
+    }
+
+    final leadTime = dueDate.subtract(const Duration(hours: 3));
+    if (leadTime.isAfter(now.add(const Duration(minutes: 5)))) {
+      return leadTime;
+    }
+
+    return now.add(const Duration(hours: 1));
   }
 
   static const _morningPrefill =

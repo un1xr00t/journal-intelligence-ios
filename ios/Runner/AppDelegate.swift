@@ -279,6 +279,18 @@ final class NotificationBridge: NSObject, CLLocationManagerDelegate, UNUserNotif
     var components = DateComponents()
     components.hour = hour
     components.minute = minute
+    if let day = arguments["day"] as? Int {
+      components.day = day
+    }
+    if let month = arguments["month"] as? Int {
+      components.month = month
+    }
+    if let year = arguments["year"] as? Int {
+      components.year = year
+    }
+    if let weekday = arguments["weekday"] as? Int {
+      components.weekday = weekday
+    }
 
     let repeats = arguments["repeats"] as? Bool ?? true
     let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: repeats)

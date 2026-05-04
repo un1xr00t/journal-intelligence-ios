@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../services/follow_up_tasks_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/section_header.dart';
+import 'follow_ups_screen.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
@@ -18,8 +20,10 @@ class TodayScreen extends StatefulWidget {
 
 class _TodayScreenState extends State<TodayScreen> {
   final _api = ApiService();
+  final _followUpTasks = FollowUpTaskService();
 
   Map<String, dynamic>? _brief;
+  List<FollowUpTask> _tasks = const [];
   bool _loading = true;
   String? _error;
 
@@ -35,10 +39,16 @@ class _TodayScreenState extends State<TodayScreen> {
       _error = null;
     });
     try {
-      final data = await _api.getTodayBrief();
+      final results = await Future.wait<dynamic>([
+        _api.getTodayBrief(),
+        _followUpTasks.loadTasks(),
+      ]);
+      final data = results[0] as Map<String, dynamic>;
+      final tasks = results[1] as List<FollowUpTask>;
       if (mounted) {
         setState(() {
           _brief = data;
+          _tasks = tasks;
           _loading = false;
         });
       }
@@ -138,6 +148,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final moodTrend = _readTrend(stats, 'mood_trend');
     final stressTrend = _readTrend(stats, 'stress_trend');
     final conflictTrend = _readTrend(stats, 'conflict_trend');
+    final followUpSummary = _followUpTasks.summarize(_tasks);
 
     final todayHorizon = _readText(horizons, 'today');
     final weekHorizon = _readText(horizons, 'this_week');
@@ -335,6 +346,28 @@ class _TodayScreenState extends State<TodayScreen> {
                     ),
                   ),
               ],
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+      ]);
+    }
+
+    if (followUpSummary.hasPressure) {
+      items.addAll([
+        const SectionHeader(title: 'Follow-Up Pressure'),
+        const SizedBox(height: 10),
+        _TodayFollowUpsCard(
+          summary: followUpSummary,
+          onOpen: () {
+            Navigator.push(
+              context,
+              CupertinoPageRoute(
+                builder: (_) => DefaultTextStyle.merge(
+                  style: const TextStyle(decoration: TextDecoration.none),
+                  child: const FollowUpsScreen(),
+                ),
+              ),
             );
           },
         ),
@@ -1470,6 +1503,225 @@ class _ErrorView extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TodayFollowUpsCard extends StatelessWidget {
+  const _TodayFollowUpsCard({
+    required this.summary,
+    required this.onOpen,
+  });
+
+  final FollowUpTaskSummary summary;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final nextTask = summary.nextTask;
+    final accentColor = summary.overdueCount > 0
+        ? JournalColors.danger
+        : summary.dueSoonCount > 0
+            ? JournalColors.severity
+            : JournalColors.info;
+
+    final headline = summary.overdueCount > 0
+        ? '${summary.overdueCount} overdue ${summary.overdueCount == 1 ? 'item needs' : 'items need'} attention'
+        : summary.dueSoonCount > 0
+            ? '${summary.dueSoonCount} ${summary.dueSoonCount == 1 ? 'item is' : 'items are'} due soon'
+            : '${summary.waitingCount} ${summary.waitingCount == 1 ? 'thread is' : 'threads are'} waiting on a reply';
+
+    final body = nextTask == null
+        ? 'You have live follow-up pressure building.'
+        : (nextTask.nextAction ?? '').trim().isNotEmpty
+            ? nextTask.nextAction!.trim()
+            : nextTask.title;
+
+    return GlassCard(
+      accentBorder: summary.overdueCount > 0 || summary.dueSoonCount > 0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: _withAlpha(accentColor, 0.14),
+                  border: Border.all(color: _withAlpha(accentColor, 0.32)),
+                ),
+                child: const Icon(
+                  CupertinoIcons.briefcase_fill,
+                  color: JournalColors.textPrimary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'FOLLOW-UPS',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      headline,
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _FollowUpStatPill(
+                label: 'Open',
+                value: '${summary.openCount}',
+                color: JournalColors.accent,
+              ),
+              if (summary.overdueCount > 0)
+                _FollowUpStatPill(
+                  label: 'Overdue',
+                  value: '${summary.overdueCount}',
+                  color: JournalColors.danger,
+                ),
+              if (summary.dueSoonCount > 0)
+                _FollowUpStatPill(
+                  label: 'Due Soon',
+                  value: '${summary.dueSoonCount}',
+                  color: JournalColors.severity,
+                ),
+              if (summary.waitingCount > 0)
+                _FollowUpStatPill(
+                  label: 'Waiting',
+                  value: '${summary.waitingCount}',
+                  color: JournalColors.info,
+                ),
+            ],
+          ),
+          if (nextTask != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              nextTask.title,
+              style: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if ((nextTask.counterparty ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                nextTask.counterparty!.trim(),
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: onOpen,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Open Follow-Ups',
+                  style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 6),
+                Icon(
+                  CupertinoIcons.arrow_right,
+                  color: JournalColors.accent,
+                  size: 15,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FollowUpStatPill extends StatelessWidget {
+  const _FollowUpStatPill({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _withAlpha(color, 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _withAlpha(color, 0.30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

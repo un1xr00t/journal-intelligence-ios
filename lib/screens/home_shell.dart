@@ -238,6 +238,7 @@ class _HomeShellState extends State<HomeShell> {
 
     try {
       final settings = await _notificationNudgeService.loadSettings();
+      await _notificationNudgeService.refreshFollowUpReminders();
       if (!settings.locationPromptsEnabled &&
           !settings.journalPatternPromptsEnabled) {
         return;

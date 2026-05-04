@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 
 import '../services/follow_up_tasks_service.dart';
+import '../services/notification_nudge_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/section_header.dart';
@@ -81,6 +82,7 @@ class FollowUpsScreen extends StatefulWidget {
 
 class _FollowUpsScreenState extends State<FollowUpsScreen> {
   final _service = FollowUpTaskService();
+  final _nudgeService = NotificationNudgeService();
   final _dateFormat = DateFormat('MMM d, yyyy');
 
   bool _loading = true;
@@ -119,6 +121,9 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
 
   Future<void> _saveTasks(List<FollowUpTask> tasks) async {
     await _service.saveTasks(tasks);
+    try {
+      await _nudgeService.refreshFollowUpReminders();
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _tasks = List<FollowUpTask>.from(tasks)

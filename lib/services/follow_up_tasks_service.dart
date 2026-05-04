@@ -206,6 +206,28 @@ class FollowUpTaskService {
     ].join('\n');
   }
 
+  FollowUpTaskSummary summarize(List<FollowUpTask> tasks) {
+    final open = tasks.where((task) => task.isOpen).toList();
+    final overdue = open.where((task) => task.isOverdue()).toList();
+    final dueSoon = open.where((task) => task.isDueSoon()).toList();
+    final waiting = open.where((task) => task.isWaiting).toList();
+    final staleWaiting = waiting.where((task) {
+      final cutoff = DateTime.now().subtract(const Duration(days: 6));
+      return task.lastTouchedAt.isBefore(cutoff);
+    }).toList();
+
+    return FollowUpTaskSummary(
+      openCount: open.length,
+      overdueCount: overdue.length,
+      dueSoonCount: dueSoon.length,
+      waitingCount: waiting.length,
+      nextTask: open.isEmpty ? null : open.first,
+      overdueTasks: overdue,
+      dueSoonTasks: dueSoon,
+      staleWaitingTasks: staleWaiting,
+    );
+  }
+
   static int compareTasks(FollowUpTask a, FollowUpTask b) {
     final scoreA = _sortScore(a);
     final scoreB = _sortScore(b);
@@ -294,4 +316,29 @@ class FollowUpTaskService {
         return 'Active';
     }
   }
+}
+
+class FollowUpTaskSummary {
+  const FollowUpTaskSummary({
+    required this.openCount,
+    required this.overdueCount,
+    required this.dueSoonCount,
+    required this.waitingCount,
+    required this.nextTask,
+    required this.overdueTasks,
+    required this.dueSoonTasks,
+    required this.staleWaitingTasks,
+  });
+
+  final int openCount;
+  final int overdueCount;
+  final int dueSoonCount;
+  final int waitingCount;
+  final FollowUpTask? nextTask;
+  final List<FollowUpTask> overdueTasks;
+  final List<FollowUpTask> dueSoonTasks;
+  final List<FollowUpTask> staleWaitingTasks;
+
+  bool get hasPressure =>
+      overdueCount > 0 || dueSoonCount > 0 || waitingCount > 0;
 }
