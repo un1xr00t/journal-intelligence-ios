@@ -9,6 +9,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show SelectableText;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -3936,7 +3937,7 @@ class _MessageBubble extends StatelessWidget {
                   ],
                   if (message.text.trim().isNotEmpty)
                     _isUser
-                        ? Text(
+                        ? SelectableText(
                             message.text,
                             style: const TextStyle(
                               color: JournalColors.textPrimary,
@@ -3947,7 +3948,7 @@ class _MessageBubble extends StatelessWidget {
                           )
                         : MarkdownBody(
                             data: message.text,
-                            selectable: false,
+                            selectable: true,
                             softLineBreak: true,
                             styleSheet: MarkdownStyleSheet(
                               p: const TextStyle(
