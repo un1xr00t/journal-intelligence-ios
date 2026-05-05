@@ -310,7 +310,9 @@ class NotificationNudgeService {
   static const _eveningId = 'nudge.evening';
   static const _weeklyWyattId = 'nudge.weekly_wyatt';
   static const _followUpsOverdueId = 'nudge.followups.overdue';
+  static const _followUpsOverdueExtraId = 'nudge.followups.overdue.extra';
   static const _followUpsUpcomingId = 'nudge.followups.upcoming';
+  static const _followUpsUpcomingExtraId = 'nudge.followups.upcoming.extra';
   static const _followUpsWaitingId = 'nudge.followups.waiting';
   final _api = ApiService();
   final _followUpTasks = FollowUpTaskService();
@@ -572,7 +574,9 @@ class NotificationNudgeService {
     ids.add(_eveningId);
     ids.add(_weeklyWyattId);
     ids.add(_followUpsOverdueId);
+    ids.add(_followUpsOverdueExtraId);
     ids.add(_followUpsUpcomingId);
+    ids.add(_followUpsUpcomingExtraId);
     ids.add(_followUpsWaitingId);
     ids.addAll(
       settings.places.expand(
@@ -616,7 +620,9 @@ class NotificationNudgeService {
     final status = await getStatus();
     final ids = <String>[
       _followUpsOverdueId,
+      _followUpsOverdueExtraId,
       _followUpsUpcomingId,
+      _followUpsUpcomingExtraId,
       _followUpsWaitingId,
     ];
 
@@ -629,6 +635,11 @@ class NotificationNudgeService {
 
     if (summary.overdueTasks.isNotEmpty) {
       final first = summary.overdueTasks.first;
+      final primaryTime = _nextReminderTime(
+        now,
+        preferredHour: 10,
+        preferredMinute: 15,
+      );
       await _scheduleOneOffNotification(
         id: _followUpsOverdueId,
         title: summary.overdueCount == 1
@@ -637,11 +648,7 @@ class NotificationNudgeService {
         body: summary.overdueCount == 1
             ? '${first.title} needs a real next move.'
             : 'Start with ${first.title} and clear the oldest stalled thread.',
-        when: _nextReminderTime(
-          now,
-          preferredHour: 10,
-          preferredMinute: 15,
-        ),
+        when: primaryTime,
         route: '/follow-ups',
         routeSage: _buildSageRoute(
           summary.overdueCount == 1
@@ -649,12 +656,28 @@ class NotificationNudgeService {
               : 'Use my Follow-Ups and pressure me about the overdue items. Tell me what to do first.',
         ),
       );
+      if (_extraReminderCount(first.priority) >= 1) {
+        await _scheduleOneOffNotification(
+          id: _followUpsOverdueExtraId,
+          title: summary.overdueCount == 1
+              ? 'Still overdue'
+              : 'Overdue follow-ups still open',
+          body: 'Do not let ${first.title} slide again today.',
+          when: primaryTime.add(
+            Duration(hours: _extraReminderCount(first.priority) >= 2 ? 3 : 6),
+          ),
+          route: '/follow-ups',
+          routeSage: _buildSageRoute(
+            'Be direct. I still have overdue follow-up pressure and need to move on ${first.title}.',
+          ),
+        );
+      }
     }
 
     if (summary.dueSoonTasks.isNotEmpty) {
       final first = summary.dueSoonTasks.first;
-      final dueDate = first.followUpAt ?? now;
-      final when = _dueSoonReminderTime(dueDate, now);
+      final dueDate = first.effectiveFollowUpAt ?? now;
+      final when = _dueSoonReminderTime(dueDate, now, first.priority);
       if (when.isAfter(now)) {
         await _scheduleOneOffNotification(
           id: _followUpsUpcomingId,
@@ -672,6 +695,25 @@ class NotificationNudgeService {
                 : 'Use my Follow-Ups and tell me which due-soon item I should knock out first.',
           ),
         );
+        if (_extraReminderCount(first.priority) >= 1) {
+          final extraWhen = _secondaryDueSoonReminderTime(
+            dueDate,
+            now,
+            first.priority,
+          );
+          if (extraWhen != null && extraWhen.isAfter(now)) {
+            await _scheduleOneOffNotification(
+              id: _followUpsUpcomingExtraId,
+              title: 'Follow-up coming up',
+              body: 'Do ${first.title} before it turns into late pressure.',
+              when: extraWhen,
+              route: '/follow-ups',
+              routeSage: _buildSageRoute(
+                'Push me to handle ${first.title} before it becomes overdue.',
+              ),
+            );
+          }
+        }
       }
     }
 
@@ -736,24 +778,63 @@ class NotificationNudgeService {
     return scheduled;
   }
 
-  DateTime _dueSoonReminderTime(DateTime dueDate, DateTime now) {
+  DateTime _dueSoonReminderTime(
+    DateTime dueDate,
+    DateTime now,
+    String priority,
+  ) {
+    final leadHours = switch (priority) {
+      'urgent' => 12,
+      'high' => 6,
+      'low' => 2,
+      _ => 3,
+    };
+    final leadTime = dueDate.subtract(Duration(hours: leadHours));
+    if (leadTime.isAfter(now.add(const Duration(minutes: 5)))) {
+      return leadTime;
+    }
+
     final sameDayMorning = DateTime(
       dueDate.year,
       dueDate.month,
       dueDate.day,
-      8,
-      45,
+      priority == 'urgent' ? 7 : 8,
+      priority == 'urgent' ? 30 : 45,
     );
     if (sameDayMorning.isAfter(now.add(const Duration(minutes: 5)))) {
       return sameDayMorning;
     }
 
-    final leadTime = dueDate.subtract(const Duration(hours: 3));
-    if (leadTime.isAfter(now.add(const Duration(minutes: 5)))) {
-      return leadTime;
-    }
-
     return now.add(const Duration(hours: 1));
+  }
+
+  DateTime? _secondaryDueSoonReminderTime(
+    DateTime dueDate,
+    DateTime now,
+    String priority,
+  ) {
+    final leadHours = switch (priority) {
+      'urgent' => 2,
+      'high' => 1,
+      _ => 0,
+    };
+    if (leadHours == 0) return null;
+    final when = dueDate.subtract(Duration(hours: leadHours));
+    if (when.isAfter(now.add(const Duration(minutes: 5)))) {
+      return when;
+    }
+    return null;
+  }
+
+  int _extraReminderCount(String priority) {
+    switch (priority) {
+      case 'urgent':
+        return 2;
+      case 'high':
+        return 1;
+      default:
+        return 0;
+    }
   }
 
   static const _morningPrefill =

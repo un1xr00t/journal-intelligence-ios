@@ -25,6 +25,13 @@ const _followUpStatuses = <String>[
   'archived',
 ];
 
+const _followUpPriorities = <String>[
+  'urgent',
+  'high',
+  'normal',
+  'low',
+];
+
 const _filterLabels = <String>[
   'Due',
   'Active',
@@ -83,7 +90,7 @@ class FollowUpsScreen extends StatefulWidget {
 class _FollowUpsScreenState extends State<FollowUpsScreen> {
   final _service = FollowUpTaskService();
   final _nudgeService = NotificationNudgeService();
-  final _dateFormat = DateFormat('MMM d, yyyy');
+  final _dateTimeFormat = DateFormat('MMM d, yyyy · h:mm a');
 
   bool _loading = true;
   String? _error;
@@ -220,10 +227,11 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
         title: preset.title,
         bucket: preset.bucket,
         status: preset.status,
+        priority: 'normal',
         createdAt: now,
         lastTouchedAt: now,
         nextAction: preset.action,
-        followUpAt: now.add(const Duration(days: 3)),
+        followUpAt: DateTime(now.year, now.month, now.day + 3),
       ),
     );
   }
@@ -323,7 +331,7 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: _FollowUpTaskCard(
               task: task,
-              dateFormat: _dateFormat,
+              dateTimeFormat: _dateTimeFormat,
               onEdit: () => _openEditor(existing: task),
               onDelete: () => _deleteTask(task),
               onAskSage: () => _openSagePressure(task: task),
@@ -745,7 +753,7 @@ class _QuickFollowUpChip extends StatelessWidget {
 class _FollowUpTaskCard extends StatelessWidget {
   const _FollowUpTaskCard({
     required this.task,
-    required this.dateFormat,
+    required this.dateTimeFormat,
     required this.onEdit,
     required this.onDelete,
     required this.onAskSage,
@@ -753,7 +761,7 @@ class _FollowUpTaskCard extends StatelessWidget {
   });
 
   final FollowUpTask task;
-  final DateFormat dateFormat;
+  final DateFormat dateTimeFormat;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onAskSage;
@@ -792,13 +800,19 @@ class _FollowUpTaskCard extends StatelessWidget {
                           color: accent,
                         ),
                         _StatusPill(
+                          label:
+                              FollowUpTaskService.priorityLabel(task.priority),
+                          color: _priorityColor(task.priority),
+                        ),
+                        _StatusPill(
                           label: FollowUpTaskService.bucketLabel(task.bucket),
                           color: JournalColors.info,
                         ),
-                        if (task.followUpAt != null)
+                        if (task.effectiveFollowUpAt != null)
                           _StatusPill(
-                            label:
-                                overdue ? 'Overdue' : 'Follow up ${dateFormat.format(task.followUpAt!)}',
+                            label: overdue
+                                ? 'Overdue'
+                                : 'Follow up ${dateTimeFormat.format(task.effectiveFollowUpAt!)}',
                             color: overdue
                                 ? JournalColors.danger
                                 : dueSoon
@@ -881,7 +895,7 @@ class _FollowUpTaskCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               Text(
-                'Last touched ${dateFormat.format(task.lastTouchedAt)}',
+                'Last touched ${dateTimeFormat.format(task.lastTouchedAt)}',
                 style: const TextStyle(
                   color: JournalColors.textMuted,
                   fontSize: 12,
@@ -889,7 +903,7 @@ class _FollowUpTaskCard extends StatelessWidget {
               ),
               if (task.completedAt != null)
                 Text(
-                  'Completed ${dateFormat.format(task.completedAt!)}',
+                  'Completed ${dateTimeFormat.format(task.completedAt!)}',
                   style: const TextStyle(
                     color: JournalColors.success,
                     fontSize: 12,
@@ -1036,8 +1050,10 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
 
   late String _bucket;
   late String _status;
+  late String _priority;
   late DateTime _lastTouchedAt;
   DateTime? _followUpAt;
+  bool _followUpTimeSet = false;
   bool _saving = false;
   String? _error;
 
@@ -1055,8 +1071,10 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
     _notesController = TextEditingController(text: task?.notes ?? '');
     _bucket = task?.bucket ?? 'job_application';
     _status = task?.status ?? 'active';
+    _priority = task?.priority ?? 'normal';
     _lastTouchedAt = task?.lastTouchedAt ?? now;
-    _followUpAt = task?.followUpAt ?? now.add(const Duration(days: 3));
+    _followUpTimeSet = task?.followUpTimeSet ?? false;
+    _followUpAt = task?.followUpAt ?? DateTime(now.year, now.month, now.day + 3);
   }
 
   @override
@@ -1124,6 +1142,89 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
     }
   }
 
+  Future<void> _pickTime({
+    required DateTime initialDate,
+    required ValueChanged<DateTime> onChanged,
+  }) async {
+    var selected = DateTime(2024, 1, 1, initialDate.hour, initialDate.minute);
+    final picked = await showCupertinoModalPopup<DateTime>(
+      context: context,
+      builder: (context) => Container(
+        height: 320,
+        color: JournalColors.bgCard,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: JournalColors.textSecondary),
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.of(context).pop(selected),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(
+                        color: JournalColors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.time,
+                initialDateTime: selected,
+                use24hFormat: false,
+                onDateTimeChanged: (value) => selected = value,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (picked != null) {
+      onChanged(
+        DateTime(
+          initialDate.year,
+          initialDate.month,
+          initialDate.day,
+          picked.hour,
+          picked.minute,
+        ),
+      );
+    }
+  }
+
+  DateTime _defaultFollowUpForPriority(DateTime date, String priority) {
+    final day = DateTime(date.year, date.month, date.day);
+    final (hour, minute) = switch (priority) {
+      'urgent' => (8, 30),
+      'high' => (10, 0),
+      'low' => (18, 0),
+      _ => (13, 0),
+    };
+    return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
+  DateTime? get _effectiveFollowUpAt {
+    final followUp = _followUpAt;
+    if (followUp == null) return null;
+    if (_followUpTimeSet) return followUp;
+    return _defaultFollowUpForPriority(followUp, _priority);
+  }
+
   void _save() {
     final title = _titleController.text.trim();
     final nextAction = _nextActionController.text.trim();
@@ -1139,6 +1240,11 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
       return;
     }
 
+    if ((_status == 'active' || _status == 'waiting') && _followUpAt == null) {
+      setState(() => _error = 'Pick when this follow-up should hit you.');
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -1151,13 +1257,17 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
       title: title,
       bucket: _bucket,
       status: _status,
+      priority: _priority,
       createdAt: existing?.createdAt ?? now,
       lastTouchedAt: _lastTouchedAt,
       counterparty: _normalizedValue(_counterpartyController.text),
       nextAction: _normalizedValue(nextAction),
       notes: _normalizedValue(_notesController.text),
       followUpAt:
-          (_status == 'done' || _status == 'archived') ? null : _followUpAt,
+          (_status == 'done' || _status == 'archived')
+              ? null
+              : _effectiveFollowUpAt,
+      followUpTimeSet: _followUpTimeSet,
       completedAt: _status == 'done' ? (existing?.completedAt ?? now) : null,
     );
 
@@ -1167,6 +1277,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('MMM d, yyyy');
+    final timeFormat = DateFormat('h:mm a');
 
     return CupertinoPageScaffold(
       backgroundColor: JournalColors.bgBase,
@@ -1221,7 +1332,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Keep this scoped to something that needs another touch, response, deadline, or push. If it is part of your bigger life-transition roadmap, it belongs in Exit Plan instead.',
+                    'Keep this scoped to something that needs another touch, response, deadline, or push. Priority controls how hard the app nudges you. If you do not set a time, the reminder defaults from priority.',
                     style: TextStyle(
                       color: JournalColors.textSecondary,
                       fontSize: 14,
@@ -1273,6 +1384,30 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
               ],
             ),
             const SizedBox(height: 24),
+            const SectionHeader(title: 'Priority'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final priority in _followUpPriorities)
+                  _SelectableChip(
+                    label: FollowUpTaskService.priorityLabel(priority),
+                    selected: _priority == priority,
+                    onTap: () => setState(() {
+                      _priority = priority;
+                      if (!_followUpTimeSet && _followUpAt != null) {
+                        _followUpAt = DateTime(
+                          _followUpAt!.year,
+                          _followUpAt!.month,
+                          _followUpAt!.day,
+                        );
+                      }
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
             const SectionHeader(title: 'Status'),
             const SizedBox(height: 12),
             Wrap(
@@ -1295,24 +1430,43 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                 children: [
                   _DateRow(
                     label: 'Last touched',
-                    value: dateFormat.format(_lastTouchedAt),
+                    value:
+                        '${dateFormat.format(_lastTouchedAt)} · ${timeFormat.format(_lastTouchedAt)}',
                     onTap: () => _pickDate(
                       initialDate: _lastTouchedAt,
-                      onChanged: (value) => setState(() => _lastTouchedAt = value),
+                      onChanged: (value) => setState(
+                        () => _lastTouchedAt = DateTime(
+                          value.year,
+                          value.month,
+                          value.day,
+                          _lastTouchedAt.hour,
+                          _lastTouchedAt.minute,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   _DateRow(
-                    label: 'Follow up on',
-                    value: _followUpAt == null
+                    label: 'Follow up date',
+                    value: _effectiveFollowUpAt == null
                         ? 'No date'
-                        : dateFormat.format(_followUpAt!),
+                        : dateFormat.format(_effectiveFollowUpAt!),
                     onTap: _status == 'done' || _status == 'archived'
                         ? null
                         : () => _pickDate(
-                              initialDate: _followUpAt ?? DateTime.now(),
-                              onChanged: (value) =>
-                                  setState(() => _followUpAt = value),
+                              initialDate:
+                                  _effectiveFollowUpAt ?? DateTime.now(),
+                              onChanged: (value) => setState(() {
+                                final current = _effectiveFollowUpAt ??
+                                    _defaultFollowUpForPriority(value, _priority);
+                                _followUpAt = DateTime(
+                                  value.year,
+                                  value.month,
+                                  value.day,
+                                  current.hour,
+                                  current.minute,
+                                );
+                              }),
                             ),
                     trailing: (_status == 'done' || _status == 'archived')
                         ? null
@@ -1322,6 +1476,43 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                             onPressed: () => setState(() => _followUpAt = null),
                             child: const Text(
                               'Clear',
+                              style: TextStyle(color: JournalColors.textMuted),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  _DateRow(
+                    label: 'Reminder time',
+                    value: _effectiveFollowUpAt == null
+                        ? 'No time'
+                        : timeFormat.format(_effectiveFollowUpAt!),
+                    onTap: (_status == 'done' || _status == 'archived')
+                        ? null
+                        : () => _pickTime(
+                              initialDate:
+                                  _effectiveFollowUpAt ?? DateTime.now(),
+                              onChanged: (value) => setState(() {
+                                _followUpAt = value;
+                                _followUpTimeSet = true;
+                              }),
+                            ),
+                    trailing: (_status == 'done' ||
+                            _status == 'archived' ||
+                            _followUpAt == null)
+                        ? null
+                        : CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 0),
+                            onPressed: () => setState(() {
+                              _followUpTimeSet = false;
+                              _followUpAt = DateTime(
+                                _followUpAt!.year,
+                                _followUpAt!.month,
+                                _followUpAt!.day,
+                              );
+                            }),
+                            child: const Text(
+                              'Auto',
                               style: TextStyle(color: JournalColors.textMuted),
                             ),
                           ),
@@ -1525,5 +1716,18 @@ class _DateRow extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+Color _priorityColor(String priority) {
+  switch (priority) {
+    case 'urgent':
+      return JournalColors.danger;
+    case 'high':
+      return JournalColors.severity;
+    case 'low':
+      return JournalColors.info;
+    default:
+      return JournalColors.accent;
   }
 }

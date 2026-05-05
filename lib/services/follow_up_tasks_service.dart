@@ -19,12 +19,14 @@ class FollowUpTask {
     required this.title,
     required this.bucket,
     required this.status,
+    required this.priority,
     required this.createdAt,
     required this.lastTouchedAt,
     this.counterparty,
     this.nextAction,
     this.notes,
     this.followUpAt,
+    this.followUpTimeSet = false,
     this.completedAt,
   });
 
@@ -32,12 +34,14 @@ class FollowUpTask {
   final String title;
   final String bucket;
   final String status;
+  final String priority;
   final DateTime createdAt;
   final DateTime lastTouchedAt;
   final String? counterparty;
   final String? nextAction;
   final String? notes;
   final DateTime? followUpAt;
+  final bool followUpTimeSet;
   final DateTime? completedAt;
 
   bool get isDone => status == 'done';
@@ -46,18 +50,26 @@ class FollowUpTask {
   bool get isActive => status == 'active';
   bool get isOpen => !isDone && !isArchived;
 
+  DateTime? get effectiveFollowUpAt {
+    final followUp = followUpAt;
+    if (followUp == null) return null;
+    if (followUpTimeSet) return followUp;
+    return _defaultReminderDateTime(followUp, priority);
+  }
+
   bool isOverdue([DateTime? now]) {
-    if (!isOpen || followUpAt == null) return false;
+    final followUp = effectiveFollowUpAt;
+    if (!isOpen || followUp == null) return false;
     final current = now ?? DateTime.now();
-    return _startOfDay(followUpAt!).isBefore(_startOfDay(current));
+    return followUp.isBefore(current);
   }
 
   bool isDueSoon([DateTime? now, int withinDays = 3]) {
-    if (!isOpen || followUpAt == null) return false;
-    final current = _startOfDay(now ?? DateTime.now());
-    final dueDay = _startOfDay(followUpAt!);
-    if (dueDay.isBefore(current)) return false;
-    return !dueDay.isAfter(current.add(Duration(days: withinDays)));
+    final followUp = effectiveFollowUpAt;
+    if (!isOpen || followUp == null) return false;
+    final current = now ?? DateTime.now();
+    if (followUp.isBefore(current)) return false;
+    return !followUp.isAfter(current.add(Duration(days: withinDays)));
   }
 
   FollowUpTask copyWith({
@@ -65,6 +77,7 @@ class FollowUpTask {
     String? title,
     String? bucket,
     String? status,
+    String? priority,
     DateTime? createdAt,
     DateTime? lastTouchedAt,
     String? counterparty,
@@ -72,6 +85,7 @@ class FollowUpTask {
     String? notes,
     DateTime? followUpAt,
     bool clearFollowUpAt = false,
+    bool? followUpTimeSet,
     DateTime? completedAt,
     bool clearCompletedAt = false,
   }) {
@@ -80,12 +94,14 @@ class FollowUpTask {
       title: title ?? this.title,
       bucket: bucket ?? this.bucket,
       status: status ?? this.status,
+      priority: priority ?? this.priority,
       createdAt: createdAt ?? this.createdAt,
       lastTouchedAt: lastTouchedAt ?? this.lastTouchedAt,
       counterparty: counterparty ?? this.counterparty,
       nextAction: nextAction ?? this.nextAction,
       notes: notes ?? this.notes,
       followUpAt: clearFollowUpAt ? null : (followUpAt ?? this.followUpAt),
+      followUpTimeSet: followUpTimeSet ?? this.followUpTimeSet,
       completedAt:
           clearCompletedAt ? null : (completedAt ?? this.completedAt),
     );
@@ -96,12 +112,14 @@ class FollowUpTask {
         'title': title,
         'bucket': bucket,
         'status': status,
+        'priority': priority,
         'created_at': createdAt.toIso8601String(),
         'last_touched_at': lastTouchedAt.toIso8601String(),
         'counterparty': counterparty,
         'next_action': nextAction,
         'notes': notes,
         'follow_up_at': followUpAt?.toIso8601String(),
+        'follow_up_time_set': followUpTimeSet,
         'completed_at': completedAt?.toIso8601String(),
       };
 
@@ -111,6 +129,7 @@ class FollowUpTask {
       title: json['title']?.toString() ?? '',
       bucket: json['bucket']?.toString() ?? 'job_application',
       status: json['status']?.toString() ?? 'active',
+      priority: json['priority']?.toString() ?? 'normal',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
       lastTouchedAt:
@@ -120,6 +139,10 @@ class FollowUpTask {
       nextAction: _normalizedText(json['next_action']),
       notes: _normalizedText(json['notes']),
       followUpAt: DateTime.tryParse(json['follow_up_at']?.toString() ?? ''),
+      followUpTimeSet: (json['follow_up_time_set'] as bool?) ??
+          _hasMeaningfulTime(
+            DateTime.tryParse(json['follow_up_at']?.toString() ?? ''),
+          ),
       completedAt: DateTime.tryParse(json['completed_at']?.toString() ?? ''),
     );
   }
@@ -233,8 +256,13 @@ class FollowUpTaskService {
     final scoreB = _sortScore(b);
     if (scoreA != scoreB) return scoreA.compareTo(scoreB);
 
-    final followA = a.followUpAt;
-    final followB = b.followUpAt;
+    final priorityCompare = _priorityRank(a.priority).compareTo(
+      _priorityRank(b.priority),
+    );
+    if (priorityCompare != 0) return priorityCompare;
+
+    final followA = a.effectiveFollowUpAt;
+    final followB = b.effectiveFollowUpAt;
     if (followA != null && followB != null) {
       final compareFollow = followA.compareTo(followB);
       if (compareFollow != 0) return compareFollow;
@@ -262,8 +290,9 @@ class FollowUpTaskService {
       '- ${task.title}',
       if ((task.counterparty ?? '').trim().isNotEmpty)
         '@ ${task.counterparty!.trim()}',
-      '[${bucketLabel(task.bucket)} | ${statusLabel(task.status)}]',
-      if (task.followUpAt != null) 'follow up ${date.format(task.followUpAt!)}',
+      '[${bucketLabel(task.bucket)} | ${statusLabel(task.status)} | ${priorityLabel(task.priority)}]',
+      if (task.effectiveFollowUpAt != null)
+        'follow up ${date.format(task.effectiveFollowUpAt!)}',
       if ((task.nextAction ?? '').trim().isNotEmpty)
         'next: ${task.nextAction!.trim()}',
     ];
@@ -278,8 +307,9 @@ class FollowUpTaskService {
         '@ ${task.counterparty!.trim()}',
       '| ${bucketLabel(task.bucket)}',
       '| ${statusLabel(task.status)}',
-      if (task.followUpAt != null)
-        '| follow up ${date.format(task.followUpAt!)}',
+      '| ${priorityLabel(task.priority)} priority',
+      if (task.effectiveFollowUpAt != null)
+        '| follow up ${date.format(task.effectiveFollowUpAt!)}',
       '| last touched ${date.format(task.lastTouchedAt)}',
       if ((task.nextAction ?? '').trim().isNotEmpty)
         '| next ${task.nextAction!.trim()}',
@@ -316,6 +346,32 @@ class FollowUpTaskService {
         return 'Active';
     }
   }
+
+  static String priorityLabel(String priority) {
+    switch (priority) {
+      case 'urgent':
+        return 'Urgent';
+      case 'high':
+        return 'High';
+      case 'low':
+        return 'Low';
+      default:
+        return 'Normal';
+    }
+  }
+
+  static int _priorityRank(String priority) {
+    switch (priority) {
+      case 'urgent':
+        return 0;
+      case 'high':
+        return 1;
+      case 'normal':
+        return 2;
+      default:
+        return 3;
+    }
+  }
 }
 
 class FollowUpTaskSummary {
@@ -341,4 +397,20 @@ class FollowUpTaskSummary {
 
   bool get hasPressure =>
       overdueCount > 0 || dueSoonCount > 0 || waitingCount > 0;
+}
+
+bool _hasMeaningfulTime(DateTime? date) {
+  if (date == null) return false;
+  return date.hour != 0 || date.minute != 0;
+}
+
+DateTime _defaultReminderDateTime(DateTime date, String priority) {
+  final day = _startOfDay(date);
+  final (hour, minute) = switch (priority) {
+    'urgent' => (8, 30),
+    'high' => (10, 0),
+    'low' => (18, 0),
+    _ => (13, 0),
+  };
+  return DateTime(day.year, day.month, day.day, hour, minute);
 }
