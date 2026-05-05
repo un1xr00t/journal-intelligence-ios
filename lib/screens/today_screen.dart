@@ -1526,17 +1526,9 @@ class _TodayFollowUpsCard extends StatelessWidget {
             ? JournalColors.severity
             : JournalColors.info;
 
-    final headline = summary.overdueCount > 0
-        ? '${summary.overdueCount} overdue ${summary.overdueCount == 1 ? 'item needs' : 'items need'} attention'
-        : summary.dueSoonCount > 0
-            ? '${summary.dueSoonCount} ${summary.dueSoonCount == 1 ? 'item is' : 'items are'} due soon'
-            : '${summary.waitingCount} ${summary.waitingCount == 1 ? 'thread is' : 'threads are'} waiting on a reply';
+    final headline = FollowUpTaskService.pressureHeadline(summary);
 
-    final body = nextTask == null
-        ? 'You have live follow-up pressure building.'
-        : (nextTask.nextAction ?? '').trim().isNotEmpty
-            ? nextTask.nextAction!.trim()
-            : nextTask.title;
+    final body = FollowUpTaskService.pressureBody(summary);
 
     return GlassCard(
       accentBorder: summary.overdueCount > 0 || summary.dueSoonCount > 0,

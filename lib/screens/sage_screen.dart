@@ -642,7 +642,9 @@ class SageHandoff {
   const SageHandoff({
     this.initialAssistantMessage,
     this.prefillText,
+    this.initialAttachments = const [],
     this.autoSendPrefill = false,
+    this.autoSendPrefillHidden = false,
     this.autoStartGreeting = true,
     this.showDefaultWelcome = false,
     this.sessionToneOverride,
@@ -651,7 +653,9 @@ class SageHandoff {
   const SageHandoff.standard()
       : initialAssistantMessage = null,
         prefillText = null,
+        initialAttachments = const [],
         autoSendPrefill = false,
+        autoSendPrefillHidden = false,
         autoStartGreeting = false,
         showDefaultWelcome = true,
         sessionToneOverride = null;
@@ -661,13 +665,17 @@ class SageHandoff {
     this.sessionToneOverride,
   })  : initialAssistantMessage = insight,
         prefillText = null,
+        initialAttachments = const [],
         autoSendPrefill = false,
+        autoSendPrefillHidden = false,
         autoStartGreeting = false,
         showDefaultWelcome = false;
 
   final String? initialAssistantMessage;
   final String? prefillText;
+  final List<SageHandoffAttachment> initialAttachments;
   final bool autoSendPrefill;
+  final bool autoSendPrefillHidden;
   final bool autoStartGreeting;
   final bool showDefaultWelcome;
   final String? sessionToneOverride;
@@ -680,19 +688,37 @@ class SageHandoff {
 
   bool get hasPrefill => normalizedPrefill.isNotEmpty;
 
+  bool get hasInitialAttachments => initialAttachments.isNotEmpty;
+
   bool get shouldAutoStartGreeting =>
-      autoStartGreeting && !hasSeededAssistantMessage && !hasPrefill;
+      autoStartGreeting &&
+      !hasSeededAssistantMessage &&
+      !hasPrefill &&
+      !hasInitialAttachments;
 
   bool get shouldShowDefaultWelcome =>
       !hasSeededAssistantMessage && showDefaultWelcome;
 
-  bool get shouldAutoSendPrefill => autoSendPrefill && hasPrefill;
+  bool get shouldAutoSendPrefill =>
+      autoSendPrefill && (hasPrefill || hasInitialAttachments);
 
   SageHandoff forNewChat() => SageHandoff(
         autoStartGreeting: false,
         showDefaultWelcome: true,
         sessionToneOverride: sessionToneOverride,
       );
+}
+
+class SageHandoffAttachment {
+  const SageHandoffAttachment({
+    required this.name,
+    required this.path,
+    required this.extension,
+  });
+
+  final String name;
+  final String path;
+  final String extension;
 }
 
 Future<T?> pushSageScreen<T>(
@@ -758,6 +784,7 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   bool _ttsSequenceActive = false;
   bool _seededInitialAssistantMessage = false;
   bool _appliedInitialPrefill = false;
+  bool _appliedInitialAttachments = false;
   bool _sentInitialPrefill = false;
   bool _useTrackForSession = true;
   String? _actionPrefillLabel;
@@ -1070,6 +1097,22 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _applyInitialAttachmentsIfNeeded() async {
+    if (_appliedInitialAttachments || _handoff.initialAttachments.isEmpty) {
+      return;
+    }
+    _appliedInitialAttachments = true;
+    final next = List<_SageFileDraft>.from(_pendingAttachments);
+    for (final item in _handoff.initialAttachments) {
+      final draft = await _SageFileDraft.fromHandoffAttachment(item);
+      if (draft == null) continue;
+      final exists = next.any((existing) => existing.path == draft.path);
+      if (!exists) next.add(draft);
+    }
+    if (!mounted) return;
+    setState(() => _pendingAttachments = next);
+  }
+
   String _buildContextPayload(String contextString) {
     final sessionSettings =
         _settingsForSageSessionTone(_settings, _handoff.sessionToneOverride);
@@ -1159,11 +1202,16 @@ $sessionToneInstruction
         _useTrackForSession = activeTrack != null;
         _contextLoading = false;
       });
+      await _applyInitialAttachmentsIfNeeded();
       _seedInitialAssistantMessageIfNeeded();
       _applyInitialPrefillIfNeeded();
       if (_handoff.shouldAutoSendPrefill && !_sentInitialPrefill) {
         _sentInitialPrefill = true;
-        await _send(text: _handoff.normalizedPrefill);
+        await _send(
+          text: _handoff.normalizedPrefill,
+          hiddenUserMessage: _handoff.autoSendPrefillHidden,
+          includePendingAttachmentsWhenHidden: _handoff.autoSendPrefillHidden,
+        );
         return;
       }
       if (autoStartGreeting && _settings.autoGreeting) {
@@ -1576,10 +1624,13 @@ $latestContent
   Future<void> _send({
     String? text,
     bool hiddenUserMessage = false,
+    bool includePendingAttachmentsWhenHidden = false,
   }) async {
     final typedPrompt = (text ?? _composerCtrl.text).trim();
     final outgoingAttachments =
-        hiddenUserMessage ? const <_SageFileDraft>[] : _pendingAttachments;
+        hiddenUserMessage && !includePendingAttachmentsWhenHidden
+            ? const <_SageFileDraft>[]
+            : _pendingAttachments;
     final prompt = typedPrompt.isNotEmpty
         ? typedPrompt
         : outgoingAttachments.isNotEmpty
@@ -2945,6 +2996,53 @@ class _SageFileDraft {
       imageBase64: base64Encode(normalized.bytes),
       imageMediaType: normalized.mediaType,
       imageByteSize: normalized.bytes.length,
+    );
+  }
+
+  static Future<_SageFileDraft?> fromHandoffAttachment(
+    SageHandoffAttachment attachment,
+  ) async {
+    final path = attachment.path.trim();
+    if (path.isEmpty) return null;
+    final file = File(path);
+    if (!await file.exists()) return null;
+
+    final rawName = attachment.name.trim().isNotEmpty
+        ? attachment.name.trim()
+        : path.split(Platform.pathSeparator).last;
+    final ext = attachment.extension.trim().isNotEmpty
+        ? attachment.extension.trim().toLowerCase()
+        : _extensionForName(rawName);
+
+    if (_kSupportedSageImageExtensions.contains(ext)) {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty || bytes.length > _kMaxSageImageBytes) return null;
+      final normalized = await _normalizeSageImageBytes(
+        bytes: bytes,
+        extension: ext,
+      );
+      if (normalized == null) return null;
+      final normalizedName = normalized.extension == ext || ext.isEmpty
+          ? rawName
+          : '${rawName.replaceFirst(RegExp(r'\.[^.]+$'), '')}.${normalized.extension}';
+      return _SageFileDraft(
+        name: normalizedName,
+        path: path,
+        extension: normalized.extension,
+        imageBase64: base64Encode(normalized.bytes),
+        imageMediaType: normalized.mediaType,
+        imageByteSize: normalized.bytes.length,
+      );
+    }
+
+    if (!_kSupportedSageFileExtensions.contains(ext)) return null;
+    final extractedText = await _readTextFile(path, ext);
+    if (extractedText == null || extractedText.trim().isEmpty) return null;
+    return _SageFileDraft(
+      name: rawName,
+      path: path,
+      extension: ext,
+      extractedText: extractedText,
     );
   }
 

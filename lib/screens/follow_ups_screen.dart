@@ -1,8 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/follow_up_tasks_service.dart';
+import '../services/local_storage_paths.dart';
 import '../services/notification_nudge_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -10,6 +18,11 @@ import '../widgets/section_header.dart';
 import 'sage_screen.dart';
 
 const _followUpBuckets = <String>[
+  'apartment',
+  'housing',
+  'legal',
+  'finance',
+  'support',
   'job_application',
   'recruiter',
   'networking',
@@ -39,8 +52,27 @@ const _filterLabels = <String>[
   'Done',
 ];
 
-const _quickFollowUps =
-    <({String label, String title, String bucket, String status, String action})>[
+const _quickFollowUps = <({
+  String label,
+  String title,
+  String bucket,
+  String status,
+  String action
+})>[
+  (
+    label: 'Apartment',
+    title: 'Follow up on an apartment lead',
+    bucket: 'apartment',
+    status: 'active',
+    action: 'Send the message, book the tour, or submit the application',
+  ),
+  (
+    label: 'Housing',
+    title: 'Move a housing thread forward',
+    bucket: 'housing',
+    status: 'active',
+    action: 'Make the call, send the documents, or widen the search',
+  ),
   (
     label: 'Application',
     title: 'Follow up on a submitted application',
@@ -79,6 +111,120 @@ const _quickFollowUps =
 ];
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
+
+enum _FollowUpAttachmentSource {
+  photoLibrary,
+  camera,
+  files,
+}
+
+String _attachmentExtensionFromName(String name) {
+  final trimmed = name.trim();
+  final dot = trimmed.lastIndexOf('.');
+  if (dot <= 0 || dot == trimmed.length - 1) return '';
+  return trimmed.substring(dot + 1).toLowerCase();
+}
+
+String _attachmentNameFromPath(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  final slash = normalized.lastIndexOf('/');
+  return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+}
+
+String _sanitizeAttachmentFileName(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return 'attachment';
+  return trimmed.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+}
+
+Future<FollowUpAttachment?> _persistFollowUpAttachment(
+  FollowUpAttachment attachment,
+) async {
+  final sourcePath = attachment.path.trim();
+  if (sourcePath.isEmpty) return null;
+  final source = File(sourcePath);
+  if (!await source.exists()) return null;
+
+  final supportDir = await resolveAppSupportDirectory();
+  final attachmentsDir = Directory('${supportDir.path}/follow_up_attachments');
+  await attachmentsDir.create(recursive: true);
+
+  final extension = attachment.extension.trim().toLowerCase();
+  final rawName = attachment.name.trim().isNotEmpty
+      ? attachment.name.trim()
+      : _attachmentNameFromPath(sourcePath);
+  final safeName = _sanitizeAttachmentFileName(rawName);
+  final dot = safeName.lastIndexOf('.');
+  final baseName = dot > 0 ? safeName.substring(0, dot) : safeName;
+  final fileName = extension.isEmpty
+      ? safeName
+      : '${baseName}_${DateTime.now().microsecondsSinceEpoch}.$extension';
+  final targetPath = '${attachmentsDir.path}/$fileName';
+
+  if (source.absolute.path == targetPath) {
+    return attachment;
+  }
+
+  final copied = await source.copy(targetPath);
+  String? previewPath = attachment.previewPath;
+  String? previewBase64 = attachment.previewBase64;
+  if (attachment.isImage) {
+    final previewBytes = await _generateFollowUpPreviewBytes(copied);
+    if (previewBytes != null && previewBytes.isNotEmpty) {
+      previewBase64 = base64Encode(previewBytes);
+      final previewFile = File(
+        '${attachmentsDir.path}/${baseName}_${DateTime.now().microsecondsSinceEpoch}_preview.jpg',
+      );
+      await previewFile.writeAsBytes(previewBytes, flush: true);
+      previewPath = previewFile.path;
+    }
+  }
+  return FollowUpAttachment(
+    name: rawName,
+    path: copied.path,
+    extension: extension,
+    previewPath: previewPath,
+    previewBase64: previewBase64,
+  );
+}
+
+Future<Uint8List?> _generateFollowUpPreviewBytes(File file) async {
+  try {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+    final baked = img.bakeOrientation(decoded);
+    final resized = img.copyResize(
+      baked,
+      width: baked.width >= baked.height ? 320 : null,
+      height: baked.height > baked.width ? 320 : null,
+      interpolation: img.Interpolation.average,
+    );
+    return Uint8List.fromList(img.encodeJpg(resized, quality: 72));
+  } catch (_) {
+    return null;
+  }
+}
+
+Uint8List? _attachmentPreviewBytes(FollowUpAttachment attachment) {
+  final previewPath = attachment.previewPath?.trim();
+  if (previewPath != null && previewPath.isNotEmpty) {
+    final previewFile = File(previewPath);
+    if (previewFile.existsSync()) {
+      try {
+        return previewFile.readAsBytesSync();
+      } catch (_) {}
+    }
+  }
+  final preview = attachment.previewBase64?.trim();
+  if (preview == null || preview.isEmpty) return null;
+  try {
+    return base64Decode(preview);
+  } catch (_) {
+    return null;
+  }
+}
 
 class FollowUpsScreen extends StatefulWidget {
   const FollowUpsScreen({super.key});
@@ -138,7 +284,8 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
     });
   }
 
-  Future<void> _openEditor({FollowUpTask? existing, FollowUpTask? draft}) async {
+  Future<void> _openEditor(
+      {FollowUpTask? existing, FollowUpTask? draft}) async {
     final result = await Navigator.push<FollowUpTask>(
       context,
       CupertinoPageRoute(
@@ -194,16 +341,92 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
     await _saveTasks(next);
   }
 
+  Future<void> _addComment(
+    FollowUpTask task, {
+    required String body,
+    required List<FollowUpAttachment> attachments,
+  }) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty && attachments.isEmpty) return;
+    final now = DateTime.now();
+    final comment = FollowUpComment(
+      id: now.microsecondsSinceEpoch.toString(),
+      body: trimmed,
+      createdAt: now,
+      attachments: attachments,
+    );
+    await _updateTask(
+      task.copyWith(
+        comments: [...task.comments, comment],
+        lastTouchedAt: now,
+      ),
+    );
+  }
+
+  Future<FollowUpTask> _saveTaskFromWorkspace(FollowUpTask task) async {
+    await _updateTask(task);
+    return task;
+  }
+
+  Future<void> _openWorkspace(FollowUpTask task) async {
+    await Navigator.push<void>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _FollowUpWorkspaceScreen(
+            task: task,
+            onSaveTask: _saveTaskFromWorkspace,
+            onAddComment: (
+                {required task, required body, required attachments}) async {
+              await _addComment(
+                task,
+                body: body,
+                attachments: attachments,
+              );
+              return task.copyWith(
+                comments: [
+                  ...task.comments,
+                  FollowUpComment(
+                    id: DateTime.now().microsecondsSinceEpoch.toString(),
+                    body: body.trim(),
+                    createdAt: DateTime.now(),
+                    attachments: attachments,
+                  ),
+                ],
+              );
+            },
+            onDeleteTask: () => _deleteTask(task),
+            onAskSage: (item) => _openSagePressure(task: item),
+          ),
+        ),
+      ),
+    );
+    await _load();
+  }
+
   Future<void> _openSagePressure({FollowUpTask? task}) {
     final prefill = task == null
         ? 'Use my Follow-Ups context and tell me what is overdue, what I am avoiding, and exactly what I need to follow up on next.'
-        : 'Pressure me about this follow-up item: ${task.title}'
-            '${(task.counterparty ?? '').trim().isNotEmpty ? ' with ${task.counterparty!.trim()}' : ''}. '
-            'Use my follow-up context, call out whether I am stalling, and tell me the exact next move.';
+        : FollowUpTaskService.sagePressurePrompt(
+            task,
+            frame: 'Pressure me about this follow-up item.',
+          );
     return pushSageScreen(
       context,
       handoff: SageHandoff(
         prefillText: prefill,
+        initialAttachments: task == null
+            ? const []
+            : task.attachments
+                .map(
+                  (item) => SageHandoffAttachment(
+                    name: item.name,
+                    path: item.path,
+                    extension: item.extension,
+                  ),
+                )
+                .toList(),
         autoSendPrefill: true,
         autoStartGreeting: false,
         showDefaultWelcome: false,
@@ -236,15 +459,14 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
     );
   }
 
-  List<FollowUpTask> get _openTasks => _tasks.where((task) => task.isOpen).toList();
+  List<FollowUpTask> get _openTasks =>
+      _tasks.where((task) => task.isOpen).toList();
 
   int get _overdueCount => _openTasks.where((task) => task.isOverdue()).length;
 
-  int get _dueSoonCount =>
-      _openTasks.where((task) => task.isDueSoon()).length;
+  int get _dueSoonCount => _openTasks.where((task) => task.isDueSoon()).length;
 
-  int get _waitingCount =>
-      _openTasks.where((task) => task.isWaiting).length;
+  int get _waitingCount => _openTasks.where((task) => task.isWaiting).length;
 
   int get _doneCount => _tasks.where((task) => task.isDone).length;
 
@@ -258,7 +480,8 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
         return _tasks.where((task) => task.isDone).toList();
       default:
         return _tasks
-            .where((task) => task.isOverdue() || task.isDueSoon() || task.isActive)
+            .where(
+                (task) => task.isOverdue() || task.isDueSoon() || task.isActive)
             .toList();
     }
   }
@@ -299,10 +522,12 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
         .where((task) => !task.isOverdue() && task.isDueSoon())
         .toList();
     final active = filtered
-        .where((task) => task.isActive && !task.isOverdue() && !task.isDueSoon())
+        .where(
+            (task) => task.isActive && !task.isOverdue() && !task.isDueSoon())
         .toList();
     final waiting = filtered
-        .where((task) => task.isWaiting && !task.isOverdue() && !task.isDueSoon())
+        .where(
+            (task) => task.isWaiting && !task.isOverdue() && !task.isDueSoon())
         .toList();
     final done = filtered.where((task) => task.isDone).toList();
 
@@ -335,6 +560,7 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
               onEdit: () => _openEditor(existing: task),
               onDelete: () => _deleteTask(task),
               onAskSage: () => _openSagePressure(task: task),
+              onOpenWorkspace: () => _openWorkspace(task),
               onStatusChanged: (status) {
                 final now = DateTime.now();
                 return _updateTask(
@@ -757,6 +983,7 @@ class _FollowUpTaskCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onAskSage,
+    required this.onOpenWorkspace,
     required this.onStatusChanged,
   });
 
@@ -765,6 +992,7 @@ class _FollowUpTaskCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onAskSage;
+  final VoidCallback onOpenWorkspace;
   final Future<void> Function(String status) onStatusChanged;
 
   @override
@@ -882,6 +1110,8 @@ class _FollowUpTaskCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               task.notes!.trim(),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: JournalColors.textSecondary,
                 fontSize: 13,
@@ -909,7 +1139,87 @@ class _FollowUpTaskCard extends StatelessWidget {
                     fontSize: 12,
                   ),
                 ),
+              if (task.attachments.isNotEmpty)
+                Text(
+                  '${task.attachments.length} ${task.attachments.length == 1 ? 'photo' : 'photos'}',
+                  style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              if (task.comments.isNotEmpty)
+                Text(
+                  '${task.comments.length} ${task.comments.length == 1 ? 'update' : 'updates'}',
+                  style: const TextStyle(
+                    color: JournalColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
             ],
+          ),
+          const SizedBox(height: 16),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: onOpenWorkspace,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: _withAlpha(JournalColors.bgCardAlt, 0.88),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: JournalColors.borderBright),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _withAlpha(JournalColors.accent, 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _withAlpha(JournalColors.accent, 0.4),
+                      ),
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.square_grid_2x2,
+                      color: JournalColors.accent,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Open workspace',
+                          style: TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${task.attachments.length} ${task.attachments.length == 1 ? 'photo' : 'photos'} · ${task.comments.length} ${task.comments.length == 1 ? 'update' : 'updates'}',
+                          style: const TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    CupertinoIcons.chevron_right,
+                    color: JournalColors.textSecondary,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -945,6 +1255,302 @@ class _FollowUpTaskCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FollowUpWorkspaceScreen extends StatefulWidget {
+  const _FollowUpWorkspaceScreen({
+    required this.task,
+    required this.onSaveTask,
+    required this.onAddComment,
+    required this.onDeleteTask,
+    required this.onAskSage,
+  });
+
+  final FollowUpTask task;
+  final Future<FollowUpTask> Function(FollowUpTask task) onSaveTask;
+  final Future<FollowUpTask> Function({
+    required FollowUpTask task,
+    required String body,
+    required List<FollowUpAttachment> attachments,
+  }) onAddComment;
+  final Future<void> Function() onDeleteTask;
+  final Future<void> Function(FollowUpTask task) onAskSage;
+
+  @override
+  State<_FollowUpWorkspaceScreen> createState() =>
+      _FollowUpWorkspaceScreenState();
+}
+
+class _FollowUpWorkspaceScreenState extends State<_FollowUpWorkspaceScreen> {
+  late FollowUpTask _task;
+  final _dateTimeFormat = DateFormat('MMM d, yyyy · h:mm a');
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.task;
+  }
+
+  Future<void> _saveTask(FollowUpTask updated) async {
+    final saved = await widget.onSaveTask(updated);
+    if (!mounted) return;
+    setState(() => _task = saved);
+  }
+
+  Future<void> _editTask() async {
+    final result = await Navigator.push<FollowUpTask>(
+      context,
+      CupertinoPageRoute(
+        builder: (_) => DefaultTextStyle.merge(
+          style: const TextStyle(decoration: TextDecoration.none),
+          child: _FollowUpEditorScreen(task: _task),
+        ),
+      ),
+    );
+    if (result == null) return;
+    await _saveTask(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final overdue = _task.isOverdue();
+    final dueSoon = _task.isDueSoon();
+
+    return CupertinoPageScaffold(
+      backgroundColor: JournalColors.bgBase,
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: JournalColors.bgBase.withValues(alpha: 0.92),
+        border: const Border(
+          bottom: BorderSide(color: JournalColors.border, width: 0.5),
+        ),
+        middle: const Text(
+          'Task Workspace',
+          style: TextStyle(
+            color: JournalColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: _editTask,
+          child: const Icon(
+            CupertinoIcons.pencil,
+            color: JournalColors.textSecondary,
+            size: 18,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          children: [
+            GlassCard(
+              accentBorder: overdue || dueSoon,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _StatusPill(
+                        label: FollowUpTaskService.statusLabel(_task.status),
+                        color: overdue
+                            ? JournalColors.danger
+                            : dueSoon
+                                ? JournalColors.severity
+                                : JournalColors.accent,
+                      ),
+                      _StatusPill(
+                        label: FollowUpTaskService.priorityLabel(
+                          _task.priority,
+                        ),
+                        color: _priorityColor(_task.priority),
+                      ),
+                      _StatusPill(
+                        label: FollowUpTaskService.bucketLabel(_task.bucket),
+                        color: JournalColors.info,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    _task.title,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+                  ),
+                  if ((_task.counterparty ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _task.counterparty!.trim(),
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  if ((_task.nextAction ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'NEXT ACTION',
+                      style: TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _task.nextAction!.trim(),
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 16,
+                        height: 1.45,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  if ((_task.notes ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _task.notes!.trim(),
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (_task.attachments.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const SectionHeader(title: 'Photos'),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 120,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _task.attachments.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (_, index) => _FollowUpAttachmentTile(
+                    attachment: _task.attachments[index],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      Text(
+                        'Last touched ${_dateTimeFormat.format(_task.lastTouchedAt)}',
+                        style: const TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (_task.effectiveFollowUpAt != null)
+                        Text(
+                          'Follow up ${_dateTimeFormat.format(_task.effectiveFollowUpAt!)}',
+                          style: const TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _MiniActionChip(
+                        label: 'Active',
+                        selected: _task.status == 'active',
+                        onTap: () => _saveTask(
+                          _task.copyWith(
+                            status: 'active',
+                            lastTouchedAt: DateTime.now(),
+                            clearCompletedAt: true,
+                          ),
+                        ),
+                      ),
+                      _MiniActionChip(
+                        label: 'Waiting',
+                        selected: _task.status == 'waiting',
+                        onTap: () => _saveTask(
+                          _task.copyWith(
+                            status: 'waiting',
+                            lastTouchedAt: DateTime.now(),
+                            clearCompletedAt: true,
+                          ),
+                        ),
+                      ),
+                      _MiniActionChip(
+                        label: 'Done',
+                        selected: _task.status == 'done',
+                        onTap: () => _saveTask(
+                          _task.copyWith(
+                            status: 'done',
+                            lastTouchedAt: DateTime.now(),
+                            completedAt: DateTime.now(),
+                          ),
+                        ),
+                      ),
+                      _MiniActionChip(
+                        label: 'Ask Sage',
+                        selected: false,
+                        onTap: () => widget.onAskSage(_task),
+                      ),
+                      _MiniActionChip(
+                        label: 'Delete',
+                        selected: false,
+                        destructive: true,
+                        onTap: () async {
+                          await widget.onDeleteTask();
+                          if (!mounted) return;
+                          Navigator.of(this.context).pop();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            GlassCard(
+              child: _FollowUpCommentsSection(
+                comments: _task.comments,
+                dateTimeFormat: _dateTimeFormat,
+                onSubmit: ({required body, required attachments}) async {
+                  final updated = await widget.onAddComment(
+                    task: _task,
+                    body: body,
+                    attachments: attachments,
+                  );
+                  if (!mounted) return;
+                  setState(() => _task = updated);
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1033,6 +1639,345 @@ class _MiniActionChip extends StatelessWidget {
   }
 }
 
+class _FollowUpCommentsSection extends StatefulWidget {
+  const _FollowUpCommentsSection({
+    required this.comments,
+    required this.dateTimeFormat,
+    required this.onSubmit,
+  });
+
+  final List<FollowUpComment> comments;
+  final DateFormat dateTimeFormat;
+  final Future<void> Function({
+    required String body,
+    required List<FollowUpAttachment> attachments,
+  }) onSubmit;
+
+  @override
+  State<_FollowUpCommentsSection> createState() =>
+      _FollowUpCommentsSectionState();
+}
+
+class _FollowUpCommentsSectionState extends State<_FollowUpCommentsSection> {
+  final _commentController = TextEditingController();
+  final _imagePicker = ImagePicker();
+
+  List<FollowUpAttachment> _attachments = const [];
+  bool _submitting = false;
+  bool _pickingAttachments = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _chooseAttachmentSource() async {
+    if (_submitting || _pickingAttachments) return;
+    final source = await showCupertinoModalPopup<_FollowUpAttachmentSource>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Add Comment Photo'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _FollowUpAttachmentSource.photoLibrary),
+            child: const Text('Photo Library'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _FollowUpAttachmentSource.camera),
+            child: const Text('Take Photo'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (source == null) return;
+    switch (source) {
+      case _FollowUpAttachmentSource.photoLibrary:
+        await _pickPhotosFromLibrary();
+        break;
+      case _FollowUpAttachmentSource.camera:
+        await _pickPhotoFromCamera();
+        break;
+      case _FollowUpAttachmentSource.files:
+        break;
+    }
+  }
+
+  Future<void> _pickPhotosFromLibrary() async {
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickMultiImage(imageQuality: 85);
+      await _addAttachments(
+        picked
+            .map(
+              (item) => FollowUpAttachment(
+                name: item.name,
+                path: item.path,
+                extension: _attachmentExtensionFromName(item.name),
+              ),
+            )
+            .toList(),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _pickPhotoFromCamera() async {
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      await _addAttachments([
+        if (picked != null)
+          FollowUpAttachment(
+            name: picked.name,
+            path: picked.path,
+            extension: _attachmentExtensionFromName(picked.name),
+          ),
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _addAttachments(List<FollowUpAttachment> items) async {
+    if (items.isEmpty) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+      return;
+    }
+    final persisted = <FollowUpAttachment>[];
+    for (final item in items) {
+      final stable = await _persistFollowUpAttachment(item);
+      if (stable != null) persisted.add(stable);
+    }
+    if (!mounted) return;
+    setState(() {
+      _attachments = [
+        ..._attachments,
+        ...persisted.where(
+          (item) => !_attachments.any((existing) => existing.path == item.path),
+        ),
+      ];
+      _pickingAttachments = false;
+    });
+  }
+
+  void _removeAttachment(int index) {
+    setState(() {
+      _attachments = List<FollowUpAttachment>.from(_attachments)
+        ..removeAt(index);
+    });
+  }
+
+  Future<void> _submit() async {
+    final body = _commentController.text.trim();
+    if ((body.isEmpty && _attachments.isEmpty) || _submitting) return;
+    setState(() => _submitting = true);
+    await widget.onSubmit(body: body, attachments: _attachments);
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _attachments = const [];
+    });
+    _commentController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'COMMENTS',
+              style: TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${widget.comments.length}',
+              style: const TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        if (widget.comments.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          for (final comment in widget.comments.reversed) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _withAlpha(JournalColors.bgSurface, 0.86),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: JournalColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.dateTimeFormat.format(comment.createdAt),
+                    style: const TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (comment.body.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      comment.body.trim(),
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                  if (comment.attachments.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: comment.attachments.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, index) => _FollowUpAttachmentTile(
+                          attachment: comment.attachments[index],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+        const SizedBox(height: 10),
+        if (_attachments.isNotEmpty) ...[
+          SizedBox(
+            height: 120,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _attachments.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, index) => _FollowUpAttachmentTile(
+                attachment: _attachments[index],
+                onRemove: () => _removeAttachment(index),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        CupertinoTextField(
+          controller: _commentController,
+          minLines: 2,
+          maxLines: 5,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          style: const TextStyle(
+            color: JournalColors.textPrimary,
+            fontSize: 14,
+          ),
+          placeholder: 'Add a comment, update, or call note',
+          placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+          decoration: BoxDecoration(
+            color: JournalColors.bgSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: JournalColors.border),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _pickingAttachments ? null : _chooseAttachmentSource,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgSurface, 0.92),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: JournalColors.border),
+                ),
+                child: _pickingAttachments
+                    ? const CupertinoActivityIndicator(
+                        color: JournalColors.accent,
+                      )
+                    : const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.photo,
+                            color: JournalColors.textSecondary,
+                            size: 15,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Photo',
+                            style: TextStyle(
+                              color: JournalColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _submitting ? null : _submit,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.accent, 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: _submitting
+                    ? const CupertinoActivityIndicator(
+                        color: JournalColors.accent,
+                      )
+                    : const Text(
+                        'Add Comment',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _FollowUpEditorScreen extends StatefulWidget {
   const _FollowUpEditorScreen({this.task});
 
@@ -1043,17 +1988,20 @@ class _FollowUpEditorScreen extends StatefulWidget {
 }
 
 class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
+  final _imagePicker = ImagePicker();
   late final TextEditingController _titleController;
   late final TextEditingController _counterpartyController;
   late final TextEditingController _nextActionController;
   late final TextEditingController _notesController;
 
+  List<FollowUpAttachment> _attachments = const [];
   late String _bucket;
   late String _status;
   late String _priority;
   late DateTime _lastTouchedAt;
   DateTime? _followUpAt;
   bool _followUpTimeSet = false;
+  bool _pickingAttachments = false;
   bool _saving = false;
   String? _error;
 
@@ -1074,7 +2022,9 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
     _priority = task?.priority ?? 'normal';
     _lastTouchedAt = task?.lastTouchedAt ?? now;
     _followUpTimeSet = task?.followUpTimeSet ?? false;
-    _followUpAt = task?.followUpAt ?? DateTime(now.year, now.month, now.day + 3);
+    _followUpAt =
+        task?.followUpAt ?? DateTime(now.year, now.month, now.day + 3);
+    _attachments = List<FollowUpAttachment>.from(task?.attachments ?? const []);
   }
 
   @override
@@ -1234,8 +2184,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
       return;
     }
 
-    if ((_status == 'active' || _status == 'waiting') &&
-        nextAction.isEmpty) {
+    if ((_status == 'active' || _status == 'waiting') && nextAction.isEmpty) {
       setState(() => _error = 'Name the exact next action.');
       return;
     }
@@ -1263,15 +2212,164 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
       counterparty: _normalizedValue(_counterpartyController.text),
       nextAction: _normalizedValue(nextAction),
       notes: _normalizedValue(_notesController.text),
-      followUpAt:
-          (_status == 'done' || _status == 'archived')
-              ? null
-              : _effectiveFollowUpAt,
+      followUpAt: (_status == 'done' || _status == 'archived')
+          ? null
+          : _effectiveFollowUpAt,
       followUpTimeSet: _followUpTimeSet,
       completedAt: _status == 'done' ? (existing?.completedAt ?? now) : null,
+      attachments: _attachments,
     );
 
     Navigator.of(context).pop(task);
+  }
+
+  Future<void> _chooseAttachmentSource() async {
+    if (_saving || _pickingAttachments) return;
+    final source = await showCupertinoModalPopup<_FollowUpAttachmentSource>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Add Attachment'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _FollowUpAttachmentSource.photoLibrary),
+            child: const Text('Photo Library'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _FollowUpAttachmentSource.camera),
+            child: const Text('Take Photo'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () =>
+                Navigator.pop(context, _FollowUpAttachmentSource.files),
+            child: const Text('Browse Files'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (source == null) return;
+    switch (source) {
+      case _FollowUpAttachmentSource.photoLibrary:
+        await _pickPhotosFromLibrary();
+        break;
+      case _FollowUpAttachmentSource.camera:
+        await _pickPhotoFromCamera();
+        break;
+      case _FollowUpAttachmentSource.files:
+        await _pickFileAttachments();
+        break;
+    }
+  }
+
+  Future<void> _pickPhotosFromLibrary() async {
+    if (_saving || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickMultiImage(imageQuality: 85);
+      await _addAttachmentsFromPaths(
+        picked
+            .map(
+              (item) => FollowUpAttachment(
+                name: item.name,
+                path: item.path,
+                extension: _attachmentExtensionFromName(item.name),
+              ),
+            )
+            .toList(),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _pickPhotoFromCamera() async {
+    if (_saving || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      await _addAttachmentsFromPaths([
+        if (picked != null)
+          FollowUpAttachment(
+            name: picked.name,
+            path: picked.path,
+            extension: _attachmentExtensionFromName(picked.name),
+          ),
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _pickFileAttachments() async {
+    if (_saving || _pickingAttachments) return;
+    setState(() => _pickingAttachments = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        type: FileType.any,
+      );
+      final selected = result?.files ?? const <PlatformFile>[];
+      await _addAttachmentsFromPaths(
+        selected
+            .where((file) => (file.path ?? '').trim().isNotEmpty)
+            .map(
+              (file) => FollowUpAttachment(
+                name: file.name.trim().isNotEmpty
+                    ? file.name
+                    : _attachmentNameFromPath(file.path!),
+                path: file.path!,
+                extension: _attachmentExtensionFromName(file.name),
+              ),
+            )
+            .toList(),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+    }
+  }
+
+  Future<void> _addAttachmentsFromPaths(List<FollowUpAttachment> items) async {
+    if (items.isEmpty) {
+      if (!mounted) return;
+      setState(() => _pickingAttachments = false);
+      return;
+    }
+    final persisted = <FollowUpAttachment>[];
+    for (final item in items) {
+      final stable = await _persistFollowUpAttachment(item);
+      if (stable != null) persisted.add(stable);
+    }
+    if (!mounted) return;
+    final next = List<FollowUpAttachment>.from(_attachments);
+    for (final item in persisted) {
+      if (item.path.trim().isEmpty) continue;
+      final exists = next.any((existing) => existing.path == item.path);
+      if (!exists) next.add(item);
+    }
+    setState(() {
+      _attachments = next;
+      _pickingAttachments = false;
+    });
+  }
+
+  void _removeAttachment(int index) {
+    setState(() {
+      _attachments = List<FollowUpAttachment>.from(_attachments)
+        ..removeAt(index);
+    });
   }
 
   @override
@@ -1332,7 +2430,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Keep this scoped to something that needs another touch, response, deadline, or push. Priority controls how hard the app nudges you. If you do not set a time, the reminder defaults from priority.',
+                    'Keep this scoped to something that needs another touch, response, deadline, or push. This can be job search, apartment hunting, housing, legal, money, or personal logistics. Priority controls how hard the app nudges you. If you do not set a time, the reminder defaults from priority.',
                     style: TextStyle(
                       color: JournalColors.textSecondary,
                       fontSize: 14,
@@ -1349,7 +2447,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
               label: 'Title',
               child: _FollowUpTextField(
                 controller: _titleController,
-                placeholder: 'Senior Flutter role at Acme',
+                placeholder: 'Apartment tour follow-up with Oak Street',
               ),
             ),
             const SizedBox(height: 12),
@@ -1357,7 +2455,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
               label: 'Company or person',
               child: _FollowUpTextField(
                 controller: _counterpartyController,
-                placeholder: 'Acme / recruiter / hiring manager',
+                placeholder: 'Leasing agent / recruiter / hiring manager',
               ),
             ),
             const SizedBox(height: 12),
@@ -1365,7 +2463,7 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
               label: 'Next action',
               child: _FollowUpTextField(
                 controller: _nextActionController,
-                placeholder: 'Email recruiter, send portfolio, prep answers',
+                placeholder: 'Send the message, book the tour, submit docs',
               ),
             ),
             const SizedBox(height: 24),
@@ -1458,7 +2556,8 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                                   _effectiveFollowUpAt ?? DateTime.now(),
                               onChanged: (value) => setState(() {
                                 final current = _effectiveFollowUpAt ??
-                                    _defaultFollowUpForPriority(value, _priority);
+                                    _defaultFollowUpForPriority(
+                                        value, _priority);
                                 _followUpAt = DateTime(
                                   value.year,
                                   value.month,
@@ -1516,6 +2615,110 @@ class _FollowUpEditorScreenState extends State<_FollowUpEditorScreen> {
                               style: TextStyle(color: JournalColors.textMuted),
                             ),
                           ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            const SectionHeader(title: 'Attachments'),
+            const SizedBox(height: 12),
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_attachments.isNotEmpty) ...[
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _attachments.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, index) => _FollowUpAttachmentTile(
+                          attachment: _attachments[index],
+                          onRemove: () => _removeAttachment(index),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  GestureDetector(
+                    onTap: _pickingAttachments ? null : _chooseAttachmentSource,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.bgCardAlt, 0.94),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: _attachments.isNotEmpty
+                              ? JournalColors.borderBright
+                              : JournalColors.border,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: _attachments.isNotEmpty
+                                  ? _withAlpha(JournalColors.accent, 0.16)
+                                  : _withAlpha(JournalColors.bgSurface, 0.92),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: _attachments.isNotEmpty
+                                    ? JournalColors.borderBright
+                                    : JournalColors.border,
+                              ),
+                            ),
+                            child: _pickingAttachments
+                                ? const CupertinoActivityIndicator(
+                                    color: JournalColors.accent,
+                                  )
+                                : const Icon(
+                                    CupertinoIcons.paperclip,
+                                    color: JournalColors.textSecondary,
+                                    size: 18,
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _attachments.isEmpty
+                                  ? 'Add screenshots, lease PDFs, application docs, or photos'
+                                  : 'Add more attachments',
+                              style: const TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (_attachments.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _withAlpha(JournalColors.accent, 0.18),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_attachments.length}',
+                                style: const TextStyle(
+                                  color: JournalColors.accent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1651,8 +2854,9 @@ class _SelectableChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color:
-                selected ? JournalColors.textPrimary : JournalColors.textSecondary,
+            color: selected
+                ? JournalColors.textPrimary
+                : JournalColors.textSecondary,
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
@@ -1717,6 +2921,330 @@ class _DateRow extends StatelessWidget {
       ],
     );
   }
+}
+
+class _FollowUpAttachmentTile extends StatelessWidget {
+  const _FollowUpAttachmentTile({
+    required this.attachment,
+    this.onRemove,
+  });
+
+  final FollowUpAttachment attachment;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = attachment.isImage;
+    final previewBytes = _attachmentPreviewBytes(attachment);
+    final tile = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: isImage ? 108 : 94,
+          height: 112,
+          decoration: BoxDecoration(
+            color: _withAlpha(JournalColors.bgCardAlt, 0.94),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: JournalColors.borderBright),
+            boxShadow: isImage
+                ? [
+                    BoxShadow(
+                      color: _withAlpha(JournalColors.bgBase, 0.28),
+                      blurRadius: 14,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(17),
+            child: isImage
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (previewBytes != null)
+                        Image.memory(previewBytes, fit: BoxFit.cover)
+                      else if (attachment.path.isNotEmpty)
+                        Image.file(
+                          File(attachment.path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const _FollowUpAttachmentIcon(
+                            isImage: true,
+                            size: 108,
+                            iconSize: 28,
+                          ),
+                        )
+                      else
+                        const _FollowUpAttachmentIcon(
+                          isImage: true,
+                          size: 108,
+                          iconSize: 28,
+                        ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                _withAlpha(JournalColors.bgBase, 0),
+                                _withAlpha(JournalColors.bgBase, 0.74),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: _FollowUpAttachmentBadge(
+                          label: attachment.displayExtension,
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: _withAlpha(JournalColors.bgBase, 0.72),
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: JournalColors.borderBright),
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.arrow_up_left_arrow_down_right,
+                            color: JournalColors.textPrimary,
+                            size: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(9),
+                    child: Column(
+                      children: [
+                        const _FollowUpAttachmentIcon(
+                          isImage: false,
+                          size: 40,
+                          iconSize: 16,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          attachment.displayExtension,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: JournalColors.accent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              attachment.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: JournalColors.textSecondary,
+                                fontSize: 10,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+        if (onRemove != null)
+          Positioned(
+            top: -4,
+            right: -4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgBase, 0.92),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                child: const Icon(
+                  CupertinoIcons.xmark,
+                  size: 12,
+                  color: JournalColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (!isImage || attachment.path.isEmpty) return tile;
+    return GestureDetector(
+      onTap: () => _showFollowUpImageLightbox(context, attachment),
+      child: tile,
+    );
+  }
+}
+
+class _FollowUpAttachmentBadge extends StatelessWidget {
+  const _FollowUpAttachmentBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgBase, 0.78),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowUpAttachmentIcon extends StatelessWidget {
+  const _FollowUpAttachmentIcon({
+    required this.isImage,
+    this.size = 34,
+    this.iconSize = 18,
+  });
+
+  final bool isImage;
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.accent, 0.16),
+        borderRadius: BorderRadius.circular(size >= 34 ? 12 : 10),
+        border: Border.all(color: JournalColors.borderBright),
+      ),
+      child: Icon(
+        isImage ? CupertinoIcons.photo : CupertinoIcons.doc_text,
+        color: JournalColors.textPrimary,
+        size: iconSize,
+      ),
+    );
+  }
+}
+
+Future<void> _showFollowUpImageLightbox(
+  BuildContext context,
+  FollowUpAttachment attachment,
+) {
+  return showCupertinoDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (context) {
+      return CupertinoPopupSurface(
+        isSurfacePainted: false,
+        child: Container(
+          color: _withAlpha(JournalColors.bgBase, 0.96),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 0.9,
+                    maxScale: 4,
+                    child: () {
+                      final previewBytes = _attachmentPreviewBytes(attachment);
+                      if (attachment.path.isNotEmpty) {
+                        return Image.file(
+                          File(attachment.path),
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => previewBytes != null
+                              ? Image.memory(previewBytes, fit: BoxFit.contain)
+                              : const _FollowUpAttachmentIcon(
+                                  isImage: true,
+                                  size: 120,
+                                  iconSize: 42,
+                                ),
+                        );
+                      }
+                      if (previewBytes != null) {
+                        return Image.memory(previewBytes, fit: BoxFit.contain);
+                      }
+                      return const _FollowUpAttachmentIcon(
+                        isImage: true,
+                        size: 120,
+                        iconSize: 42,
+                      );
+                    }(),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  top: 10,
+                  right: 64,
+                  child: Text(
+                    attachment.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 4,
+                  right: 12,
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(40, 40),
+                    onPressed: () => Navigator.pop(context),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.bgSurface, 0.82),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: JournalColors.borderBright),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.xmark,
+                        color: JournalColors.textPrimary,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 Color _priorityColor(String priority) {

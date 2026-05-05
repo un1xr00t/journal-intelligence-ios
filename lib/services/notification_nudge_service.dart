@@ -645,14 +645,15 @@ class NotificationNudgeService {
         title: summary.overdueCount == 1
             ? 'Follow-up overdue'
             : '${summary.overdueCount} follow-ups overdue',
-        body: summary.overdueCount == 1
-            ? '${first.title} needs a real next move.'
-            : 'Start with ${first.title} and clear the oldest stalled thread.',
+        body: FollowUpTaskService.overdueNotificationBody(summary),
         when: primaryTime,
         route: '/follow-ups',
         routeSage: _buildSageRoute(
           summary.overdueCount == 1
-              ? 'Pressure me to follow up on ${first.title}. Tell me the exact next move.'
+              ? FollowUpTaskService.sagePressurePrompt(
+                  first,
+                  frame: 'Pressure me to move this overdue follow-up.',
+                )
               : 'Use my Follow-Ups and pressure me about the overdue items. Tell me what to do first.',
         ),
       );
@@ -668,7 +669,11 @@ class NotificationNudgeService {
           ),
           route: '/follow-ups',
           routeSage: _buildSageRoute(
-            'Be direct. I still have overdue follow-up pressure and need to move on ${first.title}.',
+            FollowUpTaskService.sagePressurePrompt(
+              first,
+              frame:
+                  'Be direct. This overdue follow-up is still sitting there.',
+            ),
           ),
         );
       }
@@ -684,14 +689,16 @@ class NotificationNudgeService {
           title: summary.dueSoonCount == 1
               ? 'Follow-up due soon'
               : '${summary.dueSoonCount} follow-ups due soon',
-          body: summary.dueSoonCount == 1
-              ? '${first.title} is coming up. Get ahead of it now.'
-              : '${first.title} is first in line. Knock out the next touch before it slips.',
+          body: FollowUpTaskService.dueSoonNotificationBody(summary),
           when: when,
           route: '/follow-ups',
           routeSage: _buildSageRoute(
             summary.dueSoonCount == 1
-                ? 'Use my Follow-Ups and help me get ahead of ${first.title} before it becomes overdue.'
+                ? FollowUpTaskService.sagePressurePrompt(
+                    first,
+                    frame:
+                        'Use my Follow-Ups and help me get ahead of this before it becomes overdue.',
+                  )
                 : 'Use my Follow-Ups and tell me which due-soon item I should knock out first.',
           ),
         );
@@ -709,7 +716,10 @@ class NotificationNudgeService {
               when: extraWhen,
               route: '/follow-ups',
               routeSage: _buildSageRoute(
-                'Push me to handle ${first.title} before it becomes overdue.',
+                FollowUpTaskService.sagePressurePrompt(
+                  first,
+                  frame: 'Push me to handle this before it becomes overdue.',
+                ),
               ),
             );
           }
@@ -722,8 +732,7 @@ class NotificationNudgeService {
       await _scheduleOneOffNotification(
         id: _followUpsWaitingId,
         title: 'Still waiting?',
-        body:
-            '${first.title} has been sitting quiet. Decide whether to ping, park it, or close the loop.',
+        body: FollowUpTaskService.waitingNotificationBody(first),
         when: _nextReminderTime(
           now,
           preferredHour: 18,
@@ -731,7 +740,11 @@ class NotificationNudgeService {
         ),
         route: '/follow-ups',
         routeSage: _buildSageRoute(
-          'Use my Follow-Ups and help me decide what to do about the waiting items that have gone stale.',
+          FollowUpTaskService.sagePressurePrompt(
+            first,
+            frame:
+                'Use my Follow-Ups and help me decide what to do with this stale waiting thread.',
+          ),
         ),
       );
     }

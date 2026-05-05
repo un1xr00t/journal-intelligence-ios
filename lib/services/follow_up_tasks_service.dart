@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
+import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'local_storage_paths.dart';
 
 DateTime _startOfDay(DateTime date) {
   return DateTime(date.year, date.month, date.day);
@@ -11,6 +16,124 @@ String? _normalizedText(dynamic value) {
   final text = value?.toString().trim();
   if (text == null || text.isEmpty) return null;
   return text;
+}
+
+class FollowUpAttachment {
+  const FollowUpAttachment({
+    required this.name,
+    required this.path,
+    required this.extension,
+    this.previewPath,
+    this.previewBase64,
+  });
+
+  final String name;
+  final String path;
+  final String extension;
+  final String? previewPath;
+  final String? previewBase64;
+
+  bool get isImage => switch (extension.toLowerCase()) {
+        'jpg' || 'jpeg' || 'png' || 'webp' || 'gif' || 'heic' || 'heif' => true,
+        _ => false,
+      };
+
+  String get displayExtension =>
+      extension.isNotEmpty ? extension.toUpperCase() : 'FILE';
+
+  FollowUpAttachment copyWith({
+    String? name,
+    String? path,
+    String? extension,
+    String? previewPath,
+    String? previewBase64,
+  }) {
+    return FollowUpAttachment(
+      name: name ?? this.name,
+      path: path ?? this.path,
+      extension: extension ?? this.extension,
+      previewPath: previewPath ?? this.previewPath,
+      previewBase64: previewBase64 ?? this.previewBase64,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'path': path,
+        'extension': extension,
+        if (previewPath != null && previewPath!.trim().isNotEmpty)
+          'preview_path': previewPath,
+        if (previewBase64 != null && previewBase64!.trim().isNotEmpty)
+          'preview_base64': previewBase64,
+      };
+
+  factory FollowUpAttachment.fromJson(Map<String, dynamic> json) {
+    return FollowUpAttachment(
+      name: _normalizedText(json['name']) ?? 'attachment',
+      path: _normalizedText(json['path']) ?? '',
+      extension: _normalizedText(json['extension']) ?? '',
+      previewPath: _normalizedText(json['preview_path']),
+      previewBase64: _normalizedText(json['preview_base64']),
+    );
+  }
+}
+
+class FollowUpComment {
+  const FollowUpComment({
+    required this.id,
+    required this.body,
+    required this.createdAt,
+    this.attachments = const [],
+  });
+
+  final String id;
+  final String body;
+  final DateTime createdAt;
+  final List<FollowUpAttachment> attachments;
+
+  FollowUpComment copyWith({
+    String? id,
+    String? body,
+    DateTime? createdAt,
+    List<FollowUpAttachment>? attachments,
+  }) {
+    return FollowUpComment(
+      id: id ?? this.id,
+      body: body ?? this.body,
+      createdAt: createdAt ?? this.createdAt,
+      attachments: attachments ?? this.attachments,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'body': body,
+        'created_at': createdAt.toIso8601String(),
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+      };
+
+  factory FollowUpComment.fromJson(Map<String, dynamic> json) {
+    return FollowUpComment(
+      id: json['id']?.toString() ?? '',
+      body: _normalizedText(json['body']) ?? '',
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      attachments: (json['attachments'] as List?)
+              ?.whereType<Map>()
+              .map(
+                (item) => FollowUpAttachment.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .where(
+                (item) =>
+                    item.path.trim().isNotEmpty ||
+                    (item.previewBase64 ?? '').trim().isNotEmpty,
+              )
+              .toList() ??
+          const [],
+    );
+  }
 }
 
 class FollowUpTask {
@@ -28,6 +151,8 @@ class FollowUpTask {
     this.followUpAt,
     this.followUpTimeSet = false,
     this.completedAt,
+    this.attachments = const [],
+    this.comments = const [],
   });
 
   final String id;
@@ -43,6 +168,8 @@ class FollowUpTask {
   final DateTime? followUpAt;
   final bool followUpTimeSet;
   final DateTime? completedAt;
+  final List<FollowUpAttachment> attachments;
+  final List<FollowUpComment> comments;
 
   bool get isDone => status == 'done';
   bool get isArchived => status == 'archived';
@@ -88,6 +215,8 @@ class FollowUpTask {
     bool? followUpTimeSet,
     DateTime? completedAt,
     bool clearCompletedAt = false,
+    List<FollowUpAttachment>? attachments,
+    List<FollowUpComment>? comments,
   }) {
     return FollowUpTask(
       id: id ?? this.id,
@@ -102,8 +231,9 @@ class FollowUpTask {
       notes: notes ?? this.notes,
       followUpAt: clearFollowUpAt ? null : (followUpAt ?? this.followUpAt),
       followUpTimeSet: followUpTimeSet ?? this.followUpTimeSet,
-      completedAt:
-          clearCompletedAt ? null : (completedAt ?? this.completedAt),
+      completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
+      attachments: attachments ?? this.attachments,
+      comments: comments ?? this.comments,
     );
   }
 
@@ -121,6 +251,8 @@ class FollowUpTask {
         'follow_up_at': followUpAt?.toIso8601String(),
         'follow_up_time_set': followUpTimeSet,
         'completed_at': completedAt?.toIso8601String(),
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+        'comments': comments.map((item) => item.toJson()).toList(),
       };
 
   factory FollowUpTask.fromJson(Map<String, dynamic> json) {
@@ -144,6 +276,31 @@ class FollowUpTask {
             DateTime.tryParse(json['follow_up_at']?.toString() ?? ''),
           ),
       completedAt: DateTime.tryParse(json['completed_at']?.toString() ?? ''),
+      attachments: (json['attachments'] as List?)
+              ?.whereType<Map>()
+              .map(
+                (item) => FollowUpAttachment.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .where(
+                (item) =>
+                    item.path.trim().isNotEmpty ||
+                    (item.previewBase64 ?? '').trim().isNotEmpty,
+              )
+              .toList() ??
+          const [],
+      comments: (json['comments'] as List?)
+              ?.whereType<Map>()
+              .map(
+                (item) => FollowUpComment.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .where((item) =>
+                  item.body.trim().isNotEmpty || item.attachments.isNotEmpty)
+              .toList() ??
+          const [],
     );
   }
 }
@@ -164,8 +321,12 @@ class FollowUpTaskService {
         .map((item) => FollowUpTask.fromJson(Map<String, dynamic>.from(item)))
         .where((item) => item.title.trim().isNotEmpty)
         .toList();
-    tasks.sort(compareTasks);
-    return tasks;
+    final repaired = await _repairTaskAttachments(tasks);
+    if (repaired.$2) {
+      await saveTasks(repaired.$1);
+    }
+    repaired.$1.sort(compareTasks);
+    return repaired.$1;
   }
 
   Future<void> saveTasks(List<FollowUpTask> tasks) async {
@@ -175,6 +336,233 @@ class FollowUpTaskService {
       _storageKey,
       jsonEncode(sorted.map((task) => task.toJson()).toList()),
     );
+  }
+
+  Future<(List<FollowUpTask>, bool)> _repairTaskAttachments(
+    List<FollowUpTask> tasks,
+  ) async {
+    var changed = false;
+    final repairedTasks = <FollowUpTask>[];
+    for (final task in tasks) {
+      var taskChanged = false;
+      final repairedAttachments = <FollowUpAttachment>[];
+      for (final attachment in task.attachments) {
+        final repaired = await _migrateAttachmentIfNeeded(attachment);
+        if (repaired.path != attachment.path ||
+            repaired.name != attachment.name ||
+            repaired.extension != attachment.extension) {
+          taskChanged = true;
+        }
+        repairedAttachments.add(repaired);
+      }
+      if (taskChanged) {
+        changed = true;
+        repairedTasks.add(task.copyWith(attachments: repairedAttachments));
+      } else {
+        repairedTasks.add(task);
+      }
+
+      if (task.comments.isNotEmpty) {
+        final baseTask = repairedTasks.removeLast();
+        var commentsChanged = false;
+        final repairedComments = <FollowUpComment>[];
+        for (final comment in baseTask.comments) {
+          var commentChanged = false;
+          final repairedCommentAttachments = <FollowUpAttachment>[];
+          for (final attachment in comment.attachments) {
+            final repaired = await _migrateAttachmentIfNeeded(attachment);
+            if (repaired.path != attachment.path ||
+                repaired.name != attachment.name ||
+                repaired.extension != attachment.extension) {
+              commentChanged = true;
+            }
+            repairedCommentAttachments.add(repaired);
+          }
+          if (commentChanged) {
+            commentsChanged = true;
+            repairedComments.add(
+              comment.copyWith(attachments: repairedCommentAttachments),
+            );
+          } else {
+            repairedComments.add(comment);
+          }
+        }
+        if (commentsChanged) {
+          changed = true;
+          repairedTasks.add(baseTask.copyWith(comments: repairedComments));
+        } else {
+          repairedTasks.add(baseTask);
+        }
+      }
+    }
+    return (repairedTasks, changed);
+  }
+
+  Future<FollowUpAttachment> _migrateAttachmentIfNeeded(
+    FollowUpAttachment attachment,
+  ) async {
+    final inlinePreview = attachment.previewBase64?.trim();
+    final sourcePath = attachment.path.trim();
+    if (sourcePath.isEmpty) return attachment;
+
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      if (attachment.isImage &&
+          (inlinePreview == null || inlinePreview.isEmpty)) {
+        final previewFromFile = await _loadPreviewBase64FromPreviewPath(
+          attachment,
+        );
+        if (previewFromFile != null && previewFromFile.isNotEmpty) {
+          return attachment.copyWith(previewBase64: previewFromFile);
+        }
+      }
+      final repairedPath = await _resolveAttachmentPathByName(attachment);
+      if (repairedPath != null) {
+        return attachment.copyWith(path: repairedPath);
+      }
+      return attachment;
+    }
+
+    final supportDir = await resolveAppSupportDirectory();
+    final attachmentsDir = Directory(
+      '${supportDir.path}/follow_up_attachments',
+    );
+    await attachmentsDir.create(recursive: true);
+
+    final normalizedSource = source.absolute.path;
+    final normalizedTargetRoot = attachmentsDir.absolute.path;
+    if (normalizedSource.startsWith(normalizedTargetRoot)) {
+      if (attachment.isImage) {
+        final previewBytes = await _generateAttachmentPreviewBytes(source);
+        final previewPath = await _ensureAttachmentPreviewFile(
+          source,
+          attachmentsDir,
+          attachment,
+        );
+        final previewBase64 = previewBytes != null && previewBytes.isNotEmpty
+            ? base64Encode(previewBytes)
+            : inlinePreview;
+        if ((attachment.previewPath ?? '').trim() != (previewPath ?? '') ||
+            (attachment.previewBase64 ?? '').trim() !=
+                (previewBase64 ?? '').trim()) {
+          return attachment.copyWith(
+            previewPath: previewPath,
+            previewBase64: previewBase64,
+          );
+        }
+      }
+      return attachment;
+    }
+
+    final baseName = attachment.name.trim().isNotEmpty
+        ? attachment.name.trim()
+        : source.uri.pathSegments.isNotEmpty
+            ? source.uri.pathSegments.last
+            : 'attachment';
+    final sanitized = _sanitizeAttachmentFileName(baseName);
+    final extension = attachment.extension.trim().toLowerCase();
+    final dot = sanitized.lastIndexOf('.');
+    final stem = dot > 0 ? sanitized.substring(0, dot) : sanitized;
+    final targetName = extension.isEmpty
+        ? '${stem}_${DateTime.now().microsecondsSinceEpoch}'
+        : '${stem}_${DateTime.now().microsecondsSinceEpoch}.$extension';
+    final copied = await source.copy('${attachmentsDir.path}/$targetName');
+    final previewBytes = attachment.isImage
+        ? await _generateAttachmentPreviewBytes(copied)
+        : null;
+    final previewPath = attachment.isImage
+        ? await _ensureAttachmentPreviewFile(copied, attachmentsDir, attachment)
+        : attachment.previewPath;
+    return FollowUpAttachment(
+      name: baseName,
+      path: copied.path,
+      extension: extension,
+      previewPath: previewPath,
+      previewBase64: previewBytes != null && previewBytes.isNotEmpty
+          ? base64Encode(previewBytes)
+          : inlinePreview,
+    );
+  }
+
+  Future<String?> _resolveAttachmentPathByName(
+    FollowUpAttachment attachment,
+  ) async {
+    final supportDir = await resolveAppSupportDirectory();
+    final attachmentsDir = Directory(
+      '${supportDir.path}/follow_up_attachments',
+    );
+    if (!await attachmentsDir.exists()) return null;
+
+    final candidates = <String>{
+      attachment.name.trim(),
+      attachment.path.trim().split('/').last,
+    }.where((item) => item.isNotEmpty).toSet();
+
+    for (final candidate in candidates) {
+      final file = File('${attachmentsDir.path}/$candidate');
+      if (await file.exists()) return file.path;
+    }
+
+    return null;
+  }
+
+  Future<String?> _loadPreviewBase64FromPreviewPath(
+    FollowUpAttachment attachment,
+  ) async {
+    final previewPath = attachment.previewPath?.trim();
+    if (previewPath == null || previewPath.isEmpty) return null;
+    final previewFile = File(previewPath);
+    if (!await previewFile.exists()) return null;
+    try {
+      final bytes = await previewFile.readAsBytes();
+      if (bytes.isEmpty) return null;
+      return base64Encode(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _ensureAttachmentPreviewFile(
+    File file,
+    Directory attachmentsDir,
+    FollowUpAttachment attachment,
+  ) async {
+    final existingPreviewPath = attachment.previewPath?.trim();
+    if (existingPreviewPath != null && existingPreviewPath.isNotEmpty) {
+      final existing = File(existingPreviewPath);
+      if (await existing.exists()) return existing.path;
+    }
+    final previewBytes = await _generateAttachmentPreviewBytes(file);
+    if (previewBytes == null || previewBytes.isEmpty) return null;
+    final safeBase = _sanitizeAttachmentFileName(
+      attachment.name.trim().isNotEmpty ? attachment.name.trim() : 'attachment',
+    );
+    final dot = safeBase.lastIndexOf('.');
+    final stem = dot > 0 ? safeBase.substring(0, dot) : safeBase;
+    final previewFile = File(
+      '${attachmentsDir.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}_preview.jpg',
+    );
+    await previewFile.writeAsBytes(previewBytes, flush: true);
+    return previewFile.path;
+  }
+
+  Future<Uint8List?> _generateAttachmentPreviewBytes(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return null;
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+      final baked = img.bakeOrientation(decoded);
+      final resized = img.copyResize(
+        baked,
+        width: baked.width >= baked.height ? 320 : null,
+        height: baked.height > baked.width ? 320 : null,
+        interpolation: img.Interpolation.average,
+      );
+      return Uint8List.fromList(img.encodeJpg(resized, quality: 72));
+    } catch (_) {
+      return null;
+    }
   }
 
   String buildSageContext(List<FollowUpTask> tasks) {
@@ -319,6 +707,16 @@ class FollowUpTaskService {
 
   static String bucketLabel(String bucket) {
     switch (bucket) {
+      case 'apartment':
+        return 'Apartment';
+      case 'housing':
+        return 'Housing';
+      case 'legal':
+        return 'Legal';
+      case 'finance':
+        return 'Finance';
+      case 'support':
+        return 'Support';
       case 'job_application':
         return 'Job application';
       case 'recruiter':
@@ -372,6 +770,180 @@ class FollowUpTaskService {
         return 3;
     }
   }
+
+  static String pressureHeadline(FollowUpTaskSummary summary) {
+    final nextTask = summary.nextTask;
+    if (summary.overdueCount > 0 && nextTask != null) {
+      return summary.overdueCount == 1
+          ? '${bucketLabel(nextTask.bucket)} follow-up is overdue'
+          : '${summary.overdueCount} follow-ups are overdue';
+    }
+    if (summary.dueSoonCount > 0 && nextTask != null) {
+      return summary.dueSoonCount == 1
+          ? '${bucketLabel(nextTask.bucket)} follow-up is due soon'
+          : '${summary.dueSoonCount} follow-ups are due soon';
+    }
+    if (summary.waitingCount > 0 && nextTask != null) {
+      return summary.waitingCount == 1
+          ? '${bucketLabel(nextTask.bucket)} thread is waiting on a reply'
+          : '${summary.waitingCount} threads are waiting on replies';
+    }
+    return 'You have live follow-up pressure building';
+  }
+
+  static String pressureBody(FollowUpTaskSummary summary) {
+    final nextTask = summary.nextTask;
+    if (nextTask == null) {
+      return 'Open Follow-Ups and pick one thread to move today.';
+    }
+
+    final nextAction = nextTask.nextAction?.trim();
+    if (nextAction != null && nextAction.isNotEmpty) {
+      final lead = switch (nextTask.bucket) {
+        'apartment' => 'Apartment move',
+        'housing' => 'Housing move',
+        'legal' => 'Legal move',
+        'finance' => 'Money move',
+        'support' => 'Support move',
+        _ => 'Next move',
+      };
+      return '$lead: $nextAction.';
+    }
+
+    return switch (nextTask.bucket) {
+      'apartment' =>
+        'Open listings, send the message, or book the tour. Do not let the apartment search stay abstract today.',
+      'housing' =>
+        'Move one housing thread today so it stops living in your head as unfinished pressure.',
+      'legal' =>
+        'Make the call, send the email, or gather the document so this legal thread stops stalling.',
+      'finance' =>
+        'Handle the money task before it turns into background dread again.',
+      'support' =>
+        'Reach out, ask for help, or lock in the support step instead of carrying it alone.',
+      _ => nextTask.title,
+    };
+  }
+
+  static String overdueNotificationBody(FollowUpTaskSummary summary) {
+    final first = summary.overdueTasks.isEmpty
+        ? summary.nextTask
+        : summary.overdueTasks.first;
+    if (first == null) {
+      return 'Open Follow-Ups and move the most overdue thread.';
+    }
+    if (summary.overdueCount == 1) {
+      return switch (first.bucket) {
+        'apartment' =>
+          '${first.title} is overdue. Send the message or book the tour today.',
+        'housing' =>
+          '${first.title} is overdue. Move the housing thread before it slips again.',
+        'legal' =>
+          '${first.title} is overdue. Handle the legal next step today.',
+        'finance' =>
+          '${first.title} is overdue. Close the money loop instead of avoiding it.',
+        _ => '${first.title} needs a real next move today.',
+      };
+    }
+    return 'Start with ${first.title} and clear the oldest stalled thread today.';
+  }
+
+  static String dueSoonNotificationBody(FollowUpTaskSummary summary) {
+    final first = summary.dueSoonTasks.isEmpty
+        ? summary.nextTask
+        : summary.dueSoonTasks.first;
+    if (first == null) {
+      return 'Get ahead of one follow-up before it turns overdue.';
+    }
+    if (summary.dueSoonCount == 1) {
+      return switch (first.bucket) {
+        'apartment' =>
+          '${first.title} is coming up. Get ahead of the apartment move now.',
+        'housing' =>
+          '${first.title} is coming up. Stay ahead of the housing thread now.',
+        _ => '${first.title} is coming up. Get ahead of it now.',
+      };
+    }
+    return '${first.title} is first in line. Knock out the next touch before it slips.';
+  }
+
+  static String waitingNotificationBody(FollowUpTask task) {
+    return switch (task.bucket) {
+      'apartment' =>
+        '${task.title} has gone quiet. Ping them, widen the search, or close the loop today.',
+      'housing' =>
+        '${task.title} has gone quiet. Decide whether to ping, pivot, or close the housing loop.',
+      _ =>
+        '${task.title} has been sitting quiet. Decide whether to ping, park it, or close the loop.',
+    };
+  }
+
+  static String sagePressurePrompt(
+    FollowUpTask task, {
+    required String frame,
+  }) {
+    final searchTarget = _propertySearchTarget(task);
+    final isApartmentSearch =
+        task.bucket == 'apartment' || task.bucket == 'housing';
+
+    final lines = <String>[
+      frame,
+      'Use my Follow-Ups context and respond with concrete, useful pressure.',
+      'Call out if I am stalling and tell me the exact next move.',
+      'Focus on "${task.title}"'
+          '${(task.counterparty ?? '').trim().isNotEmpty ? ' with ${(task.counterparty ?? '').trim()}' : ''}.',
+      if ((task.nextAction ?? '').trim().isNotEmpty)
+        'Use the saved next action as the default move unless you see a better one.',
+    ];
+
+    if (isApartmentSearch && searchTarget != null) {
+      lines.addAll([
+        'If web search is enabled in this session, look up "$searchTarget" and use current listing intel if it helps.',
+        'Prioritize pricing, availability, pet policy, parking or garage details, fees, and red flags only if relevant to the next move.',
+      ]);
+    } else if (isApartmentSearch) {
+      lines.add(
+        'If web search is enabled in this session, use it only if current apartment or housing intel would improve the advice.',
+      );
+    }
+
+    return lines.join('\n');
+  }
+
+  static String? _propertySearchTarget(FollowUpTask task) {
+    final candidates = [
+      task.counterparty?.trim() ?? '',
+      task.title.trim(),
+    ];
+    for (final candidate in candidates) {
+      if (candidate.isEmpty) continue;
+      final lower = candidate.toLowerCase();
+      if (lower.contains('apartment') ||
+          lower.contains('apartments') ||
+          lower.contains('leasing') ||
+          lower.contains('property') ||
+          lower.contains('residences') ||
+          lower.contains('villas') ||
+          lower.contains('homes')) {
+        return candidate;
+      }
+    }
+    return candidates
+            .firstWhere(
+              (candidate) => candidate.isNotEmpty,
+              orElse: () => '',
+            )
+            .trim()
+            .isEmpty
+        ? null
+        : candidates.firstWhere((candidate) => candidate.isNotEmpty);
+  }
+}
+
+String _sanitizeAttachmentFileName(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return 'attachment';
+  return trimmed.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
 }
 
 class FollowUpTaskSummary {
