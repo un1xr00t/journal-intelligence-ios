@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'user_settings_sync_service.dart';
 
 class SageSettings {
   const SageSettings({
@@ -145,6 +148,10 @@ class SageProfileService {
 
   final _storage = const FlutterSecureStorage();
 
+  static void clearSettingsCache() {
+    _cachedSettings = null;
+  }
+
   Future<SageSettings> loadSettings() async {
     final cached = _cachedSettings;
     if (cached != null) return cached;
@@ -165,12 +172,13 @@ class SageProfileService {
     }
   }
 
-  Future<void> saveSettings(SageSettings settings) {
+  Future<void> saveSettings(SageSettings settings) async {
     _cachedSettings = settings;
-    return _storage.write(
+    await _storage.write(
       key: _settingsKey,
       value: jsonEncode(settings.toJson()),
     );
+    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
   }
 
   Future<List<SageMemoryItem>> loadMemoryItems() async {
@@ -189,11 +197,12 @@ class SageProfileService {
     }
   }
 
-  Future<void> saveMemoryItems(List<SageMemoryItem> items) {
-    return _storage.write(
+  Future<void> saveMemoryItems(List<SageMemoryItem> items) async {
+    await _storage.write(
       key: _memoryKey,
       value: jsonEncode(items.map((item) => item.toJson()).toList()),
     );
+    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
   }
 
   Future<List<SageMemoryItem>> addMemoryTexts(
@@ -234,7 +243,10 @@ class SageProfileService {
     return next;
   }
 
-  Future<void> clearMemory() => _storage.delete(key: _memoryKey);
+  Future<void> clearMemory() async {
+    await _storage.delete(key: _memoryKey);
+    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+  }
 
   String buildMemoryContext(List<SageMemoryItem> items) {
     if (items.isEmpty) return '';

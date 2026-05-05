@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/user_settings_sync_service.dart';
 
 enum AppShellMode {
   intelligence,
@@ -35,6 +39,8 @@ class AppShellModeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> reloadFromLocalStorage() => _load();
+
   Future<void> setQuietJournal(bool enabled) async {
     final nextMode =
         enabled ? AppShellMode.quietJournal : AppShellMode.intelligence;
@@ -46,6 +52,7 @@ class AppShellModeProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, _mode.name);
+      unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
     } catch (_) {}
   }
 }

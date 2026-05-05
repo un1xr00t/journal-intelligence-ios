@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
 
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
 import 'follow_up_tasks_service.dart';
+import 'user_settings_sync_service.dart';
 
 class NotificationBridgeStatus {
   const NotificationBridgeStatus({
@@ -395,6 +397,7 @@ class NotificationNudgeService {
   Future<void> saveSettings(NotificationNudgeSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(settings.toJson()));
+    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
   }
 
   Future<List<LocationNudgeEvent>> loadObservedLocationEvents() async {

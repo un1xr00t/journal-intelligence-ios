@@ -14,6 +14,7 @@ import '../providers/app_lock_provider.dart';
 import '../providers/app_shell_mode_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/user_settings_sync_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'notification_nudges_screen.dart';
@@ -144,6 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _storage = const FlutterSecureStorage();
   final _localAuth = LocalAuthentication();
   final _api = ApiService();
+  final _settingsSync = UserSettingsSyncService();
 
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
@@ -199,10 +201,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadReflectMode() async {
     try {
-      final data = await _api.getReflectMode();
+      final autoReflect = await _settingsSync.loadCachedAutoReflect();
       if (mounted)
         setState(() {
-          _autoReflect = data['auto_reflect'] as bool? ?? true;
+          _autoReflect = autoReflect;
           _reflectLoaded = true;
         });
     } catch (_) {
@@ -213,7 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _toggleReflectMode(bool val) async {
     setState(() => _autoReflect = val);
     try {
-      await _api.setReflectMode(val);
+      await _settingsSync.saveAutoReflect(val);
     } catch (_) {
       if (mounted) setState(() => _autoReflect = !val);
     }
@@ -701,7 +703,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 22),
                     const _SectionLabel(
                       'Authentication',
-                      subtitle: 'Sign-in recovery, device sessions, and local unlock.',
+                      subtitle:
+                          'Sign-in recovery, device sessions, and local unlock.',
                     ),
                     const SizedBox(height: 10),
                     _SettingsSectionCard(
@@ -4105,8 +4108,9 @@ class _SettingsHero extends StatelessWidget {
               _HeroMetric(
                 label: 'Journal PIN',
                 value: pinEnabled ? 'Enabled' : 'Off',
-                color:
-                    pinEnabled ? JournalColors.accent2 : JournalColors.textMuted,
+                color: pinEnabled
+                    ? JournalColors.accent2
+                    : JournalColors.textMuted,
               ),
               _HeroMetric(
                 label: 'Auto-Reflect',
