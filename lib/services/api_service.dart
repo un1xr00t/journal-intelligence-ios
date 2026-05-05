@@ -1736,6 +1736,22 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  Future<List<Map<String, dynamic>>> getFollowUpTasks() async {
+    final res = await _authedGet('/api/follow-ups');
+    final data = res.data;
+    final items = data is List
+        ? data
+        : (data is Map ? data['tasks'] as List? ?? const [] : const []);
+    return items
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<void> saveFollowUpTasks(List<Map<String, dynamic>> tasks) async {
+    await _authedPut('/api/follow-ups', data: {'tasks': tasks});
+  }
+
   // ── Mental Health ─────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getMentalHealthData() async {

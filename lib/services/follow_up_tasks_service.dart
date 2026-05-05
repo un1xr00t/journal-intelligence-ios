@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_service.dart';
 import 'local_storage_paths.dart';
 
 DateTime _startOfDay(DateTime date) {
@@ -307,35 +310,133 @@ class FollowUpTask {
 
 class FollowUpTaskService {
   static const _storageKey = 'follow_up_tasks.v1';
+  static List<FollowUpTask>? _memoryCache;
+
+  final ApiService _api;
+
+  FollowUpTaskService({ApiService? api}) : _api = api ?? ApiService();
 
   Future<List<FollowUpTask>> loadTasks() async {
+    final cached = _memoryCache;
+    if (cached != null) return List<FollowUpTask>.from(cached);
+    return _loadTasksFromLocalCache();
+  }
+
+  Future<List<FollowUpTask>> syncTasksFromServer() async {
+    final localCached = await _loadTasksFromLocalCache();
+    try {
+      final remoteTasks = await _api.getFollowUpTasks();
+      final tasks = remoteTasks
+          .map((item) => FollowUpTask.fromJson(item))
+          .where((item) => item.title.trim().isNotEmpty)
+          .toList();
+      if (tasks.isEmpty && localCached.isNotEmpty) {
+        unawaited(_pushTasksToServer(localCached));
+        return localCached;
+      }
+      final repaired = await _repairTaskAttachments(tasks);
+      repaired.$1.sort(compareTasks);
+      await _writeLocalCache(repaired.$1);
+      if (repaired.$2) {
+        try {
+          await _pushTasksToServer(repaired.$1);
+        } on DioException {
+          // Keep repaired local cache even if the sync cannot complete now.
+        }
+      }
+      return repaired.$1;
+    } on DioException catch (_) {
+      return localCached;
+    } catch (_) {
+      return localCached;
+    }
+  }
+
+  Future<void> saveTasks(List<FollowUpTask> tasks) async {
+    final sorted = List<FollowUpTask>.from(tasks)..sort(compareTasks);
+    _memoryCache = List<FollowUpTask>.from(sorted);
+    await _writeLocalCache(sorted);
+    unawaited(_pushTasksToServer(sorted));
+  }
+
+  Future<List<FollowUpTask>> _loadTasksFromLocalCache() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
     if (raw == null || raw.isEmpty) return const [];
 
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return const [];
-
-    final tasks = decoded
-        .whereType<Map>()
-        .map((item) => FollowUpTask.fromJson(Map<String, dynamic>.from(item)))
-        .where((item) => item.title.trim().isNotEmpty)
-        .toList();
-    final repaired = await _repairTaskAttachments(tasks);
-    if (repaired.$2) {
-      await saveTasks(repaired.$1);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final tasks = decoded
+          .whereType<Map>()
+          .map((item) => FollowUpTask.fromJson(Map<String, dynamic>.from(item)))
+          .where((item) => item.title.trim().isNotEmpty)
+          .toList();
+      tasks.sort(compareTasks);
+      _memoryCache = List<FollowUpTask>.from(tasks);
+      return tasks;
+    } catch (_) {
+      return const [];
     }
-    repaired.$1.sort(compareTasks);
-    return repaired.$1;
   }
 
-  Future<void> saveTasks(List<FollowUpTask> tasks) async {
+  Future<void> _writeLocalCache(List<FollowUpTask> tasks) async {
+    _memoryCache = List<FollowUpTask>.from(tasks);
     final prefs = await SharedPreferences.getInstance();
-    final sorted = List<FollowUpTask>.from(tasks)..sort(compareTasks);
     await prefs.setString(
       _storageKey,
-      jsonEncode(sorted.map((task) => task.toJson()).toList()),
+      jsonEncode(tasks.map((task) => task.toJson()).toList()),
     );
+  }
+
+  Future<void> _pushTasksToServer(List<FollowUpTask> tasks) async {
+    try {
+      await _api.saveFollowUpTasks(
+        tasks.map(_taskServerJson).toList(),
+      );
+    } on DioException {
+      // Keep local state fast and resilient even when sync cannot complete.
+    }
+  }
+
+  Map<String, dynamic> _taskServerJson(FollowUpTask task) {
+    return {
+      'id': task.id,
+      'title': task.title,
+      'bucket': task.bucket,
+      'status': task.status,
+      'priority': task.priority,
+      'created_at': task.createdAt.toIso8601String(),
+      'last_touched_at': task.lastTouchedAt.toIso8601String(),
+      'counterparty': task.counterparty,
+      'next_action': task.nextAction,
+      'notes': task.notes,
+      'follow_up_at': task.followUpAt?.toIso8601String(),
+      'follow_up_time_set': task.followUpTimeSet,
+      'completed_at': task.completedAt?.toIso8601String(),
+      'attachments': task.attachments.map(_attachmentServerJson).toList(),
+      'comments': task.comments.map(_commentServerJson).toList(),
+    };
+  }
+
+  Map<String, dynamic> _commentServerJson(FollowUpComment comment) {
+    return {
+      'id': comment.id,
+      'body': comment.body,
+      'created_at': comment.createdAt.toIso8601String(),
+      'attachments': comment.attachments.map(_attachmentServerJson).toList(),
+    };
+  }
+
+  Map<String, dynamic> _attachmentServerJson(FollowUpAttachment attachment) {
+    return {
+      'name': attachment.name,
+      'path': attachment.path,
+      'extension': attachment.extension,
+      if (attachment.previewBase64 != null &&
+          attachment.previewBase64!.trim().isNotEmpty)
+        'preview_base64': attachment.previewBase64,
+    };
   }
 
   Future<(List<FollowUpTask>, bool)> _repairTaskAttachments(
