@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
 import 'local_storage_paths.dart';
+
+const _portableImageMaxBytes = 24 * 1024 * 1024;
 
 DateTime _startOfDay(DateTime date) {
   return DateTime(date.year, date.month, date.day);
@@ -28,6 +30,7 @@ class FollowUpAttachment {
     required this.extension,
     this.previewPath,
     this.previewBase64,
+    this.imageBase64,
   });
 
   final String name;
@@ -35,6 +38,7 @@ class FollowUpAttachment {
   final String extension;
   final String? previewPath;
   final String? previewBase64;
+  final String? imageBase64;
 
   bool get isImage => switch (extension.toLowerCase()) {
         'jpg' || 'jpeg' || 'png' || 'webp' || 'gif' || 'heic' || 'heif' => true,
@@ -50,6 +54,7 @@ class FollowUpAttachment {
     String? extension,
     String? previewPath,
     String? previewBase64,
+    String? imageBase64,
   }) {
     return FollowUpAttachment(
       name: name ?? this.name,
@@ -57,6 +62,7 @@ class FollowUpAttachment {
       extension: extension ?? this.extension,
       previewPath: previewPath ?? this.previewPath,
       previewBase64: previewBase64 ?? this.previewBase64,
+      imageBase64: imageBase64 ?? this.imageBase64,
     );
   }
 
@@ -68,6 +74,8 @@ class FollowUpAttachment {
           'preview_path': previewPath,
         if (previewBase64 != null && previewBase64!.trim().isNotEmpty)
           'preview_base64': previewBase64,
+        if (imageBase64 != null && imageBase64!.trim().isNotEmpty)
+          'image_base64': imageBase64,
       };
 
   factory FollowUpAttachment.fromJson(Map<String, dynamic> json) {
@@ -77,6 +85,7 @@ class FollowUpAttachment {
       extension: _normalizedText(json['extension']) ?? '',
       previewPath: _normalizedText(json['preview_path']),
       previewBase64: _normalizedText(json['preview_base64']),
+      imageBase64: _normalizedText(json['image_base64']),
     );
   }
 }
@@ -131,7 +140,8 @@ class FollowUpComment {
               .where(
                 (item) =>
                     item.path.trim().isNotEmpty ||
-                    (item.previewBase64 ?? '').trim().isNotEmpty,
+                    (item.previewBase64 ?? '').trim().isNotEmpty ||
+                    (item.imageBase64 ?? '').trim().isNotEmpty,
               )
               .toList() ??
           const [],
@@ -289,7 +299,8 @@ class FollowUpTask {
               .where(
                 (item) =>
                     item.path.trim().isNotEmpty ||
-                    (item.previewBase64 ?? '').trim().isNotEmpty,
+                    (item.previewBase64 ?? '').trim().isNotEmpty ||
+                    (item.imageBase64 ?? '').trim().isNotEmpty,
               )
               .toList() ??
           const [],
@@ -326,6 +337,7 @@ class FollowUpTaskService {
     final localCached = await _loadTasksFromLocalCache();
     try {
       final remoteTasks = await _api.getFollowUpTasks();
+      _debugLog('sync fetched ${remoteTasks.length} remote tasks');
       final tasks = remoteTasks
           .map((item) => FollowUpTask.fromJson(item))
           .where((item) => item.title.trim().isNotEmpty)
@@ -337,6 +349,7 @@ class FollowUpTaskService {
       final repaired = await _repairTaskAttachments(tasks);
       repaired.$1.sort(compareTasks);
       await _writeLocalCache(repaired.$1);
+      _debugLog('sync hydrated ${repaired.$1.length} local tasks');
       if (repaired.$2) {
         try {
           await _pushTasksToServer(repaired.$1);
@@ -346,17 +359,21 @@ class FollowUpTaskService {
       }
       return repaired.$1;
     } on DioException catch (_) {
+      _debugLog('sync failed with DioException');
       return localCached;
     } catch (_) {
+      _debugLog('sync failed');
       return localCached;
     }
   }
 
   Future<void> saveTasks(List<FollowUpTask> tasks) async {
     final sorted = List<FollowUpTask>.from(tasks)..sort(compareTasks);
-    _memoryCache = List<FollowUpTask>.from(sorted);
-    await _writeLocalCache(sorted);
-    unawaited(_pushTasksToServer(sorted));
+    final repaired = await _repairTaskAttachments(sorted);
+    _memoryCache = List<FollowUpTask>.from(repaired.$1);
+    await _writeLocalCache(repaired.$1);
+    unawaited(_pushTasksToServer(repaired.$1));
+    _debugLog('save cached ${repaired.$1.length} tasks and queued push');
   }
 
   Future<List<FollowUpTask>> _loadTasksFromLocalCache() async {
@@ -394,8 +411,16 @@ class FollowUpTaskService {
       await _api.saveFollowUpTasks(
         tasks.map(_taskServerJson).toList(),
       );
+      _debugLog('push completed with ${tasks.length} tasks');
     } on DioException {
       // Keep local state fast and resilient even when sync cannot complete.
+      _debugLog('push failed with DioException');
+    }
+  }
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[follow-ups-sync] $message');
     }
   }
 
@@ -436,6 +461,9 @@ class FollowUpTaskService {
       if (attachment.previewBase64 != null &&
           attachment.previewBase64!.trim().isNotEmpty)
         'preview_base64': attachment.previewBase64,
+      if (attachment.imageBase64 != null &&
+          attachment.imageBase64!.trim().isNotEmpty)
+        'image_base64': attachment.imageBase64,
     };
   }
 
@@ -449,9 +477,7 @@ class FollowUpTaskService {
       final repairedAttachments = <FollowUpAttachment>[];
       for (final attachment in task.attachments) {
         final repaired = await _migrateAttachmentIfNeeded(attachment);
-        if (repaired.path != attachment.path ||
-            repaired.name != attachment.name ||
-            repaired.extension != attachment.extension) {
+        if (_attachmentChanged(repaired, attachment)) {
           taskChanged = true;
         }
         repairedAttachments.add(repaired);
@@ -472,9 +498,7 @@ class FollowUpTaskService {
           final repairedCommentAttachments = <FollowUpAttachment>[];
           for (final attachment in comment.attachments) {
             final repaired = await _migrateAttachmentIfNeeded(attachment);
-            if (repaired.path != attachment.path ||
-                repaired.name != attachment.name ||
-                repaired.extension != attachment.extension) {
+            if (_attachmentChanged(repaired, attachment)) {
               commentChanged = true;
             }
             repairedCommentAttachments.add(repaired);
@@ -499,15 +523,37 @@ class FollowUpTaskService {
     return (repairedTasks, changed);
   }
 
+  bool _attachmentChanged(
+    FollowUpAttachment repaired,
+    FollowUpAttachment original,
+  ) {
+    return repaired.path != original.path ||
+        repaired.name != original.name ||
+        repaired.extension != original.extension ||
+        (repaired.previewPath ?? '') != (original.previewPath ?? '') ||
+        (repaired.previewBase64 ?? '') != (original.previewBase64 ?? '') ||
+        (repaired.imageBase64 ?? '') != (original.imageBase64 ?? '');
+  }
+
   Future<FollowUpAttachment> _migrateAttachmentIfNeeded(
     FollowUpAttachment attachment,
   ) async {
     final inlinePreview = attachment.previewBase64?.trim();
+    final inlineImage = attachment.imageBase64?.trim();
     final sourcePath = attachment.path.trim();
-    if (sourcePath.isEmpty) return attachment;
+    if (sourcePath.isEmpty && (inlineImage == null || inlineImage.isEmpty)) {
+      return attachment;
+    }
+
+    if (sourcePath.isEmpty) {
+      return _restoreInlineImageAttachment(attachment);
+    }
 
     final source = File(sourcePath);
     if (!await source.exists()) {
+      if (inlineImage != null && inlineImage.isNotEmpty) {
+        return _restoreInlineImageAttachment(attachment);
+      }
       if (attachment.isImage &&
           (inlinePreview == null || inlinePreview.isEmpty)) {
         final previewFromFile = await _loadPreviewBase64FromPreviewPath(
@@ -543,12 +589,17 @@ class FollowUpTaskService {
         final previewBase64 = previewBytes != null && previewBytes.isNotEmpty
             ? base64Encode(previewBytes)
             : inlinePreview;
+        final imageBase64 =
+            await _encodePortableImageBase64(source, fallback: inlineImage);
         if ((attachment.previewPath ?? '').trim() != (previewPath ?? '') ||
             (attachment.previewBase64 ?? '').trim() !=
-                (previewBase64 ?? '').trim()) {
+                (previewBase64 ?? '').trim() ||
+            (attachment.imageBase64 ?? '').trim() !=
+                (imageBase64 ?? '').trim()) {
           return attachment.copyWith(
             previewPath: previewPath,
             previewBase64: previewBase64,
+            imageBase64: imageBase64,
           );
         }
       }
@@ -574,6 +625,8 @@ class FollowUpTaskService {
     final previewPath = attachment.isImage
         ? await _ensureAttachmentPreviewFile(copied, attachmentsDir, attachment)
         : attachment.previewPath;
+    final imageBase64 =
+        await _encodePortableImageBase64(copied, fallback: inlineImage);
     return FollowUpAttachment(
       name: baseName,
       path: copied.path,
@@ -582,7 +635,100 @@ class FollowUpTaskService {
       previewBase64: previewBytes != null && previewBytes.isNotEmpty
           ? base64Encode(previewBytes)
           : inlinePreview,
+      imageBase64: imageBase64,
     );
+  }
+
+  Future<FollowUpAttachment> _restoreInlineImageAttachment(
+    FollowUpAttachment attachment,
+  ) async {
+    final inlineImage = attachment.imageBase64?.trim();
+    if (inlineImage == null || inlineImage.isEmpty) return attachment;
+    try {
+      final imageBytes = base64Decode(inlineImage);
+      if (imageBytes.isEmpty) return attachment;
+      final supportDir = await resolveAppSupportDirectory();
+      final attachmentsDir = Directory(
+        '${supportDir.path}/follow_up_attachments',
+      );
+      await attachmentsDir.create(recursive: true);
+      final safeBase = _sanitizeAttachmentFileName(
+        attachment.name.trim().isNotEmpty
+            ? attachment.name.trim()
+            : 'image.jpg',
+      );
+      final dot = safeBase.lastIndexOf('.');
+      final stem = dot > 0 ? safeBase.substring(0, dot) : safeBase;
+      final extension = attachment.extension.trim().isNotEmpty
+          ? attachment.extension.trim().toLowerCase()
+          : 'jpg';
+      final restored = File(
+        '${attachmentsDir.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}.$extension',
+      );
+      await restored.writeAsBytes(imageBytes, flush: true);
+      final previewPath = attachment.isImage
+          ? await _ensureAttachmentPreviewFile(
+              restored,
+              attachmentsDir,
+              attachment,
+            )
+          : attachment.previewPath;
+      final previewBytes = attachment.isImage
+          ? await _generateAttachmentPreviewBytes(restored)
+          : null;
+      return attachment.copyWith(
+        path: restored.path,
+        previewPath: previewPath,
+        previewBase64: previewBytes != null && previewBytes.isNotEmpty
+            ? base64Encode(previewBytes)
+            : attachment.previewBase64,
+      );
+    } catch (_) {
+      return attachment;
+    }
+  }
+
+  Future<String?> _encodePortableImageBase64(
+    File file, {
+    String? fallback,
+  }) async {
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return fallback;
+      if (bytes.length <= _portableImageMaxBytes) {
+        return base64Encode(bytes);
+      }
+
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return fallback;
+      var working = img.bakeOrientation(decoded);
+      const maxDimension = 4096;
+      if (working.width > maxDimension || working.height > maxDimension) {
+        if (working.width >= working.height) {
+          working = img.copyResize(
+            working,
+            width: maxDimension,
+            interpolation: img.Interpolation.cubic,
+          );
+        } else {
+          working = img.copyResize(
+            working,
+            height: maxDimension,
+            interpolation: img.Interpolation.cubic,
+          );
+        }
+      }
+      for (final quality in [94, 90, 86, 82, 78, 74, 68]) {
+        final encoded =
+            Uint8List.fromList(img.encodeJpg(working, quality: quality));
+        if (encoded.length <= _portableImageMaxBytes) {
+          return base64Encode(encoded);
+        }
+      }
+      return fallback;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   Future<String?> _resolveAttachmentPathByName(

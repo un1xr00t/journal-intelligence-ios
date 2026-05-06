@@ -9,7 +9,6 @@ import 'providers/auth_provider.dart';
 import 'providers/app_shell_mode_provider.dart';
 import 'providers/launch_intent_provider.dart';
 import 'services/launch_route_service.dart';
-import 'services/user_settings_sync_service.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/pin_unlock_screen.dart';
@@ -41,7 +40,6 @@ class JournalApp extends StatefulWidget {
 
 class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
   final _launchRouteService = LaunchRouteService();
-  final _settingsSync = UserSettingsSyncService();
   AuthProvider? _authProvider;
   bool _bootstrapping = true;
   bool _lifecycleLockEnabled = false;
@@ -94,9 +92,10 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
         await _launchRouteService.clearPersistedPendingRoute();
       }
       await auth.init();
+      if (!mounted) return;
       final username = auth.user?['username']?.toString().trim() ?? '';
       if (auth.isAuthenticated && username.isNotEmpty) {
-        _restoreServerBackedSettings();
+        await context.read<AppShellModeProvider>().reloadFromLocalStorage();
         await appLock.prepareForAuthenticatedUser(
           username,
           lockImmediately: auth.lastAuthWasSessionRestore,
@@ -121,7 +120,7 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
     if (auth.isAuthenticated) {
       final username = auth.user?['username']?.toString().trim() ?? '';
       if (username.isNotEmpty) {
-        _restoreServerBackedSettings();
+        await context.read<AppShellModeProvider>().reloadFromLocalStorage();
         await appLock.prepareForAuthenticatedUser(
           username,
           lockImmediately: auth.lastAuthWasSessionRestore,
@@ -132,13 +131,6 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
     if (auth.state == AuthState.unauthenticated) {
       appLock.clearSessionState();
     }
-  }
-
-  void _restoreServerBackedSettings() {
-    unawaited(_settingsSync.restoreFromServer().then((_) async {
-      if (!mounted) return;
-      await context.read<AppShellModeProvider>().reloadFromLocalStorage();
-    }));
   }
 
   @override

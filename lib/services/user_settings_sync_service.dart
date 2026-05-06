@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,7 +20,8 @@ class UserSettingsSyncService {
   static const appShellModeKey = 'app_shell_mode.v1';
   static const sageSettingsKey = 'sage_settings_v1';
   static const sageMemoryItemsKey = 'sage_memory_items_v1';
-  static const notificationNudgesKey = 'notification_nudges.v1';
+  static const notificationNudgesKey = 'notification_nudges.settings.v1';
+  static const _legacyNotificationNudgesKey = 'notification_nudges.v1';
 
   final ApiService _api;
   final FlutterSecureStorage _secureStorage;
@@ -43,32 +45,42 @@ class UserSettingsSyncService {
       final appPreferences = _asMap(remote['app_preferences']) ??
           _asMap(remote['preferences']) ??
           const <String, dynamic>{};
+      _debugLog(
+        'restore fetched app_preferences keys: '
+        '${appPreferences.keys.toList()}',
+      );
 
       final hasRemotePreferences = appPreferences.isNotEmpty ||
           remote['auto_reflect'] is bool ||
           remote['preferred_tone'] != null;
 
-      if (hadLocalSettings) {
-        unawaited(pushLocalSettingsToServer());
-        return;
-      }
-
       if (!hasRemotePreferences) {
+        if (hadLocalSettings) {
+          unawaited(pushLocalSettingsToServer());
+        }
         return;
       }
 
       await _hydrateLocalSettings(remote, appPreferences);
+      _debugLog('restore hydrated local settings');
     } on DioException {
+      _debugLog('restore failed with DioException');
       // Startup/account-restore sync must never block local app usage.
-    } catch (_) {}
+    } catch (e) {
+      _debugLog('restore failed: $e');
+    }
   }
 
   Future<void> pushLocalSettingsToServer() async {
     try {
       await _api.updateUserSettings(await _buildServerPayload());
+      _debugLog('push completed');
     } on DioException {
+      _debugLog('push failed with DioException');
       // Local-first settings remain saved even when background sync misses.
-    } catch (_) {}
+    } catch (e) {
+      _debugLog('push failed: $e');
+    }
   }
 
   Future<Map<String, dynamic>> _buildServerPayload() async {
@@ -85,7 +97,8 @@ class UserSettingsSyncService {
     }
 
     final notificationNudges =
-        _decodeMap(prefs.getString(notificationNudgesKey));
+        _decodeMap(prefs.getString(notificationNudgesKey)) ??
+            _decodeMap(prefs.getString(_legacyNotificationNudgesKey));
     if (notificationNudges != null) {
       appPreferences['notification_nudges'] = notificationNudges;
     }
@@ -152,7 +165,8 @@ class UserSettingsSyncService {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.containsKey(autoReflectKey) ||
         prefs.containsKey(appShellModeKey) ||
-        prefs.containsKey(notificationNudgesKey)) {
+        prefs.containsKey(notificationNudgesKey) ||
+        prefs.containsKey(_legacyNotificationNudgesKey)) {
       return true;
     }
 
@@ -192,5 +206,11 @@ class UserSettingsSyncService {
   Map<String, dynamic>? _asMap(dynamic value) {
     if (value is Map) return Map<String, dynamic>.from(value);
     return null;
+  }
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[settings-sync] $message');
+    }
   }
 }

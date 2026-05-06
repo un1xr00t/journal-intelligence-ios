@@ -168,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // NOW hand off to HomeShell.
     if (mounted) {
-      auth.completeAuthentication(result['user'] as Map<String, dynamic>);
+      await auth.completeAuthentication(result['user'] as Map<String, dynamic>);
     }
   }
 

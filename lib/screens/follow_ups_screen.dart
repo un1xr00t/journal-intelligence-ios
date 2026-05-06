@@ -120,6 +120,8 @@ enum _FollowUpAttachmentSource {
   files,
 }
 
+const _followUpPortableImageMaxBytes = 24 * 1024 * 1024;
+
 String _attachmentExtensionFromName(String name) {
   final trimmed = name.trim();
   final dot = trimmed.lastIndexOf('.');
@@ -170,7 +172,13 @@ Future<FollowUpAttachment?> _persistFollowUpAttachment(
   final copied = await source.copy(targetPath);
   String? previewPath = attachment.previewPath;
   String? previewBase64 = attachment.previewBase64;
+  String? imageBase64 = attachment.imageBase64;
   if (attachment.isImage) {
+    final imageBytes = await copied.readAsBytes();
+    if (imageBytes.isNotEmpty &&
+        imageBytes.length <= _followUpPortableImageMaxBytes) {
+      imageBase64 = base64Encode(imageBytes);
+    }
     final previewBytes = await _generateFollowUpPreviewBytes(copied);
     if (previewBytes != null && previewBytes.isNotEmpty) {
       previewBase64 = base64Encode(previewBytes);
@@ -187,6 +195,7 @@ Future<FollowUpAttachment?> _persistFollowUpAttachment(
     extension: extension,
     previewPath: previewPath,
     previewBase64: previewBase64,
+    imageBase64: imageBase64,
   );
 }
 
