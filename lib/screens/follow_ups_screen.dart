@@ -122,6 +122,41 @@ enum _FollowUpAttachmentSource {
 
 const _followUpPortableImageMaxBytes = 24 * 1024 * 1024;
 
+Widget _followUpTaskSwipeBackground({
+  required Alignment alignment,
+  required Color color,
+  required IconData icon,
+  required String label,
+}) {
+  final isRight = alignment == Alignment.centerRight;
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(26),
+      color: _withAlpha(color, 0.14),
+    ),
+    padding: EdgeInsets.only(left: isRight ? 0 : 20, right: isRight ? 20 : 0),
+    alignment: alignment,
+    child: Row(
+      mainAxisAlignment:
+          isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        if (!isRight) Icon(icon, color: color, size: 18),
+        if (!isRight) const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (isRight) const SizedBox(width: 8),
+        if (isRight) Icon(icon, color: color, size: 18),
+      ],
+    ),
+  );
+}
+
 String _attachmentExtensionFromName(String name) {
   final trimmed = name.trim();
   final dot = trimmed.lastIndexOf('.');
@@ -587,32 +622,55 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
         items.map(
           (task) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _FollowUpTaskCard(
-              task: task,
-              dateTimeFormat: _dateTimeFormat,
-              onEdit: () => _openEditor(existing: task),
-              onDelete: () => _deleteTask(task),
-              onAskSage: () => _openSagePressure(task: task),
-              onOpenWorkspace: () => _openWorkspace(task),
-              expanded: _expandedTaskIds.contains(task.id),
-              onToggleExpanded: () {
-                setState(() {
-                  if (!_expandedTaskIds.remove(task.id)) {
-                    _expandedTaskIds.add(task.id);
-                  }
-                });
+            child: Dismissible(
+              key: ValueKey('follow-up-task-${task.id}'),
+              direction: DismissDirection.horizontal,
+              confirmDismiss: (direction) async {
+                if (direction == DismissDirection.startToEnd) {
+                  await _deleteTask(task);
+                } else {
+                  _openEditor(existing: task);
+                }
+                return false;
               },
-              onStatusChanged: (status) {
-                final now = DateTime.now();
-                return _updateTask(
-                  task.copyWith(
-                    status: status,
-                    lastTouchedAt: now,
-                    completedAt: status == 'done' ? now : null,
-                    clearCompletedAt: status != 'done',
-                  ),
-                );
-              },
+              background: _followUpTaskSwipeBackground(
+                alignment: Alignment.centerLeft,
+                color: JournalColors.danger,
+                icon: CupertinoIcons.trash,
+                label: 'Delete',
+              ),
+              secondaryBackground: _followUpTaskSwipeBackground(
+                alignment: Alignment.centerRight,
+                color: JournalColors.accent,
+                icon: CupertinoIcons.pencil,
+                label: 'Edit',
+              ),
+              child: _FollowUpTaskCard(
+                task: task,
+                dateTimeFormat: _dateTimeFormat,
+                onDelete: () => _deleteTask(task),
+                onAskSage: () => _openSagePressure(task: task),
+                onOpenWorkspace: () => _openWorkspace(task),
+                expanded: _expandedTaskIds.contains(task.id),
+                onToggleExpanded: () {
+                  setState(() {
+                    if (!_expandedTaskIds.remove(task.id)) {
+                      _expandedTaskIds.add(task.id);
+                    }
+                  });
+                },
+                onStatusChanged: (status) {
+                  final now = DateTime.now();
+                  return _updateTask(
+                    task.copyWith(
+                      status: status,
+                      lastTouchedAt: now,
+                      completedAt: status == 'done' ? now : null,
+                      clearCompletedAt: status != 'done',
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -1010,7 +1068,6 @@ class _FollowUpTaskCard extends StatelessWidget {
   const _FollowUpTaskCard({
     required this.task,
     required this.dateTimeFormat,
-    required this.onEdit,
     required this.onDelete,
     required this.onAskSage,
     required this.onOpenWorkspace,
@@ -1021,7 +1078,6 @@ class _FollowUpTaskCard extends StatelessWidget {
 
   final FollowUpTask task;
   final DateFormat dateTimeFormat;
-  final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onAskSage;
   final VoidCallback onOpenWorkspace;
@@ -1132,16 +1188,6 @@ class _FollowUpTaskCard extends StatelessWidget {
               ),
               Column(
                 children: [
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(34, 34),
-                    onPressed: onEdit,
-                    child: const Icon(
-                      CupertinoIcons.pencil,
-                      color: JournalColors.textSecondary,
-                      size: 18,
-                    ),
-                  ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
                     minimumSize: const Size(34, 34),
