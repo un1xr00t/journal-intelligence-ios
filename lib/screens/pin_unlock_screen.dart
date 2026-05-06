@@ -91,9 +91,11 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
             : 'This only appears when the device already has a restorable journal session.');
   }
 
+  Future<void> _triggerPinEntryFeedback() => HapticFeedback.heavyImpact();
+
   Future<void> _handleDigit(String digit) async {
     if (_submitting || _digits.length >= JournalPinService.pinLength) return;
-    await HapticFeedback.selectionClick();
+    await _triggerPinEntryFeedback();
     setState(() {
       _digits += digit;
       _error = null;
@@ -108,7 +110,7 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
 
   Future<void> _handleDelete() async {
     if (_submitting || _digits.isEmpty) return;
-    await HapticFeedback.selectionClick();
+    await _triggerPinEntryFeedback();
     setState(() {
       _digits = _digits.substring(0, _digits.length - 1);
       _error = null;
