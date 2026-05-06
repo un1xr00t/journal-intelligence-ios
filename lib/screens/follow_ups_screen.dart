@@ -315,14 +315,18 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
     }
   }
 
-  Future<void> _saveTasks(List<FollowUpTask> tasks) async {
+  Future<void> _saveTasks(List<FollowUpTask> tasks) {
     final sorted = List<FollowUpTask>.from(tasks)
       ..sort(FollowUpTaskService.compareTasks);
-    if (!mounted) return;
+    if (!mounted) return Future<void>.value();
     setState(() => _tasks = sorted);
+    unawaited(_persistTasks(sorted));
+    return Future<void>.value();
+  }
 
+  Future<void> _persistTasks(List<FollowUpTask> tasks) async {
     try {
-      await _service.saveTasks(sorted);
+      await _service.saveTasks(tasks);
       unawaited(_refreshFollowUpReminders());
     } catch (_) {
       if (!mounted) return;
