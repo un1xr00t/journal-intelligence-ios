@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../services/follow_up_tasks_service.dart';
+import '../services/orbit_ledger_service.dart';
 import '../services/user_settings_sync_service.dart';
 
 enum AuthState { unknown, authenticated, unauthenticated }
@@ -10,6 +11,7 @@ class AuthProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   final UserSettingsSyncService _settingsSync = UserSettingsSyncService();
   final FollowUpTaskService _followUpTasks = FollowUpTaskService();
+  final OrbitLedgerService _orbitLedger = OrbitLedgerService();
 
   AuthState _state = AuthState.unknown;
   Map<String, dynamic>? _user;
@@ -225,6 +227,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _restoreServerBackedLocalData() async {
     await _settingsSync.restoreFromServer();
     await _followUpTasks.syncTasksFromServer();
+    await _orbitLedger.syncEntriesFromServer();
   }
 
   void setError(String message) {

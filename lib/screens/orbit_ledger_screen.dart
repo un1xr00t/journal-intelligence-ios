@@ -629,105 +629,36 @@ class _OrbitEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'REQUEST',
-                      style: TextStyle(
-                        color: JournalColors.textMuted,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      entry.request,
-                      style: const TextStyle(
-                        color: JournalColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              _OrbitActionIcon(
-                icon: CupertinoIcons.pencil,
-                label: 'Edit',
-                onTap: onEdit,
-              ),
-              const SizedBox(width: 8),
-              _OrbitActionIcon(
-                icon: CupertinoIcons.delete,
-                label: 'Delete',
-                danger: true,
-                onTap: onDelete,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _OrbitMetaChip(
-                label: 'Type',
-                value: entry.type,
-                color: JournalColors.accent,
-              ),
-              _OrbitMetaChip(
-                label: 'Urgency',
-                value: entry.urgency,
-                color: _urgencyColor,
-              ),
-              _OrbitMetaChip(
-                label: 'Date',
-                value: dateLabel,
-                color: JournalColors.info,
-              ),
-              _OrbitMetaChip(
-                label: 'Time',
-                value: timeLabel,
-                color: JournalColors.orange,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Icon(
-                CupertinoIcons.clock,
-                size: 14,
-                color: JournalColors.success,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Logged $dateLabel at $timeLabel',
-                style: const TextStyle(
-                  color: JournalColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          if (entry.note != null && entry.note!.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
+    return Dismissible(
+      key: ValueKey('orbit-ledger-${entry.id}'),
+      direction: DismissDirection.horizontal,
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          onDelete();
+        } else {
+          onEdit();
+        }
+        return false;
+      },
+      background: _orbitEntrySwipeBackground(
+        alignment: Alignment.centerLeft,
+        color: JournalColors.danger,
+        icon: CupertinoIcons.trash,
+        label: 'Delete',
+      ),
+      secondaryBackground: _orbitEntrySwipeBackground(
+        alignment: Alignment.centerRight,
+        color: JournalColors.accent,
+        icon: CupertinoIcons.pencil,
+        label: 'Edit',
+      ),
+      child: GlassCard(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             const Text(
-              'NOTE',
+              'REQUEST',
               style: TextStyle(
                 color: JournalColors.textMuted,
                 fontSize: 10,
@@ -735,16 +666,119 @@ class _OrbitEntryCard extends StatelessWidget {
                 letterSpacing: 1.1,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
-              entry.note!.trim(),
+              entry.request,
               style: const TextStyle(
-                color: JournalColors.textSecondary,
-                fontSize: 13,
-                height: 1.35,
+                color: JournalColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
               ),
             ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _OrbitMetaChip(
+                  label: 'Type',
+                  value: entry.type,
+                  color: JournalColors.accent,
+                ),
+                _OrbitMetaChip(
+                  label: 'Urgency',
+                  value: entry.urgency,
+                  color: _urgencyColor,
+                ),
+                _OrbitMetaChip(
+                  label: 'Date',
+                  value: dateLabel,
+                  color: JournalColors.info,
+                ),
+                _OrbitMetaChip(
+                  label: 'Time',
+                  value: timeLabel,
+                  color: JournalColors.orange,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.clock,
+                  size: 14,
+                  color: JournalColors.success,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Logged $dateLabel at $timeLabel',
+                  style: const TextStyle(
+                    color: JournalColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            if (entry.note != null && entry.note!.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'NOTE',
+                style: TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                entry.note!.trim(),
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _orbitEntrySwipeBackground({
+    required Alignment alignment,
+    required Color color,
+    required IconData icon,
+    required String label,
+  }) {
+    final isRight = alignment == Alignment.centerRight;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        color: color.withValues(alpha: 0.14),
+      ),
+      padding: EdgeInsets.only(left: isRight ? 0 : 20, right: isRight ? 20 : 0),
+      alignment: alignment,
+      child: Row(
+        mainAxisAlignment:
+            isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isRight) Icon(icon, color: color, size: 18),
+          if (!isRight) const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (isRight) const SizedBox(width: 8),
+          if (isRight) Icon(icon, color: color, size: 18),
         ],
       ),
     );
@@ -795,42 +829,6 @@ class _OrbitMetaChip extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _OrbitActionIcon extends StatelessWidget {
-  const _OrbitActionIcon({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = danger ? JournalColors.danger : JournalColors.textSecondary;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: color,
-        ),
       ),
     );
   }

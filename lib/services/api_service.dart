@@ -1752,6 +1752,23 @@ class ApiService {
     await _authedPut('/api/follow-ups', data: {'tasks': tasks});
   }
 
+  Future<List<Map<String, dynamic>>> getOrbitLedgerEntries() async {
+    final res = await _authedGet('/api/orbit-ledger');
+    final data = res.data;
+    final items = data is List
+        ? data
+        : (data is Map ? data['entries'] as List? ?? const [] : const []);
+    return items
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<void> saveOrbitLedgerEntries(
+      List<Map<String, dynamic>> entries) async {
+    await _authedPut('/api/orbit-ledger', data: {'entries': entries});
+  }
+
   // ── Mental Health ─────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getMentalHealthData() async {
