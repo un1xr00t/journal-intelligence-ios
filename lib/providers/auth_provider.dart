@@ -1,4 +1,6 @@
 // lib/providers/auth_provider.dart
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../services/follow_up_tasks_service.dart';
@@ -18,6 +20,7 @@ class AuthProvider extends ChangeNotifier {
   String? _error;
   bool _loading = false;
   bool _lastAuthWasSessionRestore = false;
+  bool _restoreInFlight = false;
 
   AuthState get state => _state;
   Map<String, dynamic>? get user => _user;
@@ -34,9 +37,9 @@ class AuthProvider extends ChangeNotifier {
       if (newToken != null) {
         _api.setAccessToken(newToken);
         _user = await _api.getMe();
-        await _restoreServerBackedLocalData();
         _state = AuthState.authenticated;
         _lastAuthWasSessionRestore = true;
+        _restoreServerBackedLocalDataInBackground();
       } else {
         _state = AuthState.unauthenticated;
         _lastAuthWasSessionRestore = false;
@@ -69,9 +72,9 @@ class AuthProvider extends ChangeNotifier {
 
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
-      await _restoreServerBackedLocalData();
       _state = AuthState.authenticated;
       _lastAuthWasSessionRestore = false;
+      _restoreServerBackedLocalDataInBackground();
       _loading = false;
       notifyListeners();
       return null;
@@ -121,10 +124,10 @@ class AuthProvider extends ChangeNotifier {
 
   /// Completes the auth transition after post-login UI is done.
   Future<void> completeAuthentication(Map<String, dynamic> user) async {
-    await _restoreServerBackedLocalData();
     _user = user;
     _state = AuthState.authenticated;
     _lastAuthWasSessionRestore = false;
+    _restoreServerBackedLocalDataInBackground();
     notifyListeners();
   }
 
@@ -138,9 +141,9 @@ class AuthProvider extends ChangeNotifier {
       final data = await _api.verify2FA(partialToken, code);
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
-      await _restoreServerBackedLocalData();
       _state = AuthState.authenticated;
       _lastAuthWasSessionRestore = false;
+      _restoreServerBackedLocalDataInBackground();
       _loading = false;
       notifyListeners();
       return true;
@@ -162,9 +165,9 @@ class AuthProvider extends ChangeNotifier {
       final data = await _api.useBackupCode(partialToken, code);
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
-      await _restoreServerBackedLocalData();
       _state = AuthState.authenticated;
       _lastAuthWasSessionRestore = false;
+      _restoreServerBackedLocalDataInBackground();
       _loading = false;
       notifyListeners();
       return true;
@@ -198,9 +201,9 @@ class AuthProvider extends ChangeNotifier {
           challengeId: challengeId, credential: credential);
       _api.setAccessToken(data['access_token'] as String);
       _user = await _api.getMe();
-      await _restoreServerBackedLocalData();
       _state = AuthState.authenticated;
       _lastAuthWasSessionRestore = false;
+      _restoreServerBackedLocalDataInBackground();
       _loading = false;
       notifyListeners();
       return true;
@@ -228,6 +231,19 @@ class AuthProvider extends ChangeNotifier {
     await _settingsSync.restoreFromServer();
     await _followUpTasks.syncTasksFromServer();
     await _orbitLedger.syncEntriesFromServer();
+  }
+
+  void _restoreServerBackedLocalDataInBackground() {
+    if (_restoreInFlight) return;
+    _restoreInFlight = true;
+    unawaited(() async {
+      try {
+        await _restoreServerBackedLocalData();
+      } finally {
+        _restoreInFlight = false;
+        notifyListeners();
+      }
+    }());
   }
 
   void setError(String message) {

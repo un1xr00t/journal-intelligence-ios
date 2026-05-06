@@ -52,7 +52,9 @@ class AppShellModeProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, _mode.name);
-      unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+      final settingsSync = UserSettingsSyncService();
+      await settingsSync.markLocalSettingsDirty();
+      await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
     } catch (_) {}
   }
 }

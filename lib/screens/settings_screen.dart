@@ -146,6 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _localAuth = LocalAuthentication();
   final _api = ApiService();
   final _settingsSync = UserSettingsSyncService();
+  AuthProvider? _authProvider;
 
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
@@ -165,6 +166,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _checkBiometricStatus();
     _loadReflectMode();
     _loadSecurityStatus();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final authProvider = context.read<AuthProvider>();
+    if (_authProvider == authProvider) return;
+    _authProvider?.removeListener(_handleAuthProviderChanged);
+    _authProvider = authProvider;
+    _authProvider!.addListener(_handleAuthProviderChanged);
+  }
+
+  @override
+  void dispose() {
+    _authProvider?.removeListener(_handleAuthProviderChanged);
+    super.dispose();
+  }
+
+  void _handleAuthProviderChanged() {
+    if (!mounted || _authProvider?.isAuthenticated != true) return;
+    _loadReflectMode();
   }
 
   Future<void> _checkBiometricStatus() async {

@@ -22,6 +22,8 @@ class UserSettingsSyncService {
   static const sageMemoryItemsKey = 'sage_memory_items_v1';
   static const notificationNudgesKey = 'notification_nudges.settings.v1';
   static const _legacyNotificationNudgesKey = 'notification_nudges.v1';
+  static const _dirtyStorageKey = 'settings_dirty.v1';
+  static const _localUpdatedAtStorageKey = 'settings_updated_at.v1';
 
   final ApiService _api;
   final FlutterSecureStorage _secureStorage;
@@ -33,13 +35,24 @@ class UserSettingsSyncService {
 
   Future<void> saveAutoReflect(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
+    await markLocalSettingsDirty();
     await prefs.setBool(autoReflectKey, enabled);
-    unawaited(_pushAutoReflect(enabled));
-    unawaited(pushLocalSettingsToServer());
+    await _pushAutoReflect(enabled);
+    await pushLocalSettingsToServer(throwOnFailure: true);
+  }
+
+  Future<void> markLocalSettingsDirty() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dirtyStorageKey, true);
+    await prefs.setString(
+      _localUpdatedAtStorageKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
   }
 
   Future<void> restoreFromServer() async {
     final hadLocalSettings = await _hasLocalSettings();
+
     try {
       final remote = await _api.getUserSettings();
       final appPreferences = _asMap(remote['app_preferences']) ??
@@ -56,7 +69,8 @@ class UserSettingsSyncService {
 
       if (!hasRemotePreferences) {
         if (hadLocalSettings) {
-          unawaited(pushLocalSettingsToServer());
+          _debugLog('restore found no remote settings; pushed local seed');
+          await pushLocalSettingsToServer();
         }
         return;
       }
@@ -71,24 +85,42 @@ class UserSettingsSyncService {
     }
   }
 
-  Future<void> pushLocalSettingsToServer() async {
+  Future<bool> pushLocalSettingsToServer({bool throwOnFailure = false}) async {
     try {
-      await _api.updateUserSettings(await _buildServerPayload());
+      if (!await _hasPendingLocalChanges()) {
+        await markLocalSettingsDirty();
+      }
+      final payload = await _buildServerPayload();
+      _debugLog(
+        'push starting auto_reflect=${payload['auto_reflect']} '
+        'updated_at=${_asMap(payload['app_preferences'])?['client_updated_at']}',
+      );
+      await _api.updateUserSettings(payload);
+      await _setPendingLocalChanges(false);
       _debugLog('push completed');
-    } on DioException {
-      _debugLog('push failed with DioException');
+      return true;
+    } on DioException catch (e) {
+      _debugLog(
+        'push failed with DioException status=${e.response?.statusCode} '
+        'type=${e.type} message=${e.message} data=${e.response?.data}',
+      );
+      if (throwOnFailure) rethrow;
       // Local-first settings remain saved even when background sync misses.
     } catch (e) {
       _debugLog('push failed: $e');
+      if (throwOnFailure) rethrow;
     }
+    return false;
   }
 
   Future<Map<String, dynamic>> _buildServerPayload() async {
     final prefs = await SharedPreferences.getInstance();
     final autoReflect = prefs.getBool(autoReflectKey) ?? true;
+    final updatedAt = prefs.getString(_localUpdatedAtStorageKey) ??
+        DateTime.now().toUtc().toIso8601String();
     final appPreferences = <String, dynamic>{
       'schema_version': 1,
-      'client_updated_at': DateTime.now().toUtc().toIso8601String(),
+      'client_updated_at': updatedAt,
     };
 
     final appShellMode = prefs.getString(appShellModeKey);
@@ -132,6 +164,11 @@ class UserSettingsSyncService {
       await prefs.setBool(autoReflectKey, autoReflect);
     }
 
+    final remoteUpdatedAt = appPreferences['client_updated_at']?.toString();
+    if (remoteUpdatedAt != null && remoteUpdatedAt.isNotEmpty) {
+      await prefs.setString(_localUpdatedAtStorageKey, remoteUpdatedAt);
+    }
+
     final appShellMode = appPreferences['app_shell_mode']?.toString();
     if (appShellMode != null && appShellMode.isNotEmpty) {
       await prefs.setString(appShellModeKey, appShellMode);
@@ -159,6 +196,8 @@ class UserSettingsSyncService {
         value: jsonEncode(sageMemory),
       );
     }
+
+    await _setPendingLocalChanges(false);
   }
 
   Future<bool> _hasLocalSettings() async {
@@ -174,6 +213,16 @@ class UserSettingsSyncService {
     if (sageSettings != null && sageSettings.isNotEmpty) return true;
     final sageMemory = await _secureStorage.read(key: sageMemoryItemsKey);
     return sageMemory != null && sageMemory.isNotEmpty;
+  }
+
+  Future<bool> _hasPendingLocalChanges() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_dirtyStorageKey) ?? false;
+  }
+
+  Future<void> _setPendingLocalChanges(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dirtyStorageKey, value);
   }
 
   Future<void> _pushAutoReflect(bool enabled) async {

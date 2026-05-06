@@ -178,7 +178,9 @@ class SageProfileService {
       key: _settingsKey,
       value: jsonEncode(settings.toJson()),
     );
-    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+    final settingsSync = UserSettingsSyncService();
+    await settingsSync.markLocalSettingsDirty();
+    await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
   }
 
   Future<List<SageMemoryItem>> loadMemoryItems() async {
@@ -202,7 +204,9 @@ class SageProfileService {
       key: _memoryKey,
       value: jsonEncode(items.map((item) => item.toJson()).toList()),
     );
-    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+    final settingsSync = UserSettingsSyncService();
+    await settingsSync.markLocalSettingsDirty();
+    await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
   }
 
   Future<List<SageMemoryItem>> addMemoryTexts(
@@ -245,7 +249,9 @@ class SageProfileService {
 
   Future<void> clearMemory() async {
     await _storage.delete(key: _memoryKey);
-    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+    final settingsSync = UserSettingsSyncService();
+    await settingsSync.markLocalSettingsDirty();
+    await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
   }
 
   String buildMemoryContext(List<SageMemoryItem> items) {

@@ -142,6 +142,7 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       await _service.syncSchedules(
         nextSettings,
         journalPatternProfile: patternProfile,
+        persistSettings: true,
       );
       final status = await _service.getStatus();
       if (!mounted) return;

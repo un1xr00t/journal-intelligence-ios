@@ -397,7 +397,9 @@ class NotificationNudgeService {
   Future<void> saveSettings(NotificationNudgeSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(settings.toJson()));
-    unawaited(UserSettingsSyncService().pushLocalSettingsToServer());
+    final settingsSync = UserSettingsSyncService();
+    await settingsSync.markLocalSettingsDirty();
+    await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
   }
 
   Future<List<LocationNudgeEvent>> loadObservedLocationEvents() async {
@@ -458,6 +460,7 @@ class NotificationNudgeService {
   Future<void> syncSchedules(
     NotificationNudgeSettings nextSettings, {
     JournalPatternProfile? journalPatternProfile,
+    bool persistSettings = false,
   }) async {
     final previousSettings = await loadSettings();
     final idsToCancel = <String>{
@@ -564,7 +567,9 @@ class NotificationNudgeService {
 
     await _syncFollowUpReminders();
 
-    await saveSettings(nextSettings);
+    if (persistSettings) {
+      await saveSettings(nextSettings);
+    }
   }
 
   Future<void> refreshFollowUpReminders() async {
