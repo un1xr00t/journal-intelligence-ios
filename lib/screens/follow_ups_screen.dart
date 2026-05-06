@@ -9,6 +9,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/follow_up_tasks_service.dart';
 import '../services/local_storage_paths.dart';
@@ -114,6 +115,9 @@ const _quickFollowUps = <({
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 final _followUpPreviewByteCache = <String, Uint8List>{};
+
+const _exitPlanNoteDismissedStorageKey =
+    'follow_ups.exit_plan_note_dismissed.v1';
 
 enum _FollowUpAttachmentSource {
   photoLibrary,
@@ -292,6 +296,7 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
 
   String? _error;
   bool _showExitPlanNote = true;
+  bool _exitPlanNotePreferenceLoaded = false;
   int _filterIndex = 0;
   List<FollowUpTask> _tasks = const [];
   final Set<String> _expandedTaskIds = <String>{};
@@ -299,7 +304,30 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadExitPlanNotePreference();
     _load();
+  }
+
+  Future<void> _loadExitPlanNotePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dismissed = prefs.getBool(_exitPlanNoteDismissedStorageKey) ?? false;
+    if (!mounted) return;
+    setState(() {
+      _showExitPlanNote = !dismissed;
+      _exitPlanNotePreferenceLoaded = true;
+    });
+  }
+
+  void _dismissExitPlanNote() {
+    setState(() => _showExitPlanNote = false);
+    unawaited(_saveExitPlanNoteDismissal());
+  }
+
+  Future<void> _saveExitPlanNoteDismissal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_exitPlanNoteDismissedStorageKey, true);
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -754,7 +782,7 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
                       ),
                     ),
                   ],
-                  if (_showExitPlanNote) ...[
+                  if (_exitPlanNotePreferenceLoaded && _showExitPlanNote) ...[
                     const SizedBox(height: 24),
                     GlassCard(
                       accentBorder: true,
@@ -789,9 +817,7 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
                           CupertinoButton(
                             padding: EdgeInsets.zero,
                             minimumSize: const Size(28, 28),
-                            onPressed: () {
-                              setState(() => _showExitPlanNote = false);
-                            },
+                            onPressed: _dismissExitPlanNote,
                             child: const Icon(
                               CupertinoIcons.xmark,
                               color: JournalColors.textMuted,
