@@ -38,6 +38,26 @@ MediaType _imageMimeType(String filename) {
   }
 }
 
+MediaType _attachmentMimeType(String filename) {
+  final ext = filename.split('.').last.toLowerCase();
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'webp':
+    case 'gif':
+      return _imageMimeType(filename);
+    case 'pdf':
+      return MediaType('application', 'pdf');
+    case 'txt':
+      return MediaType('text', 'plain');
+    case 'csv':
+      return MediaType('text', 'csv');
+    default:
+      return MediaType('application', 'octet-stream');
+  }
+}
+
 const _kAllowedEntryAttachmentExtensions = <String>{
   '.jpg',
   '.jpeg',
@@ -1750,6 +1770,38 @@ class ApiService {
 
   Future<void> saveFollowUpTasks(List<Map<String, dynamic>> tasks) async {
     await _authedPut('/api/follow-ups', data: {'tasks': tasks});
+  }
+
+  Future<Map<String, dynamic>> uploadFollowUpAttachment({
+    required String filePath,
+    required String filename,
+  }) async {
+    final extension = _filenameExtension(filename);
+    final isImage = _kAllowedEntryAttachmentExtensions.contains(extension);
+    final prepared = isImage
+        ? await _prepareEntryAttachment(filePath: filePath, filename: filename)
+        : null;
+    final bytes = prepared?.bytes ?? await File(filePath).readAsBytes();
+    final uploadFilename = prepared?.filename ?? filename;
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: uploadFilename,
+        contentType: _attachmentMimeType(uploadFilename),
+      ),
+    });
+    await _ready;
+    final res = await _dio.post('/api/follow-ups/attachments', data: formData);
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<List<int>> fetchFollowUpAttachmentBytes(String attachmentId) async {
+    await _ready;
+    final res = await _dio.get<List<int>>(
+      '/api/follow-up-attachments/$attachmentId/file',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return res.data ?? const [];
   }
 
   Future<List<Map<String, dynamic>>> getOrbitLedgerEntries() async {

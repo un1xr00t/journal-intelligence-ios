@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -120,8 +121,6 @@ enum _FollowUpAttachmentSource {
   files,
 }
 
-const _followUpPortableImageMaxBytes = 24 * 1024 * 1024;
-
 Widget _followUpTaskSwipeBackground({
   required Alignment alignment,
   required Color color,
@@ -207,13 +206,7 @@ Future<FollowUpAttachment?> _persistFollowUpAttachment(
   final copied = await source.copy(targetPath);
   String? previewPath = attachment.previewPath;
   String? previewBase64 = attachment.previewBase64;
-  String? imageBase64 = attachment.imageBase64;
   if (attachment.isImage) {
-    final imageBytes = await copied.readAsBytes();
-    if (imageBytes.isNotEmpty &&
-        imageBytes.length <= _followUpPortableImageMaxBytes) {
-      imageBase64 = base64Encode(imageBytes);
-    }
     final previewBytes = await _generateFollowUpPreviewBytes(copied);
     if (previewBytes != null && previewBytes.isNotEmpty) {
       previewBase64 = base64Encode(previewBytes);
@@ -228,9 +221,10 @@ Future<FollowUpAttachment?> _persistFollowUpAttachment(
     name: rawName,
     path: copied.path,
     extension: extension,
+    remoteId: attachment.remoteId,
     previewPath: previewPath,
     previewBase64: previewBase64,
-    imageBase64: imageBase64,
+    imageBase64: attachment.imageBase64,
   );
 }
 
@@ -322,15 +316,24 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
   }
 
   Future<void> _saveTasks(List<FollowUpTask> tasks) async {
-    await _service.saveTasks(tasks);
+    final sorted = List<FollowUpTask>.from(tasks)
+      ..sort(FollowUpTaskService.compareTasks);
+    if (!mounted) return;
+    setState(() => _tasks = sorted);
+
+    try {
+      await _service.saveTasks(sorted);
+      unawaited(_refreshFollowUpReminders());
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not save your follow-ups right now.');
+    }
+  }
+
+  Future<void> _refreshFollowUpReminders() async {
     try {
       await _nudgeService.refreshFollowUpReminders();
     } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      _tasks = List<FollowUpTask>.from(tasks)
-        ..sort(FollowUpTaskService.compareTasks);
-    });
   }
 
   Future<void> _openEditor(

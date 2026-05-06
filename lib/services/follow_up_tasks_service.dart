@@ -28,6 +28,7 @@ class FollowUpAttachment {
     required this.name,
     required this.path,
     required this.extension,
+    this.remoteId,
     this.previewPath,
     this.previewBase64,
     this.imageBase64,
@@ -36,6 +37,7 @@ class FollowUpAttachment {
   final String name;
   final String path;
   final String extension;
+  final String? remoteId;
   final String? previewPath;
   final String? previewBase64;
   final String? imageBase64;
@@ -52,6 +54,7 @@ class FollowUpAttachment {
     String? name,
     String? path,
     String? extension,
+    String? remoteId,
     String? previewPath,
     String? previewBase64,
     String? imageBase64,
@@ -60,6 +63,7 @@ class FollowUpAttachment {
       name: name ?? this.name,
       path: path ?? this.path,
       extension: extension ?? this.extension,
+      remoteId: remoteId ?? this.remoteId,
       previewPath: previewPath ?? this.previewPath,
       previewBase64: previewBase64 ?? this.previewBase64,
       imageBase64: imageBase64 ?? this.imageBase64,
@@ -70,6 +74,8 @@ class FollowUpAttachment {
         'name': name,
         'path': path,
         'extension': extension,
+        if (remoteId != null && remoteId!.trim().isNotEmpty)
+          'attachment_id': remoteId,
         if (previewPath != null && previewPath!.trim().isNotEmpty)
           'preview_path': previewPath,
         if (previewBase64 != null && previewBase64!.trim().isNotEmpty)
@@ -83,6 +89,7 @@ class FollowUpAttachment {
       name: _normalizedText(json['name']) ?? 'attachment',
       path: _normalizedText(json['path']) ?? '',
       extension: _normalizedText(json['extension']) ?? '',
+      remoteId: _normalizedText(json['attachment_id'] ?? json['remote_id']),
       previewPath: _normalizedText(json['preview_path']),
       previewBase64: _normalizedText(json['preview_base64']),
       imageBase64: _normalizedText(json['image_base64']),
@@ -321,7 +328,9 @@ class FollowUpTask {
 
 class FollowUpTaskService {
   static const _storageKey = 'follow_up_tasks.v1';
+  static const _dirtyStorageKey = 'follow_up_tasks_dirty.v1';
   static List<FollowUpTask>? _memoryCache;
+  static int _saveGeneration = 0;
 
   final ApiService _api;
 
@@ -335,6 +344,12 @@ class FollowUpTaskService {
 
   Future<List<FollowUpTask>> syncTasksFromServer() async {
     final localCached = await _loadTasksFromLocalCache();
+    if (localCached.isNotEmpty && await _hasPendingLocalChanges()) {
+      _debugLog('sync skipped remote hydrate because local cache is dirty');
+      unawaited(_pushTasksToServer(localCached));
+      return localCached;
+    }
+
     try {
       final remoteTasks = await _api.getFollowUpTasks();
       _debugLog('sync fetched ${remoteTasks.length} remote tasks');
@@ -369,11 +384,40 @@ class FollowUpTaskService {
 
   Future<void> saveTasks(List<FollowUpTask> tasks) async {
     final sorted = List<FollowUpTask>.from(tasks)..sort(compareTasks);
-    final repaired = await _repairTaskAttachments(sorted);
-    _memoryCache = List<FollowUpTask>.from(repaired.$1);
-    await _writeLocalCache(repaired.$1);
-    unawaited(_pushTasksToServer(repaired.$1));
-    _debugLog('save cached ${repaired.$1.length} tasks and queued push');
+    final generation = ++_saveGeneration;
+    await _setPendingLocalChanges(true);
+    await _writeLocalCache(sorted);
+    var pushed = false;
+    if (generation == _saveGeneration) {
+      pushed = await _pushTasksToServer(sorted, generation: generation);
+    }
+    unawaited(_repairAndPushTasks(sorted, generation));
+    _debugLog(
+      'save cached ${sorted.length} tasks, ${pushed ? 'pushed' : 'push pending'}, and queued repair',
+    );
+  }
+
+  Future<void> _repairAndPushTasks(
+    List<FollowUpTask> tasks,
+    int generation,
+  ) async {
+    final currentTasks = generation == _saveGeneration
+        ? List<FollowUpTask>.from(_memoryCache ?? tasks)
+        : tasks;
+    final repaired = await _repairTaskAttachments(currentTasks);
+    if (generation != _saveGeneration) return;
+
+    repaired.$1.sort(compareTasks);
+    if (repaired.$2) {
+      await _writeLocalCache(repaired.$1);
+    }
+    if (generation != _saveGeneration) return;
+
+    final pushed =
+        await _pushTasksToServer(repaired.$1, generation: generation);
+    _debugLog(
+      'repair completed for ${repaired.$1.length} tasks, ${pushed ? 'pushed' : 'push pending'}',
+    );
   }
 
   Future<List<FollowUpTask>> _loadTasksFromLocalCache() async {
@@ -406,16 +450,127 @@ class FollowUpTaskService {
     );
   }
 
-  Future<void> _pushTasksToServer(List<FollowUpTask> tasks) async {
+  Future<bool> _hasPendingLocalChanges() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_dirtyStorageKey) ?? false;
+  }
+
+  Future<void> _setPendingLocalChanges(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dirtyStorageKey, value);
+  }
+
+  Future<bool> _pushTasksToServer(
+    List<FollowUpTask> tasks, {
+    int? generation,
+  }) async {
     try {
+      await _setPendingLocalChanges(true);
+      final uploadResult = await _uploadMissingAttachments(tasks);
+      final tasksForServer = uploadResult.$1;
+      if (uploadResult.$2 &&
+          (generation == null || generation == _saveGeneration)) {
+        await _writeLocalCache(tasksForServer);
+      }
+      final serverTasks = tasksForServer.map(_taskServerJson).toList();
+      if (kDebugMode) {
+        _debugLog(
+          'push starting with ${tasksForServer.length} tasks, payload ${jsonEncode({
+                'tasks': serverTasks
+              }).length} chars',
+        );
+      }
       await _api.saveFollowUpTasks(
-        tasks.map(_taskServerJson).toList(),
+        serverTasks,
       );
-      _debugLog('push completed with ${tasks.length} tasks');
-    } on DioException {
+      if (generation == null || generation == _saveGeneration) {
+        await _setPendingLocalChanges(false);
+      }
+      _debugLog('push completed with ${tasksForServer.length} tasks');
+      return true;
+    } on DioException catch (e) {
       // Keep local state fast and resilient even when sync cannot complete.
-      _debugLog('push failed with DioException');
+      _debugLog(
+        'push failed with DioException status=${e.response?.statusCode} type=${e.type} message=${e.message}',
+      );
+    } catch (e) {
+      // Keep local state fast and resilient even when attachment prep fails.
+      _debugLog('push failed with ${e.runtimeType}');
     }
+    return false;
+  }
+
+  Future<(List<FollowUpTask>, bool)> _uploadMissingAttachments(
+    List<FollowUpTask> tasks,
+  ) async {
+    var changed = false;
+    final uploadedTasks = <FollowUpTask>[];
+    for (final task in tasks) {
+      final taskAttachments = <FollowUpAttachment>[];
+      var taskChanged = false;
+      for (final attachment in task.attachments) {
+        final uploaded = await _uploadAttachmentIfNeeded(attachment);
+        if (_attachmentChanged(uploaded, attachment)) taskChanged = true;
+        taskAttachments.add(uploaded);
+      }
+
+      final comments = <FollowUpComment>[];
+      var commentsChanged = false;
+      for (final comment in task.comments) {
+        final commentAttachments = <FollowUpAttachment>[];
+        var commentChanged = false;
+        for (final attachment in comment.attachments) {
+          final uploaded = await _uploadAttachmentIfNeeded(attachment);
+          if (_attachmentChanged(uploaded, attachment)) commentChanged = true;
+          commentAttachments.add(uploaded);
+        }
+        comments.add(
+          commentChanged
+              ? comment.copyWith(attachments: commentAttachments)
+              : comment,
+        );
+        commentsChanged = commentsChanged || commentChanged;
+      }
+
+      if (taskChanged || commentsChanged) {
+        changed = true;
+        uploadedTasks.add(
+          task.copyWith(
+            attachments: taskChanged ? taskAttachments : task.attachments,
+            comments: commentsChanged ? comments : task.comments,
+          ),
+        );
+      } else {
+        uploadedTasks.add(task);
+      }
+    }
+    return (uploadedTasks, changed);
+  }
+
+  Future<FollowUpAttachment> _uploadAttachmentIfNeeded(
+    FollowUpAttachment attachment,
+  ) async {
+    if ((attachment.remoteId ?? '').trim().isNotEmpty) return attachment;
+    var candidate = attachment;
+    var path = candidate.path.trim();
+    if (path.isEmpty && (candidate.imageBase64 ?? '').trim().isNotEmpty) {
+      candidate = await _restoreInlineImageAttachment(candidate);
+      path = candidate.path.trim();
+    }
+    if (path.isEmpty) return attachment;
+    final file = File(path);
+    if (!await file.exists()) return attachment;
+
+    final response = await _api.uploadFollowUpAttachment(
+      filePath: path,
+      filename: candidate.name.trim().isNotEmpty
+          ? candidate.name.trim()
+          : path.split('/').last,
+    );
+    final remoteId =
+        _normalizedText(response['id'] ?? response['attachment_id']);
+    if (remoteId == null) return attachment;
+    return candidate.copyWith(remoteId: remoteId, imageBase64: '');
   }
 
   void _debugLog(String message) {
@@ -458,10 +613,14 @@ class FollowUpTaskService {
       'name': attachment.name,
       'path': attachment.path,
       'extension': attachment.extension,
+      if (attachment.remoteId != null && attachment.remoteId!.trim().isNotEmpty)
+        'attachment_id': attachment.remoteId,
       if (attachment.previewBase64 != null &&
           attachment.previewBase64!.trim().isNotEmpty)
         'preview_base64': attachment.previewBase64,
-      if (attachment.imageBase64 != null &&
+      if ((attachment.remoteId == null ||
+              attachment.remoteId!.trim().isEmpty) &&
+          attachment.imageBase64 != null &&
           attachment.imageBase64!.trim().isNotEmpty)
         'image_base64': attachment.imageBase64,
     };
@@ -530,6 +689,7 @@ class FollowUpTaskService {
     return repaired.path != original.path ||
         repaired.name != original.name ||
         repaired.extension != original.extension ||
+        (repaired.remoteId ?? '') != (original.remoteId ?? '') ||
         (repaired.previewPath ?? '') != (original.previewPath ?? '') ||
         (repaired.previewBase64 ?? '') != (original.previewBase64 ?? '') ||
         (repaired.imageBase64 ?? '') != (original.imageBase64 ?? '');
@@ -540,17 +700,29 @@ class FollowUpTaskService {
   ) async {
     final inlinePreview = attachment.previewBase64?.trim();
     final inlineImage = attachment.imageBase64?.trim();
+    final remoteId = attachment.remoteId?.trim();
     final sourcePath = attachment.path.trim();
     if (sourcePath.isEmpty && (inlineImage == null || inlineImage.isEmpty)) {
+      if (remoteId != null && remoteId.isNotEmpty) {
+        return _restoreRemoteAttachment(attachment, remoteId);
+      }
       return attachment;
     }
 
     if (sourcePath.isEmpty) {
+      if (remoteId != null && remoteId.isNotEmpty) {
+        final restored = await _restoreRemoteAttachment(attachment, remoteId);
+        if (restored.path.trim().isNotEmpty) return restored;
+      }
       return _restoreInlineImageAttachment(attachment);
     }
 
     final source = File(sourcePath);
     if (!await source.exists()) {
+      if (remoteId != null && remoteId.isNotEmpty) {
+        final restored = await _restoreRemoteAttachment(attachment, remoteId);
+        if (restored.path.trim().isNotEmpty) return restored;
+      }
       if (inlineImage != null && inlineImage.isNotEmpty) {
         return _restoreInlineImageAttachment(attachment);
       }
@@ -580,6 +752,19 @@ class FollowUpTaskService {
     final normalizedTargetRoot = attachmentsDir.absolute.path;
     if (normalizedSource.startsWith(normalizedTargetRoot)) {
       if (attachment.isImage) {
+        final hasRemoteFile = remoteId != null && remoteId.isNotEmpty;
+        final hasPortableImage = inlineImage != null && inlineImage.isNotEmpty;
+        final hasInlinePreview =
+            inlinePreview != null && inlinePreview.isNotEmpty;
+        final existingPreviewPath = attachment.previewPath?.trim();
+        final hasPreviewFile = existingPreviewPath != null &&
+            existingPreviewPath.isNotEmpty &&
+            await File(existingPreviewPath).exists();
+        if ((hasRemoteFile || hasPortableImage) &&
+            (hasInlinePreview || hasPreviewFile)) {
+          return attachment;
+        }
+
         final previewBytes = await _generateAttachmentPreviewBytes(source);
         final previewPath = await _ensureAttachmentPreviewFile(
           source,
@@ -589,8 +774,9 @@ class FollowUpTaskService {
         final previewBase64 = previewBytes != null && previewBytes.isNotEmpty
             ? base64Encode(previewBytes)
             : inlinePreview;
-        final imageBase64 =
-            await _encodePortableImageBase64(source, fallback: inlineImage);
+        final imageBase64 = hasRemoteFile
+            ? inlineImage
+            : await _encodePortableImageBase64(source, fallback: inlineImage);
         if ((attachment.previewPath ?? '').trim() != (previewPath ?? '') ||
             (attachment.previewBase64 ?? '').trim() !=
                 (previewBase64 ?? '').trim() ||
@@ -625,8 +811,9 @@ class FollowUpTaskService {
     final previewPath = attachment.isImage
         ? await _ensureAttachmentPreviewFile(copied, attachmentsDir, attachment)
         : attachment.previewPath;
-    final imageBase64 =
-        await _encodePortableImageBase64(copied, fallback: inlineImage);
+    final imageBase64 = attachment.remoteId?.trim().isNotEmpty == true
+        ? inlineImage
+        : await _encodePortableImageBase64(copied, fallback: inlineImage);
     return FollowUpAttachment(
       name: baseName,
       path: copied.path,
@@ -666,6 +853,54 @@ class FollowUpTaskService {
         '${attachmentsDir.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}.$extension',
       );
       await restored.writeAsBytes(imageBytes, flush: true);
+      final previewPath = attachment.isImage
+          ? await _ensureAttachmentPreviewFile(
+              restored,
+              attachmentsDir,
+              attachment,
+            )
+          : attachment.previewPath;
+      final previewBytes = attachment.isImage
+          ? await _generateAttachmentPreviewBytes(restored)
+          : null;
+      return attachment.copyWith(
+        path: restored.path,
+        previewPath: previewPath,
+        previewBase64: previewBytes != null && previewBytes.isNotEmpty
+            ? base64Encode(previewBytes)
+            : attachment.previewBase64,
+      );
+    } catch (_) {
+      return attachment;
+    }
+  }
+
+  Future<FollowUpAttachment> _restoreRemoteAttachment(
+    FollowUpAttachment attachment,
+    String remoteId,
+  ) async {
+    try {
+      final bytes = await _api.fetchFollowUpAttachmentBytes(remoteId);
+      if (bytes.isEmpty) return attachment;
+      final supportDir = await resolveAppSupportDirectory();
+      final attachmentsDir = Directory(
+        '${supportDir.path}/follow_up_attachments',
+      );
+      await attachmentsDir.create(recursive: true);
+      final safeBase = _sanitizeAttachmentFileName(
+        attachment.name.trim().isNotEmpty
+            ? attachment.name.trim()
+            : 'attachment',
+      );
+      final dot = safeBase.lastIndexOf('.');
+      final stem = dot > 0 ? safeBase.substring(0, dot) : safeBase;
+      final extension = attachment.extension.trim().isNotEmpty
+          ? attachment.extension.trim().toLowerCase()
+          : 'bin';
+      final restored = File(
+        '${attachmentsDir.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}.$extension',
+      );
+      await restored.writeAsBytes(bytes, flush: true);
       final previewPath = attachment.isImage
           ? await _ensureAttachmentPreviewFile(
               restored,
