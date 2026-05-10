@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import 'sage_tracks_screen.dart';
+import '../services/api_service.dart';
 import '../services/sage_profile_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -8,12 +9,16 @@ import '../widgets/glass_card.dart';
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 const _kSageVoices = <({String id, String label, String desc})>[
-  (id: 'shimmer', label: 'Shimmer', desc: 'Soft, calm, reflective'),
-  (id: 'nova', label: 'Nova', desc: 'Warm, conversational, close'),
-  (id: 'fable', label: 'Fable', desc: 'Steady, grounded, coach-like'),
-  (id: 'onyx', label: 'Onyx', desc: 'Sharper, darker, more edge'),
-  (id: 'echo', label: 'Echo', desc: 'Clean, neutral, understated'),
-  (id: 'alloy', label: 'Alloy', desc: 'Balanced, general-purpose'),
+  (
+    id: 'sage_alive',
+    label: 'Sage Alive',
+    desc: 'ElevenLabs v3, expressive, can laugh/sigh/whisper'
+  ),
+  (
+    id: 'sage_fast',
+    label: 'Sage Fast',
+    desc: 'ElevenLabs Flash, cheaper and quicker for long replies'
+  ),
 ];
 
 const _kWarmthOptions = <({String id, String label})>[
@@ -49,13 +54,17 @@ class SageSettingsScreen extends StatefulWidget {
 }
 
 class _SageSettingsScreenState extends State<SageSettingsScreen> {
+  final _api = ApiService();
   final _profile = SageProfileService();
   final _memoryCtrl = TextEditingController();
+  final _voiceKeyCtrl = TextEditingController();
 
   SageSettings _settings = SageSettings.defaults;
+  Map<String, dynamic>? _voiceSettings;
   List<SageMemoryItem> _memoryItems = const [];
   bool _loading = true;
   bool _saving = false;
+  bool _voiceKeySaving = false;
   bool _saved = false;
   String? _error;
 
@@ -68,6 +77,7 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
   @override
   void dispose() {
     _memoryCtrl.dispose();
+    _voiceKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -75,9 +85,11 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
     try {
       final settings = await _profile.loadSettings();
       final memory = await _profile.loadMemoryItems();
+      final voiceSettings = await _api.getVoiceSettings();
       if (!mounted) return;
       setState(() {
         _settings = settings;
+        _voiceSettings = voiceSettings;
         _memoryItems = memory;
         _loading = false;
       });
@@ -157,6 +169,61 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
     setState(() => _memoryItems = const []);
   }
 
+  Future<void> _saveElevenLabsKey() async {
+    final key = _voiceKeyCtrl.text.trim();
+    if (key.isEmpty) return;
+    setState(() {
+      _voiceKeySaving = true;
+      _saved = false;
+      _error = null;
+    });
+    try {
+      await _api.saveElevenLabsVoiceKey(key);
+      final voiceSettings = await _api.getVoiceSettings();
+      _voiceKeyCtrl.clear();
+      if (!mounted) return;
+      setState(() {
+        _voiceSettings = voiceSettings;
+        _voiceKeySaving = false;
+        _saved = true;
+      });
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _saved = false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _voiceKeySaving = false;
+        _error = 'Could not save ElevenLabs voice key.';
+      });
+    }
+  }
+
+  Future<void> _clearElevenLabsKey() async {
+    setState(() {
+      _voiceKeySaving = true;
+      _saved = false;
+      _error = null;
+    });
+    try {
+      await _api.clearElevenLabsVoiceKey();
+      final voiceSettings = await _api.getVoiceSettings();
+      if (!mounted) return;
+      setState(() {
+        _voiceSettings = voiceSettings;
+        _voiceKeySaving = false;
+        _saved = true;
+      });
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _saved = false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _voiceKeySaving = false;
+        _error = 'Could not clear ElevenLabs voice key.';
+      });
+    }
+  }
+
   Future<void> _push(Widget screen) {
     return Navigator.of(context, rootNavigator: true).push(
       CupertinoPageRoute(
@@ -166,6 +233,24 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
         ),
       ),
     );
+  }
+
+  bool get _hasElevenLabsVoiceKey =>
+      _voiceSettings?['has_elevenlabs_key'] == true ||
+      _voiceSettings?['has_user_elevenlabs_key'] == true;
+
+  String _voiceKeyStatusText() {
+    final keySource = _voiceSettings?['key_source']?.toString();
+    if (_voiceSettings?['has_user_elevenlabs_key'] == true) {
+      return 'A dedicated ElevenLabs key is saved on the backend for voice.';
+    }
+    if (keySource == 'elevenlabs_server_key') {
+      return 'Using the server-side ELEVENLABS_API_KEY. The app never stores the key locally.';
+    }
+    if (_voiceSettings?['using_openai'] == true) {
+      return 'ElevenLabs is not configured yet. Voice can fall back to OpenAI, but Sage Alive needs ElevenLabs.';
+    }
+    return 'Paste your ElevenLabs key once. It is sent to the backend and not saved on this device.';
   }
 
   @override
@@ -235,6 +320,109 @@ class _SageSettingsScreenState extends State<SageSettingsScreen> {
                   const SizedBox(height: 18),
                   const _SectionLabel('VOICE'),
                   const SizedBox(height: 8),
+                  GlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              CupertinoIcons.waveform,
+                              color: JournalColors.accent,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'ElevenLabs voice key',
+                                    style: TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _voiceKeyStatusText(),
+                                    style: const TextStyle(
+                                      color: JournalColors.textSecondary,
+                                      fontSize: 12,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!_hasElevenLabsVoiceKey) ...[
+                          const SizedBox(height: 14),
+                          CupertinoTextField(
+                            controller: _voiceKeyCtrl,
+                            placeholder: 'sk_...',
+                            obscureText: true,
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            padding: const EdgeInsets.all(14),
+                            style: const TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 15,
+                            ),
+                            placeholderStyle: const TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 15,
+                            ),
+                            decoration: BoxDecoration(
+                              color: JournalColors.bgSurface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: JournalColors.border),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          CupertinoButton(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            color: JournalColors.accent,
+                            onPressed:
+                                _voiceKeySaving ? null : _saveElevenLabsKey,
+                            child: _voiceKeySaving
+                                ? const CupertinoActivityIndicator(
+                                    color: JournalColors.textPrimary,
+                                  )
+                                : const Text(
+                                    'Save to Backend',
+                                    style: TextStyle(
+                                      color: JournalColors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ] else if (_voiceSettings?['has_user_elevenlabs_key'] ==
+                            true) ...[
+                          const SizedBox(height: 10),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed:
+                                _voiceKeySaving ? null : _clearElevenLabsKey,
+                            child: const Text(
+                              'Clear saved key',
+                              style: TextStyle(
+                                color: JournalColors.danger,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   GlassCard(
                     child: Column(
                       children: _kSageVoices.map((voice) {

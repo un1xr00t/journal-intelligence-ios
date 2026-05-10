@@ -258,10 +258,11 @@ class _TimelineScreenState extends State<TimelineScreen> {
       await _summaryAudioPlayer.stop();
       final voiceSettings = await _api.getVoiceSettings();
       final hasVoiceKey = voiceSettings['has_voice_key'] == true;
+      final hasElevenLabsKey = voiceSettings['has_elevenlabs_key'] == true;
       final usingOpenAi = voiceSettings['using_openai'] == true;
-      if (!hasVoiceKey && !usingOpenAi) {
+      if (!hasVoiceKey && !hasElevenLabsKey && !usingOpenAi) {
         throw Exception(
-          'Voice requires an OpenAI API key. Add one in Settings → Voice, or switch AI provider to OpenAI.',
+          'Voice requires an ElevenLabs API key. Add one in Settings → Voice, or configure ELEVENLABS_API_KEY on the server.',
         );
       }
 

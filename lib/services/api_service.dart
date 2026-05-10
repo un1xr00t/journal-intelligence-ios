@@ -1524,11 +1524,15 @@ class ApiService {
     required String text,
     String? voiceId,
   }) async {
+    final safeVoiceId = switch (voiceId) {
+      'sage_fast' => 'sage_fast',
+      _ => 'sage_alive',
+    };
     final res = await _dio.post<List<int>>(
       '/api/voice/speak',
       data: {
         'text': text,
-        if (voiceId != null && voiceId.isNotEmpty) 'voice_id': voiceId,
+        'voice_id': safeVoiceId,
       },
       options: Options(
         responseType: ResponseType.bytes,
@@ -1551,6 +1555,24 @@ class ApiService {
     _voiceSettingsCache = Map<String, dynamic>.from(data);
     _voiceSettingsCachedAt = DateTime.now();
     return data;
+  }
+
+  Future<Map<String, dynamic>> saveElevenLabsVoiceKey(String apiKey) async {
+    final res = await _authedPost('/api/voice/settings/key', data: {
+      'voice_elevenlabs_key': apiKey,
+    });
+    _voiceSettingsCache = null;
+    _voiceSettingsCachedAt = null;
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> clearElevenLabsVoiceKey() async {
+    final res = await _authedPost('/api/voice/settings/key', data: {
+      'voice_elevenlabs_key': null,
+    });
+    _voiceSettingsCache = null;
+    _voiceSettingsCachedAt = null;
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   // ── Entries / Timeline ────────────────────────────────────────

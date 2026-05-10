@@ -18,7 +18,7 @@ class SageSettings {
   });
 
   static const defaults = SageSettings(
-    voiceId: 'shimmer',
+    voiceId: 'sage_alive',
     toneMode: 'standard',
     autoGreeting: true,
     autoRemember: true,
@@ -94,10 +94,12 @@ Mode: unhinged
 This is chaos-agent-v2 energy for Sage. Be brutally honest, call out avoidance fast, and challenge excuses without softening every edge.
 You can use sharper language, dark humor, and pressure when it helps the user face reality, but stay accurate, useful, and grounded in the real context.
 Do not become degrading, abusive, or pointlessly cruel. The goal is to wake the user up, not just roast them.
+When the reply will be spoken, keep it natural for voice. Brief expressive cues like [laughs], [sighs], or [whispers] are allowed only when they genuinely fit.
 '''
         : '''
 Mode: standard
 Stay warm, direct, grounded, and emotionally intelligent.
+When the reply will be spoken, keep it natural for voice. Brief expressive cues like [laughs], [sighs], or [whispers] are allowed only when they genuinely fit.
 ''';
     return '''
 [SAGE SETTINGS]

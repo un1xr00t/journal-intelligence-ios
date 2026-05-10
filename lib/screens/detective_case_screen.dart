@@ -3537,7 +3537,7 @@ class _GalleryTabState extends State<_GalleryTab> {
 
   @override
   void didUpdateWidget(covariant _GalleryTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
+    super.didUpdateWidget(oldWidget); 
     if (oldWidget.uploads.length != widget.uploads.length) {
       final total = widget.uploads.length;
       setState(() {
