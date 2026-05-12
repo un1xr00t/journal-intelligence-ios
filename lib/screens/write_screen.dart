@@ -26,6 +26,7 @@ class WriteScreen extends StatefulWidget {
 class _WriteScreenState extends State<WriteScreen> {
   final _api = ApiService();
   final _ctrl = TextEditingController();
+  final _urlCtrl = TextEditingController();
   final _focusNode = FocusNode();
   final _picker = ImagePicker();
   LaunchIntentProvider? _launchIntent;
@@ -46,7 +47,27 @@ class _WriteScreenState extends State<WriteScreen> {
         .length;
   }
 
+  bool get _hasReferenceUrl => _urlCtrl.text.trim().isNotEmpty;
+
   bool get _canSave => !_saving && _ctrl.text.trim().isNotEmpty;
+
+  String get _memoryContextLabel {
+    final parts = <String>[];
+    if (_pendingImages.isNotEmpty) {
+      parts.add(
+          '${_pendingImages.length} photo${_pendingImages.length == 1 ? '' : 's'}');
+    }
+    if (_hasReferenceUrl) parts.add('1 link');
+    return parts.isEmpty ? 'No context yet' : parts.join(' + ');
+  }
+
+  String get _urlDisplay {
+    final raw = _urlCtrl.text.trim();
+    if (raw.isEmpty) return '';
+    final candidate = raw.contains('://') ? raw : 'https://$raw';
+    final uri = Uri.tryParse(candidate);
+    return uri?.host.isNotEmpty == true ? uri!.host : raw;
+  }
 
   @override
   void initState() {
@@ -56,6 +77,7 @@ class _WriteScreenState extends State<WriteScreen> {
       _ctrl.text = initialText;
     }
     _focusNode.addListener(() => setState(() {}));
+    _urlCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -74,6 +96,7 @@ class _WriteScreenState extends State<WriteScreen> {
   void dispose() {
     _launchIntent?.removeListener(_handleLaunchIntentChange);
     _ctrl.dispose();
+    _urlCtrl.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -168,8 +191,24 @@ class _WriteScreenState extends State<WriteScreen> {
     );
   }
 
+  Future<void> _showUrlSheet() async {
+    final result = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (_) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: _UrlContextSheet(initialUrl: _urlCtrl.text.trim()),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _urlCtrl.text = result.trim();
+  }
+
   void _removeImage(int index) {
     setState(() => _pendingImages.removeAt(index));
+  }
+
+  void _removeUrl() {
+    _urlCtrl.clear();
   }
 
   Future<void> _save() async {
@@ -187,7 +226,10 @@ class _WriteScreenState extends State<WriteScreen> {
         );
       }
 
-      final result = await _api.createEntry(text: _ctrl.text.trim());
+      final result = await _api.createEntry(
+        text: _ctrl.text.trim(),
+        contextUrls: _hasReferenceUrl ? [_urlCtrl.text.trim()] : const [],
+      );
       final entryId = result['entry_id'] as int?;
 
       // Upload any pending images
@@ -202,6 +244,7 @@ class _WriteScreenState extends State<WriteScreen> {
       }
 
       _ctrl.clear();
+      _urlCtrl.clear();
       if (mounted) {
         setState(() {
           _saving = false;
@@ -224,6 +267,9 @@ class _WriteScreenState extends State<WriteScreen> {
   }
 
   String _parseError(dynamic e) {
+    if (e is JournalUrlContextException) {
+      return e.message;
+    }
     if (e is EntryAttachmentUploadException) {
       return e.message;
     }
@@ -252,6 +298,7 @@ class _WriteScreenState extends State<WriteScreen> {
 
   void _clear() {
     _ctrl.clear();
+    _urlCtrl.clear();
     setState(() {
       _error = null;
     });
@@ -463,7 +510,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'VISUAL MEMORY',
+                                      'MEMORY CONTEXT',
                                       style: TextStyle(
                                         color: JournalColors.textMuted,
                                         fontSize: 11,
@@ -473,7 +520,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                     ),
                                     SizedBox(height: 6),
                                     Text(
-                                      'Add photos if they belong with this entry.',
+                                      'Attach photos or a link without changing your words.',
                                       style: TextStyle(
                                         color: JournalColors.textPrimary,
                                         fontSize: 17,
@@ -502,9 +549,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                   ),
                                 ),
                                 child: Text(
-                                  _pendingImages.isEmpty
-                                      ? 'No photos yet'
-                                      : '${_pendingImages.length} attached',
+                                  _memoryContextLabel,
                                   style: const TextStyle(
                                     color: JournalColors.textPrimary,
                                     fontSize: 12,
@@ -537,7 +582,7 @@ class _WriteScreenState extends State<WriteScreen> {
                                   SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      'Add photos to keep them with the entry.',
+                                      'Add context that should travel with this entry.',
                                       style: TextStyle(
                                         color: JournalColors.textSecondary,
                                         fontSize: 14,
@@ -617,6 +662,59 @@ class _WriteScreenState extends State<WriteScreen> {
                                 },
                               ),
                             ),
+                          if (_hasReferenceUrl) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _withAlpha(
+                                  JournalColors.info,
+                                  0.08,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _withAlpha(
+                                    JournalColors.info,
+                                    0.22,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    CupertinoIcons.link,
+                                    color: JournalColors.textSecondary,
+                                    size: 17,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      _urlDisplay,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: JournalColors.textPrimary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: _saving ? null : _removeUrl,
+                                    child: const Icon(
+                                      CupertinoIcons.xmark_circle_fill,
+                                      color: JournalColors.textMuted,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           LayoutBuilder(
                             builder: (context, constraints) {
@@ -657,6 +755,48 @@ class _WriteScreenState extends State<WriteScreen> {
                                   ),
                                 ),
                               );
+                              final linkButton = GestureDetector(
+                                onTap: _saving ? null : _showUrlSheet,
+                                child: Container(
+                                  height: 54,
+                                  decoration: BoxDecoration(
+                                    color: _hasReferenceUrl
+                                        ? _withAlpha(JournalColors.info, 0.12)
+                                        : JournalColors.bgSurface,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: _hasReferenceUrl
+                                          ? JournalColors.borderBright
+                                          : JournalColors.border,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        CupertinoIcons.link,
+                                        color: _saving
+                                            ? JournalColors.textMuted
+                                            : JournalColors.textPrimary,
+                                        size: 19,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        _hasReferenceUrl
+                                            ? 'Edit Link'
+                                            : 'Add Link',
+                                        style: TextStyle(
+                                          color: _saving
+                                              ? JournalColors.textMuted
+                                              : JournalColors.textPrimary,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
 
                               final saveButton = _SaveEntryButton(
                                 enabled: _canSave,
@@ -675,6 +815,11 @@ class _WriteScreenState extends State<WriteScreen> {
                                     const SizedBox(height: 12),
                                     SizedBox(
                                       width: double.infinity,
+                                      child: linkButton,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
                                       child: saveButton,
                                     ),
                                   ],
@@ -684,6 +829,8 @@ class _WriteScreenState extends State<WriteScreen> {
                               return Row(
                                 children: [
                                   Expanded(child: photoButton),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: linkButton),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     flex: 2,
@@ -773,6 +920,176 @@ class _WriteBackdrop extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UrlContextSheet extends StatefulWidget {
+  const _UrlContextSheet({required this.initialUrl});
+
+  final String initialUrl;
+
+  @override
+  State<_UrlContextSheet> createState() => _UrlContextSheetState();
+}
+
+class _UrlContextSheetState extends State<_UrlContextSheet> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialUrl);
+    _controller.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final canSave = _controller.text.trim().isNotEmpty;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: JournalColors.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: JournalColors.borderBright, width: 0.5),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(20, 18, 20, safeBottom + 18),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _withAlpha(JournalColors.info, 0.12),
+                      border: Border.all(
+                        color: _withAlpha(JournalColors.info, 0.26),
+                      ),
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.link,
+                      color: JournalColors.textPrimary,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ADD LINK',
+                          style: TextStyle(
+                            color: JournalColors.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        SizedBox(height: 5),
+                        Text(
+                          'Include a URL as entry context.',
+                          style: TextStyle(
+                            color: JournalColors.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              CupertinoTextField(
+                controller: _controller,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                textCapitalization: TextCapitalization.none,
+                placeholder: 'https://example.com',
+                placeholderStyle: const TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 15,
+                ),
+                style: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 15,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: _withAlpha(JournalColors.bgSurface, 0.78),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: JournalColors.border),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      color: JournalColors.bgSurface,
+                      borderRadius: BorderRadius.circular(16),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: JournalColors.textPrimary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      color: canSave
+                          ? JournalColors.accent
+                          : JournalColors.bgCardAlt,
+                      borderRadius: BorderRadius.circular(16),
+                      onPressed: canSave
+                          ? () => Navigator.pop(
+                                context,
+                                _controller.text.trim(),
+                              )
+                          : null,
+                      child: Text(
+                        widget.initialUrl.trim().isEmpty ? 'Add' : 'Update',
+                        style: TextStyle(
+                          color: canSave
+                              ? JournalColors.textPrimary
+                              : JournalColors.textMuted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

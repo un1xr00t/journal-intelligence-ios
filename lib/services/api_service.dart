@@ -68,6 +68,15 @@ const _kAllowedEntryAttachmentExtensions = <String>{
 const int _kEntryAttachmentTargetBytes = 4 * 1024 * 1024;
 const int _kEntryAttachmentMaxDimension = 2000;
 
+class JournalUrlContextException implements Exception {
+  const JournalUrlContextException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class EntryAttachmentUploadException implements Exception {
   const EntryAttachmentUploadException({
     required this.filename,
@@ -91,6 +100,22 @@ class _PreparedEntryAttachment {
   final Uint8List bytes;
   final String filename;
   final MediaType mediaType;
+}
+
+Uri _normalizeJournalContextUrl(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    throw const JournalUrlContextException('Add a URL first.');
+  }
+
+  final candidate = trimmed.contains('://') ? trimmed : 'https://$trimmed';
+  final uri = Uri.tryParse(candidate);
+  if (uri == null ||
+      uri.host.trim().isEmpty ||
+      (uri.scheme != 'http' && uri.scheme != 'https')) {
+    throw const JournalUrlContextException('Use a valid http or https URL.');
+  }
+  return uri;
 }
 
 String _filenameStem(String filename) {
@@ -1648,10 +1673,16 @@ class ApiService {
   Future<Map<String, dynamic>> createEntry({
     required String text,
     String? entryDate,
+    List<String> contextUrls = const [],
   }) async {
+    final normalizedContextUrls = contextUrls
+        .map((url) => _normalizeJournalContextUrl(url).toString())
+        .toList(growable: false);
     final res = await _authedPost('/api/journal/write', data: {
       'text': text,
       if (entryDate != null) 'entry_date': entryDate,
+      if (normalizedContextUrls.isNotEmpty)
+        'context_urls': normalizedContextUrls,
     });
     return res.data as Map<String, dynamic>;
   }
