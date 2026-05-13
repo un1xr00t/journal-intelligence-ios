@@ -44,6 +44,7 @@ ios/Runner*
 ios/Runner/*
 !ios/Runner/Info.plist
 !ios/Runner/AppDelegate.swift
+!ios/Runner/RemoteAudioControlBridge.swift
 
 # Symbolication related
 app.*.symbols

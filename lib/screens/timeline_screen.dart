@@ -314,6 +314,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
         await playTtsAudioFile(
           _summaryAudioPlayer,
           path: _summaryTtsTempAudioPath!,
+          title: 'Timeline Summary',
+          subtitle: 'Journal Intelligence',
         );
         if (isFirstChunk) {
           developer.log(

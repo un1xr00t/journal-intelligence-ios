@@ -286,6 +286,8 @@ class _CarPlayCompanionScreenState extends State<CarPlayCompanionScreen> {
         await playTtsAudioFile(
           _audioPlayer,
           path: _briefingTempAudioPath!,
+          title: 'CarPlay Briefing',
+          subtitle: 'Journal Intelligence',
         );
         await _waitForAudioToFinish();
       }

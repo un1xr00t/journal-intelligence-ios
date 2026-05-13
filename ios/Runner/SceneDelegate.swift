@@ -24,6 +24,12 @@ class SceneDelegate: FlutterSceneDelegate {
   private var nativeSessionMethodChannel: FlutterMethodChannel?
   private let nativeSessionMethodChannelName =
     "journal_intelligence/native_session"
+  private var remoteAudioMethodChannel: FlutterMethodChannel?
+  private let remoteAudioMethodChannelName =
+    "journal_intelligence/remote_audio_controls"
+  private var remoteAudioEventChannel: FlutterEventChannel?
+  private let remoteAudioEventChannelName =
+    "journal_intelligence/remote_audio_controls/events"
 
   override func scene(
     _ scene: UIScene,
@@ -80,6 +86,14 @@ class SceneDelegate: FlutterSceneDelegate {
       name: nativeSessionMethodChannelName,
       binaryMessenger: controller.binaryMessenger
     )
+    let remoteAudioMethodChannel = FlutterMethodChannel(
+      name: remoteAudioMethodChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
+    let remoteAudioEventChannel = FlutterEventChannel(
+      name: remoteAudioEventChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
 
     eventChannel.setStreamHandler(speechRecognitionService)
     launchRouteEventChannel.setStreamHandler(launchRouteStreamHandler)
@@ -94,6 +108,10 @@ class SceneDelegate: FlutterSceneDelegate {
     nativeSessionMethodChannel.setMethodCallHandler { call, result in
       NativeRefreshSessionStore.shared.handle(call, result: result)
     }
+    remoteAudioMethodChannel.setMethodCallHandler { call, result in
+      RemoteAudioControlBridge.shared.handle(call, result: result)
+    }
+    remoteAudioEventChannel.setStreamHandler(RemoteAudioControlBridge.shared)
     methodChannel.setMethodCallHandler { [weak self] call, result in
       guard let self else {
         result(
@@ -145,6 +163,8 @@ class SceneDelegate: FlutterSceneDelegate {
     self.launchRouteEventChannel = launchRouteEventChannel
     self.launchRouteMethodChannel = launchRouteMethodChannel
     self.nativeSessionMethodChannel = nativeSessionMethodChannel
+    self.remoteAudioMethodChannel = remoteAudioMethodChannel
+    self.remoteAudioEventChannel = remoteAudioEventChannel
     voiceChannelsConfigured = true
   }
 

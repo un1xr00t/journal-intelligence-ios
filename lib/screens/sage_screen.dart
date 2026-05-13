@@ -2086,6 +2086,8 @@ Return JSON only.
         await playTtsAudioFile(
           _audioPlayer,
           path: _ttsTempAudioPath!,
+          title: 'Sage',
+          subtitle: 'AI generated response',
         );
         if (isFirstChunk) {
           developer.log(
