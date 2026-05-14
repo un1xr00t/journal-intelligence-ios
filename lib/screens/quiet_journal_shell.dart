@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -99,6 +98,14 @@ class _QuietJournalShellState extends State<QuietJournalShell> {
   void initState() {
     super.initState();
     _selectedIndex = _mapInitialTab(widget.initialTab);
+  }
+
+  @override
+  void didUpdateWidget(covariant QuietJournalShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _selectedIndex = _mapInitialTab(widget.initialTab);
+    }
   }
 
   int _mapInitialTab(int index) {
@@ -213,7 +220,6 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   final _calendarScrollController = ScrollController();
   final _mediaScrollController = ScrollController();
   final Map<DateTime, GlobalKey> _calendarMonthKeys = <DateTime, GlobalKey>{};
-  Timer? _latestEntryRefreshTimer;
 
   List<Map<String, dynamic>> _entries = [];
   Map<int, List<_QuietImageAttachment>> _imageAttachmentsByEntry = {};
@@ -227,7 +233,6 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
   int _page = 1;
   bool _focusCalendarAfterBuild = false;
   bool _calendarHistoryHydrating = false;
-  bool _refreshingLatestEntries = false;
 
   @override
   void initState() {
@@ -240,15 +245,10 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         .addListener(() => _onScroll(_QuietJournalView.media));
     _restoreCalendarSettings();
     _load();
-    _latestEntryRefreshTimer = Timer.periodic(
-      const Duration(seconds: 4),
-      (_) => _refreshLatestEntries(),
-    );
   }
 
   @override
   void dispose() {
-    _latestEntryRefreshTimer?.cancel();
     _listScrollController.dispose();
     _calendarScrollController.dispose();
     _mediaScrollController.dispose();
@@ -304,45 +304,6 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         _error = _parseError(e);
         _loading = false;
       });
-    }
-  }
-
-  Future<void> _refreshLatestEntries() async {
-    if (_loading ||
-        _loadingMore ||
-        _refreshingLatestEntries ||
-        _calendarHistoryHydrating) {
-      return;
-    }
-
-    _refreshingLatestEntries = true;
-    try {
-      final page = await _api.getTimelinePage(page: 1, limit: 24);
-      if (!mounted) return;
-
-      final existingIds =
-          _entries.map((entry) => _entryId(entry)).whereType<int>().toSet();
-      final incoming = page.entries.where((entry) {
-        final id = _entryId(entry);
-        return id != null && !existingIds.contains(id);
-      }).toList();
-      if (incoming.isEmpty) return;
-
-      final merged = [..._entries, ...incoming]..sort(_sortEntriesAsc);
-      setState(() {
-        _entries = merged;
-        _hasMore = page.hasMore || _hasMore;
-        _error = null;
-        _focusCalendarAfterBuild = _activeView == _QuietJournalView.calendar &&
-            _calendarSettings.autoFocusCurrentMonth;
-      });
-
-      await _restoreCachedPreviewImages(incoming);
-      _loadPreviewImages(incoming);
-    } catch (_) {
-      // Silent background refresh should not interrupt reading the journal.
-    } finally {
-      _refreshingLatestEntries = false;
     }
   }
 
