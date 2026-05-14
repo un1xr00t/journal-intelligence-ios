@@ -1,10 +1,13 @@
 // lib/screens/write_screen.dart
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -13,6 +16,8 @@ import '../widgets/glass_card.dart';
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
 const double _kPickedImageMaxDimension = 2000;
+const String _kEntryDraftTextKeyPrefix = 'write_entry_draft_text';
+const String _kEntryDraftUrlKeyPrefix = 'write_entry_draft_url';
 
 class WriteScreen extends StatefulWidget {
   const WriteScreen({super.key, this.initialText});
@@ -31,6 +36,9 @@ class _WriteScreenState extends State<WriteScreen> {
   final _picker = ImagePicker();
   LaunchIntentProvider? _launchIntent;
   int _lastLaunchIntentVersion = 0;
+  bool _draftLoadStarted = false;
+  bool _hasUserEditedDraft = false;
+  bool _suppressDraftPersistence = false;
 
   bool _saving = false;
   bool _saved = false;
@@ -77,7 +85,8 @@ class _WriteScreenState extends State<WriteScreen> {
       _ctrl.text = initialText;
     }
     _focusNode.addListener(() => setState(() {}));
-    _urlCtrl.addListener(() => setState(() {}));
+    _ctrl.addListener(_handleEntryTextChanged);
+    _urlCtrl.addListener(_handleUrlChanged);
   }
 
   @override
@@ -90,15 +99,105 @@ class _WriteScreenState extends State<WriteScreen> {
     _launchIntent = launchIntent;
     _launchIntent?.addListener(_handleLaunchIntentChange);
     _handleLaunchIntentChange();
+
+    if (!_draftLoadStarted) {
+      _draftLoadStarted = true;
+      unawaited(_loadPersistedDraft());
+    }
   }
 
   @override
   void dispose() {
     _launchIntent?.removeListener(_handleLaunchIntentChange);
+    _ctrl.removeListener(_handleEntryTextChanged);
+    _urlCtrl.removeListener(_handleUrlChanged);
     _ctrl.dispose();
     _urlCtrl.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  String get _draftKeySuffix {
+    final username =
+        context.read<AuthProvider>().user?['username']?.toString().trim();
+    return username == null || username.isEmpty ? 'anonymous' : username;
+  }
+
+  String get _draftTextKey => '${_kEntryDraftTextKeyPrefix}_$_draftKeySuffix';
+
+  String get _draftUrlKey => '${_kEntryDraftUrlKeyPrefix}_$_draftKeySuffix';
+
+  Future<void> _loadPersistedDraft() async {
+    if (widget.initialText?.trim().isNotEmpty == true) {
+      await _persistDraft();
+      return;
+    }
+
+    final textKey = _draftTextKey;
+    final urlKey = _draftUrlKey;
+    final prefs = await SharedPreferences.getInstance();
+    final draftText = prefs.getString(textKey)?.trimRight() ?? '';
+    final draftUrl = prefs.getString(urlKey)?.trim() ?? '';
+    if (!mounted || _hasUserEditedDraft) return;
+    if (draftText.isEmpty && draftUrl.isEmpty) return;
+
+    _suppressDraftPersistence = true;
+    try {
+      _ctrl.text = draftText;
+      _urlCtrl.text = draftUrl;
+    } finally {
+      _suppressDraftPersistence = false;
+    }
+
+    setState(() {
+      _saved = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _persistDraft() async {
+    if (_suppressDraftPersistence) return;
+    final textKey = _draftTextKey;
+    final urlKey = _draftUrlKey;
+    final prefs = await SharedPreferences.getInstance();
+    final text = _ctrl.text.trimRight();
+    final url = _urlCtrl.text.trim();
+
+    if (text.isEmpty && url.isEmpty) {
+      await _clearPersistedDraft();
+      return;
+    }
+
+    await prefs.setString(textKey, text);
+    if (url.isEmpty) {
+      await prefs.remove(urlKey);
+    } else {
+      await prefs.setString(urlKey, url);
+    }
+  }
+
+  Future<void> _clearPersistedDraft() async {
+    final textKey = _draftTextKey;
+    final urlKey = _draftUrlKey;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(textKey);
+    await prefs.remove(urlKey);
+  }
+
+  void _handleEntryTextChanged() {
+    if (!_suppressDraftPersistence) {
+      _hasUserEditedDraft = true;
+      unawaited(_persistDraft());
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _handleUrlChanged() {
+    if (!_suppressDraftPersistence) {
+      _hasUserEditedDraft = true;
+      unawaited(_persistDraft());
+    }
+    if (mounted) setState(() {});
   }
 
   void _handleLaunchIntentChange() {
@@ -125,6 +224,7 @@ class _WriteScreenState extends State<WriteScreen> {
       text: nextText,
       selection: TextSelection.collapsed(offset: nextText.length),
     );
+    unawaited(_persistDraft());
 
     if (mounted) {
       setState(() {
@@ -243,8 +343,14 @@ class _WriteScreenState extends State<WriteScreen> {
         }
       }
 
-      _ctrl.clear();
-      _urlCtrl.clear();
+      await _clearPersistedDraft();
+      _suppressDraftPersistence = true;
+      try {
+        _ctrl.clear();
+        _urlCtrl.clear();
+      } finally {
+        _suppressDraftPersistence = false;
+      }
       if (mounted) {
         setState(() {
           _saving = false;
@@ -296,11 +402,20 @@ class _WriteScreenState extends State<WriteScreen> {
     }
   }
 
-  void _clear() {
-    _ctrl.clear();
-    _urlCtrl.clear();
+  Future<void> _clear() async {
+    await _clearPersistedDraft();
+    if (!mounted) return;
+    _suppressDraftPersistence = true;
+    try {
+      _ctrl.clear();
+      _urlCtrl.clear();
+    } finally {
+      _suppressDraftPersistence = false;
+    }
+    _hasUserEditedDraft = false;
     setState(() {
       _error = null;
+      _saved = false;
     });
   }
 
