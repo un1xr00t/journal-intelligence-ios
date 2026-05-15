@@ -155,6 +155,7 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
     final appLock = context.read<AppLockProvider>();
     switch (state) {
       case AppLifecycleState.inactive:
+        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         appLock.armForResumeLock();
