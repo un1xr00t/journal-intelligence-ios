@@ -18,7 +18,8 @@ class AppLockProvider extends ChangeNotifier {
   bool get pinEnabled => _pinEnabled;
   bool get isLocked => _pinEnabled && _locked;
   bool get isReady => _configLoaded;
-  bool get canManagePin => _activeUsername != null && _activeUsername!.isNotEmpty;
+  bool get canManagePin =>
+      _activeUsername != null && _activeUsername!.isNotEmpty;
 
   Future<void> prepareForAuthenticatedUser(
     String username, {
@@ -29,7 +30,9 @@ class AppLockProvider extends ChangeNotifier {
 
     final enabled = await _pinService.hasPin(trimmed);
     final sameUser = _activeUsername == trimmed;
-    final nextLocked = lockImmediately && enabled
+    final shouldApplyInitialRestoreLock =
+        lockImmediately && enabled && (!sameUser || !_configLoaded);
+    final nextLocked = shouldApplyInitialRestoreLock
         ? true
         : sameUser
             ? (_locked && enabled)
@@ -105,7 +108,8 @@ class AppLockProvider extends ChangeNotifier {
   String _requireUsername() {
     final username = _activeUsername;
     if (username == null || username.trim().isEmpty) {
-      throw StateError('No authenticated user is available for PIN management.');
+      throw StateError(
+          'No authenticated user is available for PIN management.');
     }
     return username;
   }
