@@ -110,6 +110,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   String _rent = '';
   String _utilities = '';
   List<_ExpenseDraft> _expenses = [const _ExpenseDraft(name: '', amount: '')];
+  double? _simulatedRent;
   List<double> _simulatedValues = [];
 
   @override
@@ -384,6 +385,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   }
 
   void _resetSimulator() {
+    _simulatedRent = _activePlan.rent;
     _simulatedValues = _activePlan.expenses.map((expense) => expense.amount).toList();
   }
 
@@ -589,11 +591,15 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                         const SizedBox(height: 18),
                         _buildBreakdownSection(),
                         const SizedBox(height: 18),
-                        if (_activePlan.expenses.isNotEmpty) ...[
+                        if (_activePlan.rent > 0 || _activePlan.expenses.isNotEmpty) ...[
                           _buildSimulatorSection(),
                           const SizedBox(height: 18),
                         ],
                         _buildAnalysisSection(),
+                        if (_activePlan.rent > 0 || _activePlan.expenses.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          _buildSimulatorComparisonSection(),
+                        ],
                       ],
                       const SizedBox(height: 32),
                     ]),
@@ -1181,13 +1187,14 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
 
   Widget _buildSimulatorSection() {
     final snapshot = _activePlan;
+    final simulatedRent = _simulatedRent ?? snapshot.rent;
     final simValues = _simulatedValues.length == snapshot.expenses.length
         ? _simulatedValues
         : snapshot.expenses.map((expense) => expense.amount).toList();
 
     final simulatedTotal = simValues.fold<double>(0, (sum, value) => sum + value);
     final simulatedLeftover =
-        snapshot.income - snapshot.housing - simulatedTotal;
+        snapshot.income - simulatedRent - snapshot.utilities - simulatedTotal;
     final delta = simulatedLeftover - snapshot.leftover;
     final rating = _BudgetRating.fromLeftover(simulatedLeftover);
 
@@ -1209,6 +1216,19 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                 ),
               ),
               const SizedBox(height: 18),
+              if (snapshot.rent > 0) ...[
+                _SimulationRow(
+                  expense: _BudgetExpense(
+                    name: 'Rent / Mortgage',
+                    amount: snapshot.rent,
+                  ),
+                  value: simulatedRent,
+                  onChanged: (value) => setState(() {
+                    _simulatedRent = value;
+                  }),
+                ),
+                if (snapshot.expenses.isNotEmpty) const SizedBox(height: 18),
+              ],
               for (var i = 0; i < snapshot.expenses.length; i++) ...[
                 _SimulationRow(
                   expense: snapshot.expenses[i],
@@ -1276,6 +1296,100 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimulatorComparisonSection() {
+    final snapshot = _activePlan;
+    final simulatedRent = _simulatedRent ?? snapshot.rent;
+    final simValues = _simulatedValues.length == snapshot.expenses.length
+        ? _simulatedValues
+        : snapshot.expenses.map((expense) => expense.amount).toList();
+
+    final currentExpenses = snapshot.baseExpenses;
+    final whatIfExpenses =
+        simValues.fold<double>(0, (sum, value) => sum + value);
+    final currentTotalSpend = snapshot.totalSpend;
+    final currentHousing = snapshot.housing;
+    final whatIfHousing = simulatedRent + snapshot.utilities;
+    final whatIfTotalSpend = whatIfHousing + whatIfExpenses;
+    final whatIfLeftover = snapshot.income - whatIfTotalSpend;
+
+    final rows = <_ComparisonRowData>[
+      _ComparisonRowData(
+        label: 'Income',
+        current: snapshot.income,
+        whatIf: snapshot.income,
+        deltaMode: _ComparisonDeltaMode.neutral,
+      ),
+      _ComparisonRowData(
+        label: 'Housing',
+        current: currentHousing,
+        whatIf: whatIfHousing,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+      ),
+      if (snapshot.rent > 0)
+        _ComparisonRowData(
+          label: 'Rent / Mortgage',
+          current: snapshot.rent,
+          whatIf: simulatedRent,
+          deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        ),
+      _ComparisonRowData(
+        label: 'Flexible Expenses',
+        current: currentExpenses,
+        whatIf: whatIfExpenses,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+      ),
+      _ComparisonRowData(
+        label: 'Total Spend',
+        current: currentTotalSpend,
+        whatIf: whatIfTotalSpend,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+      ),
+      _ComparisonRowData(
+        label: 'Left Over',
+        current: snapshot.leftover,
+        whatIf: whatIfLeftover,
+        deltaMode: _ComparisonDeltaMode.higherIsBetter,
+      ),
+      for (var i = 0; i < snapshot.expenses.length; i++)
+        _ComparisonRowData(
+          label: snapshot.expenses[i].name,
+          current: snapshot.expenses[i].amount,
+          whatIf: simValues[i],
+          deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(title: 'Current vs What-If'),
+        const SizedBox(height: 10),
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Side-by-side monthly amounts from the current plan against the simulator values.',
+                style: TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const _ComparisonHeaderRow(),
+              const SizedBox(height: 8),
+              for (var i = 0; i < rows.length; i++) ...[
+                _ComparisonAmountRow(data: rows[i]),
+                if (i != rows.length - 1) const SizedBox(height: 8),
+              ],
             ],
           ),
         ),
@@ -2208,6 +2322,188 @@ class _LineItem extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+enum _ComparisonDeltaMode {
+  lowerIsBetter,
+  higherIsBetter,
+  neutral,
+}
+
+class _ComparisonRowData {
+  const _ComparisonRowData({
+    required this.label,
+    required this.current,
+    required this.whatIf,
+    required this.deltaMode,
+  });
+
+  final String label;
+  final double current;
+  final double whatIf;
+  final _ComparisonDeltaMode deltaMode;
+}
+
+class _ComparisonHeaderRow extends StatelessWidget {
+  const _ComparisonHeaderRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Text(
+            'ITEM',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            'CURRENT',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            'WHAT-IF',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            'CHANGE',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComparisonAmountRow extends StatelessWidget {
+  const _ComparisonAmountRow({required this.data});
+
+  final _ComparisonRowData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = data.whatIf - data.current;
+    final hasChange = delta.abs() >= 0.5;
+    final positiveImpact = switch (data.deltaMode) {
+      _ComparisonDeltaMode.lowerIsBetter => delta < 0,
+      _ComparisonDeltaMode.higherIsBetter => delta > 0,
+      _ComparisonDeltaMode.neutral => false,
+    };
+    final negativeImpact = switch (data.deltaMode) {
+      _ComparisonDeltaMode.lowerIsBetter => delta > 0,
+      _ComparisonDeltaMode.higherIsBetter => delta < 0,
+      _ComparisonDeltaMode.neutral => false,
+    };
+    final deltaColor = !hasChange
+        ? JournalColors.textMuted
+        : positiveImpact
+            ? JournalColors.success
+            : negativeImpact
+                ? JournalColors.danger
+                : JournalColors.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.bgSurface, 0.72),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: JournalColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                data.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          _ComparisonAmountCell(value: data.current),
+          _ComparisonAmountCell(value: data.whatIf),
+          Expanded(
+            flex: 2,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Text(
+                hasChange
+                    ? '${delta >= 0 ? '+' : ''}${NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(delta)}'
+                    : '\$0',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: deltaColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ComparisonAmountCell extends StatelessWidget {
+  const _ComparisonAmountCell({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: 2,
+      child: Text(
+        NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(value),
+        textAlign: TextAlign.right,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
