@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -5,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -12,6 +14,11 @@ import '../widgets/glass_card.dart';
 import '../widgets/section_header.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
+
+const String _budgetTipCacheKey = 'budget_planner_ai_tip';
+const String _budgetTipIndexCacheKey = 'budget_planner_ai_tip_index';
+const String _budgetSavedComparisonsCacheKey =
+    'budget_planner_saved_comparisons';
 
 const List<Color> _segmentColors = [
   JournalColors.accent,
@@ -111,11 +118,14 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   String _utilities = '';
   List<_ExpenseDraft> _expenses = [const _ExpenseDraft(name: '', amount: '')];
   double? _simulatedRent;
+  double? _simulatedUtilities;
   List<double> _simulatedValues = [];
+  List<_SavedBudgetComparison> _savedComparisons = [];
 
   @override
   void initState() {
     super.initState();
+    _loadSavedComparisons();
     _load();
   }
 
@@ -154,8 +164,22 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     }
   }
 
-  Future<void> _loadTip() async {
+  Future<void> _loadTip({bool forceRefresh = false}) async {
     if (_savedPlan == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!forceRefresh) {
+      final cachedTip = prefs.getString(_budgetTipCacheKey)?.trim();
+      final cachedIndex = prefs.getInt(_budgetTipIndexCacheKey);
+      if (cachedTip != null && cachedTip.isNotEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _tip = cachedTip;
+          _tipIndex = cachedIndex ?? _tipIndex;
+          _tipLoading = false;
+        });
+        return;
+      }
+    }
     if (mounted) {
       setState(() {
         _tipLoading = true;
@@ -166,9 +190,14 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         prompt: _tipPrompts[_tipIndex % _tipPrompts.length],
         maxTokens: 120,
       );
+      final tip = (res['text'] as String?)?.trim();
+      if (tip != null && tip.isNotEmpty) {
+        await prefs.setString(_budgetTipCacheKey, tip);
+        await prefs.setInt(_budgetTipIndexCacheKey, _tipIndex);
+      }
       if (!mounted) return;
       setState(() {
-        _tip = (res['text'] as String?)?.trim();
+        _tip = tip;
         _tipLoading = false;
       });
     } catch (_) {
@@ -184,7 +213,165 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     setState(() {
       _tipIndex = (_tipIndex + 1) % _tipPrompts.length;
     });
-    await _loadTip();
+    await _loadTip(forceRefresh: true);
+  }
+
+  Future<void> _loadSavedComparisons() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_budgetSavedComparisonsCacheKey);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final comparisons = decoded
+          .map((item) => _SavedBudgetComparison.fromJson(
+                item is Map<String, dynamic>
+                    ? item
+                    : Map<String, dynamic>.from(item as Map),
+              ))
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      if (!mounted) return;
+      setState(() {
+        _savedComparisons = comparisons;
+      });
+    } catch (_) {
+      await prefs.remove(_budgetSavedComparisonsCacheKey);
+    }
+  }
+
+  Future<void> _persistSavedComparisons(
+    List<_SavedBudgetComparison> comparisons,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _budgetSavedComparisonsCacheKey,
+      jsonEncode(comparisons.map((comparison) => comparison.toJson()).toList()),
+    );
+  }
+
+  Future<void> _saveCurrentComparison() async {
+    final snapshot = _activePlan;
+    final nameController = TextEditingController(
+      text: 'What-if ${DateFormat('MMM d').format(DateTime.now())}',
+    );
+    final name = await showCupertinoDialog<String>(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Save Comparison'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: CupertinoTextField(
+            controller: nameController,
+            autofocus: true,
+            placeholder: 'Name this what-if',
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: JournalColors.bgSurface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: JournalColors.border),
+            ),
+            placeholderStyle: const TextStyle(color: JournalColors.textMuted),
+            style: const TextStyle(color: JournalColors.textPrimary),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context, nameController.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+
+    final trimmedName = name?.trim();
+    if (trimmedName == null || trimmedName.isEmpty) return;
+
+    final comparison = _SavedBudgetComparison(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: trimmedName,
+      createdAt: DateTime.now(),
+      rent: _simulatedRent ?? snapshot.rent,
+      utilities: _simulatedUtilities ?? snapshot.utilities,
+      expenses: [
+        for (var i = 0; i < snapshot.expenses.length; i++)
+          _SavedComparisonExpense(
+            name: snapshot.expenses[i].name,
+            amount: _simulatedValues.length == snapshot.expenses.length
+                ? _simulatedValues[i]
+                : snapshot.expenses[i].amount,
+          ),
+      ],
+    );
+    final comparisons = [comparison, ..._savedComparisons];
+    await _persistSavedComparisons(comparisons);
+    if (!mounted) return;
+    setState(() {
+      _savedComparisons = comparisons;
+    });
+  }
+
+  Future<void> _showSavedComparisonPicker() async {
+    if (_savedComparisons.isEmpty) return;
+    final selected = await showCupertinoModalPopup<_SavedBudgetComparison>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Load Comparison'),
+        message: const Text('Pick a saved what-if setup.'),
+        actions: [
+          for (final comparison in _savedComparisons)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, comparison),
+              child: Text(comparison.name),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (selected == null) return;
+    _loadSavedComparison(selected);
+  }
+
+  void _loadSavedComparison(_SavedBudgetComparison comparison) {
+    final snapshot = _activePlan;
+    final savedByName = {
+      for (final expense in comparison.expenses)
+        expense.name.trim().toLowerCase(): expense.amount,
+    };
+
+    setState(() {
+      _simulatedRent = comparison.rent;
+      _simulatedUtilities = comparison.utilities;
+      _simulatedValues = [
+        for (var i = 0; i < snapshot.expenses.length; i++)
+          savedByName[snapshot.expenses[i].name.trim().toLowerCase()] ??
+              (i < comparison.expenses.length
+                  ? comparison.expenses[i].amount
+                  : snapshot.expenses[i].amount),
+      ];
+    });
+  }
+
+  Future<void> _deleteSavedComparison(_SavedBudgetComparison comparison) async {
+    final comparisons = _savedComparisons
+        .where((saved) => saved.id != comparison.id)
+        .toList(growable: false);
+    await _persistSavedComparisons(comparisons);
+    if (!mounted) return;
+    setState(() {
+      _savedComparisons = comparisons;
+    });
   }
 
   Future<void> _generateAnalysis() async {
@@ -386,7 +573,9 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
 
   void _resetSimulator() {
     _simulatedRent = _activePlan.rent;
-    _simulatedValues = _activePlan.expenses.map((expense) => expense.amount).toList();
+    _simulatedUtilities = _activePlan.utilities;
+    _simulatedValues =
+        _activePlan.expenses.map((expense) => expense.amount).toList();
   }
 
   Map<String, dynamic> _buildPlanPayload() {
@@ -407,7 +596,8 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   String _buildAnalysisPrompt(Map<String, dynamic> plan) {
     final active = _BudgetSnapshot.fromPlan(plan);
     final expenseLines = active.expenses
-        .map((expense) => '  - ${expense.name}: \$${expense.amount.toStringAsFixed(0)}/mo')
+        .map((expense) =>
+            '  - ${expense.name}: \$${expense.amount.toStringAsFixed(0)}/mo')
         .join('\n');
     return '''
 You are a compassionate financial advisor. Here is someone's monthly budget:
@@ -517,7 +707,8 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
   }
 
   _BudgetSnapshot get _activePlan {
-    final source = _editing || _savedPlan == null ? _buildPlanPayload() : _savedPlan!;
+    final source =
+        _editing || _savedPlan == null ? _buildPlanPayload() : _savedPlan!;
     return _BudgetSnapshot.fromPlan(source);
   }
 
@@ -591,12 +782,16 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                         const SizedBox(height: 18),
                         _buildBreakdownSection(),
                         const SizedBox(height: 18),
-                        if (_activePlan.rent > 0 || _activePlan.expenses.isNotEmpty) ...[
+                        if (_activePlan.rent > 0 ||
+                            _activePlan.utilities > 0 ||
+                            _activePlan.expenses.isNotEmpty) ...[
                           _buildSimulatorSection(),
                           const SizedBox(height: 18),
                         ],
                         _buildAnalysisSection(),
-                        if (_activePlan.rent > 0 || _activePlan.expenses.isNotEmpty) ...[
+                        if (_activePlan.rent > 0 ||
+                            _activePlan.utilities > 0 ||
+                            _activePlan.expenses.isNotEmpty) ...[
                           const SizedBox(height: 18),
                           _buildSimulatorComparisonSection(),
                         ],
@@ -742,15 +937,15 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                 onCategorySelected: (value) =>
                     setState(() => _selectedTemplateCategory = value),
                 onAddTemplate: _addTemplate,
-                existingNames: _expenses.map((expense) => expense.name).toList(),
+                existingNames:
+                    _expenses.map((expense) => expense.name).toList(),
               ),
               const SizedBox(height: 14),
               for (var index = 0; index < _expenses.length; index++) ...[
                 _ExpenseRow(
                   index: index,
                   expense: _expenses[index],
-                  onNameChanged: (value) =>
-                      _updateExpense(index, name: value),
+                  onNameChanged: (value) => _updateExpense(index, name: value),
                   onAmountChanged: (value) =>
                       _updateExpense(index, amount: value),
                   onRemove: () => _removeExpense(index),
@@ -1188,13 +1383,15 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
   Widget _buildSimulatorSection() {
     final snapshot = _activePlan;
     final simulatedRent = _simulatedRent ?? snapshot.rent;
+    final simulatedUtilities = _simulatedUtilities ?? snapshot.utilities;
     final simValues = _simulatedValues.length == snapshot.expenses.length
         ? _simulatedValues
         : snapshot.expenses.map((expense) => expense.amount).toList();
 
-    final simulatedTotal = simValues.fold<double>(0, (sum, value) => sum + value);
+    final simulatedTotal =
+        simValues.fold<double>(0, (sum, value) => sum + value);
     final simulatedLeftover =
-        snapshot.income - simulatedRent - snapshot.utilities - simulatedTotal;
+        snapshot.income - simulatedRent - simulatedUtilities - simulatedTotal;
     final delta = simulatedLeftover - snapshot.leftover;
     final rating = _BudgetRating.fromLeftover(simulatedLeftover);
 
@@ -1217,7 +1414,7 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
               ),
               const SizedBox(height: 18),
               if (snapshot.rent > 0) ...[
-                _SimulationRow(
+                _WholeDollarSimulationRow(
                   expense: _BudgetExpense(
                     name: 'Rent / Mortgage',
                     amount: snapshot.rent,
@@ -1225,6 +1422,20 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                   value: simulatedRent,
                   onChanged: (value) => setState(() {
                     _simulatedRent = value;
+                  }),
+                ),
+                if (snapshot.utilities > 0 || snapshot.expenses.isNotEmpty)
+                  const SizedBox(height: 18),
+              ],
+              if (snapshot.utilities > 0) ...[
+                _WholeDollarSimulationRow(
+                  expense: _BudgetExpense(
+                    name: 'Utilities',
+                    amount: snapshot.utilities,
+                  ),
+                  value: simulatedUtilities,
+                  onChanged: (value) => setState(() {
+                    _simulatedUtilities = value;
                   }),
                 ),
                 if (snapshot.expenses.isNotEmpty) const SizedBox(height: 18),
@@ -1239,7 +1450,8 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                     _simulatedValues = next;
                   }),
                 ),
-                if (i != snapshot.expenses.length - 1) const SizedBox(height: 18),
+                if (i != snapshot.expenses.length - 1)
+                  const SizedBox(height: 18),
               ],
               const SizedBox(height: 22),
               Container(
@@ -1256,7 +1468,7 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Simulated Leftover',
+                            'What-if Left Over',
                             style: TextStyle(
                               color: JournalColors.textMuted,
                               fontSize: 11,
@@ -1280,7 +1492,10 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '${delta >= 0 ? '+' : ''}${_currency(delta)} vs current',
+                          delta == 0
+                              ? 'Matches current plan'
+                              : 'Leaves ${_currency(delta.abs())} '
+                                  '${delta > 0 ? 'more' : 'less'} than current plan',
                           style: TextStyle(
                             color: delta >= 0
                                 ? JournalColors.success
@@ -1306,6 +1521,7 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
   Widget _buildSimulatorComparisonSection() {
     final snapshot = _activePlan;
     final simulatedRent = _simulatedRent ?? snapshot.rent;
+    final simulatedUtilities = _simulatedUtilities ?? snapshot.utilities;
     final simValues = _simulatedValues.length == snapshot.expenses.length
         ? _simulatedValues
         : snapshot.expenses.map((expense) => expense.amount).toList();
@@ -1314,23 +1530,16 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
     final whatIfExpenses =
         simValues.fold<double>(0, (sum, value) => sum + value);
     final currentTotalSpend = snapshot.totalSpend;
-    final currentHousing = snapshot.housing;
-    final whatIfHousing = simulatedRent + snapshot.utilities;
+    final whatIfHousing = simulatedRent + simulatedUtilities;
     final whatIfTotalSpend = whatIfHousing + whatIfExpenses;
     final whatIfLeftover = snapshot.income - whatIfTotalSpend;
 
-    final rows = <_ComparisonRowData>[
+    final detailRows = <_ComparisonRowData>[
       _ComparisonRowData(
         label: 'Income',
         current: snapshot.income,
         whatIf: snapshot.income,
         deltaMode: _ComparisonDeltaMode.neutral,
-      ),
-      _ComparisonRowData(
-        label: 'Housing',
-        current: currentHousing,
-        whatIf: whatIfHousing,
-        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
       ),
       if (snapshot.rent > 0)
         _ComparisonRowData(
@@ -1339,24 +1548,13 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
           whatIf: simulatedRent,
           deltaMode: _ComparisonDeltaMode.lowerIsBetter,
         ),
-      _ComparisonRowData(
-        label: 'Flexible Expenses',
-        current: currentExpenses,
-        whatIf: whatIfExpenses,
-        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
-      ),
-      _ComparisonRowData(
-        label: 'Total Spend',
-        current: currentTotalSpend,
-        whatIf: whatIfTotalSpend,
-        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
-      ),
-      _ComparisonRowData(
-        label: 'Left Over',
-        current: snapshot.leftover,
-        whatIf: whatIfLeftover,
-        deltaMode: _ComparisonDeltaMode.higherIsBetter,
-      ),
+      if (snapshot.utilities > 0)
+        _ComparisonRowData(
+          label: 'Utilities',
+          current: snapshot.utilities,
+          whatIf: simulatedUtilities,
+          deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        ),
       for (var i = 0; i < snapshot.expenses.length; i++)
         _ComparisonRowData(
           label: snapshot.expenses[i].name,
@@ -1364,6 +1562,38 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
           whatIf: simValues[i],
           deltaMode: _ComparisonDeltaMode.lowerIsBetter,
         ),
+    ];
+    final subtotalRows = <_ComparisonRowData>[
+      _ComparisonRowData(
+        label: 'Housing Subtotal',
+        current: snapshot.housing,
+        whatIf: whatIfHousing,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        isSubtotal: true,
+      ),
+      _ComparisonRowData(
+        label: 'Expense Subtotal',
+        current: currentExpenses,
+        whatIf: whatIfExpenses,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        isSubtotal: true,
+      ),
+    ];
+    final outcomeRows = <_ComparisonRowData>[
+      _ComparisonRowData(
+        label: 'Total Spend',
+        current: currentTotalSpend,
+        whatIf: whatIfTotalSpend,
+        deltaMode: _ComparisonDeltaMode.lowerIsBetter,
+        isOutcome: true,
+      ),
+      _ComparisonRowData(
+        label: 'Left Over',
+        current: snapshot.leftover,
+        whatIf: whatIfLeftover,
+        deltaMode: _ComparisonDeltaMode.higherIsBetter,
+        isOutcome: true,
+      ),
     ];
 
     return Column(
@@ -1383,12 +1613,40 @@ Be specific and direct. Use the actual numbers from their budget. Do not give ge
                   height: 1.55,
                 ),
               ),
+              const SizedBox(height: 14),
+              _ComparisonActions(
+                savedComparisons: _savedComparisons,
+                onSave: _saveCurrentComparison,
+                onLoad: _showSavedComparisonPicker,
+                onLoadComparison: _loadSavedComparison,
+                onDelete: _deleteSavedComparison,
+              ),
               const SizedBox(height: 16),
               const _ComparisonHeaderRow(),
               const SizedBox(height: 8),
-              for (var i = 0; i < rows.length; i++) ...[
-                _ComparisonAmountRow(data: rows[i]),
-                if (i != rows.length - 1) const SizedBox(height: 8),
+              for (var i = 0; i < detailRows.length; i++) ...[
+                _ComparisonAmountRow(data: detailRows[i]),
+                if (i != detailRows.length - 1) const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 14),
+              for (var i = 0; i < outcomeRows.length; i++) ...[
+                _ComparisonAmountRow(data: outcomeRows[i]),
+                if (i != outcomeRows.length - 1) const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 14),
+              const Text(
+                'SUBTOTALS',
+                style: TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (var i = 0; i < subtotalRows.length; i++) ...[
+                _ComparisonAmountRow(data: subtotalRows[i]),
+                if (i != subtotalRows.length - 1) const SizedBox(height: 8),
               ],
             ],
           ),
@@ -1746,9 +2004,10 @@ class _BudgetInputField extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         CupertinoTextField(
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true, signed: false),
-          padding: EdgeInsets.fromLTRB(16, prominent ? 18 : 14, 16, prominent ? 18 : 14),
+          keyboardType: const TextInputType.numberWithOptions(
+              decimal: true, signed: false),
+          padding: EdgeInsets.fromLTRB(
+              16, prominent ? 18 : 14, 16, prominent ? 18 : 14),
           decoration: BoxDecoration(
             color: JournalColors.bgSurface,
             borderRadius: BorderRadius.circular(16),
@@ -1992,8 +2251,7 @@ class _ExpenseRow extends StatelessWidget {
             controller: TextEditingController(text: expense.amount)
               ..selection =
                   TextSelection.collapsed(offset: expense.amount.length),
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             prefix: const Padding(
               padding: EdgeInsets.only(left: 10),
@@ -2083,8 +2341,8 @@ class _MetricCard extends StatelessWidget {
   }
 
   String _currency(double value) {
-    final formatter =
-        NumberFormat.currency(symbol: '\$', decimalDigits: value % 1 == 0 ? 0 : 2);
+    final formatter = NumberFormat.currency(
+        symbol: '\$', decimalDigits: value % 1 == 0 ? 0 : 2);
     return formatter.format(value);
   }
 }
@@ -2145,8 +2403,8 @@ class _DonutChart extends StatelessWidget {
               value: 1,
               strokeWidth: strokeWidth,
               backgroundColor: _withAlpha(JournalColors.accent, 0.06),
-              valueColor:
-                  AlwaysStoppedAnimation<Color>(_withAlpha(JournalColors.accent, 0.06)),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  _withAlpha(JournalColors.accent, 0.06)),
             ),
           ),
           ...segments.map((segment) {
@@ -2196,8 +2454,8 @@ class _DonutChart extends StatelessWidget {
   }
 
   String _currency(double value) {
-    final formatter =
-        NumberFormat.currency(symbol: '\$', decimalDigits: value % 1 == 0 ? 0 : 2);
+    final formatter = NumberFormat.currency(
+        symbol: '\$', decimalDigits: value % 1 == 0 ? 0 : 2);
     return formatter.format(value);
   }
 }
@@ -2271,7 +2529,8 @@ class _LegendRow extends StatelessWidget {
           ),
         ),
         Text(
-          NumberFormat.currency(symbol: '\$', decimalDigits: 0).format(segment.value),
+          NumberFormat.currency(symbol: '\$', decimalDigits: 0)
+              .format(segment.value),
           style: const TextStyle(
             color: JournalColors.textMuted,
             fontSize: 12,
@@ -2339,12 +2598,149 @@ class _ComparisonRowData {
     required this.current,
     required this.whatIf,
     required this.deltaMode,
+    this.isSubtotal = false,
+    this.isOutcome = false,
   });
 
   final String label;
   final double current;
   final double whatIf;
   final _ComparisonDeltaMode deltaMode;
+  final bool isSubtotal;
+  final bool isOutcome;
+}
+
+class _ComparisonActions extends StatelessWidget {
+  const _ComparisonActions({
+    required this.savedComparisons,
+    required this.onSave,
+    required this.onLoad,
+    required this.onLoadComparison,
+    required this.onDelete,
+  });
+
+  final List<_SavedBudgetComparison> savedComparisons;
+  final VoidCallback onSave;
+  final VoidCallback onLoad;
+  final ValueChanged<_SavedBudgetComparison> onLoadComparison;
+  final ValueChanged<_SavedBudgetComparison> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                color: _withAlpha(JournalColors.accent, 0.18),
+                borderRadius: BorderRadius.circular(14),
+                onPressed: onSave,
+                child: const Text(
+                  'Save what-if',
+                  style: TextStyle(
+                    color: JournalColors.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                color: _withAlpha(JournalColors.bgSurface, 0.96),
+                borderRadius: BorderRadius.circular(14),
+                onPressed: savedComparisons.isEmpty ? null : onLoad,
+                child: Text(
+                  savedComparisons.isEmpty ? 'No saved what-ifs' : 'Load saved',
+                  style: TextStyle(
+                    color: savedComparisons.isEmpty
+                        ? JournalColors.textMuted
+                        : JournalColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (savedComparisons.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final comparison in savedComparisons.take(3))
+                _SavedComparisonChip(
+                  comparison: comparison,
+                  onLoad: () => onLoadComparison(comparison),
+                  onDelete: () => onDelete(comparison),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SavedComparisonChip extends StatelessWidget {
+  const _SavedComparisonChip({
+    required this.comparison,
+    required this.onLoad,
+    required this.onDelete,
+  });
+
+  final _SavedBudgetComparison comparison;
+  final VoidCallback onLoad;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onLoad,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+        decoration: BoxDecoration(
+          color: _withAlpha(JournalColors.bgSurface, 0.9),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Text(
+                comparison.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onDelete,
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: JournalColors.textMuted,
+                size: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ComparisonHeaderRow extends StatelessWidget {
@@ -2436,13 +2832,24 @@ class _ComparisonAmountRow extends StatelessWidget {
             : negativeImpact
                 ? JournalColors.danger
                 : JournalColors.textMuted;
+    final rowFill = data.isOutcome
+        ? _withAlpha(JournalColors.bgSurface, 0.96)
+        : data.isSubtotal
+            ? _withAlpha(JournalColors.accent, 0.12)
+            : _withAlpha(JournalColors.bgSurface, 0.72);
+    final rowBorder = data.isOutcome || data.isSubtotal
+        ? JournalColors.borderBright
+        : JournalColors.border;
+    final labelColor = data.isOutcome || data.isSubtotal
+        ? JournalColors.textPrimary
+        : JournalColors.textSecondary;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: _withAlpha(JournalColors.bgSurface, 0.72),
+        color: rowFill,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: JournalColors.border),
+        border: Border.all(color: rowBorder),
       ),
       child: Row(
         children: [
@@ -2454,10 +2861,12 @@ class _ComparisonAmountRow extends StatelessWidget {
                 data.label,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: JournalColors.textSecondary,
+                style: TextStyle(
+                  color: labelColor,
                   fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: data.isOutcome || data.isSubtotal
+                      ? FontWeight.w700
+                      : FontWeight.w600,
                 ),
               ),
             ),
@@ -2509,6 +2918,78 @@ class _ComparisonAmountCell extends StatelessWidget {
   }
 }
 
+class _WholeDollarSimulationRow extends StatefulWidget {
+  const _WholeDollarSimulationRow({
+    required this.expense,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final _BudgetExpense expense;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  State<_WholeDollarSimulationRow> createState() =>
+      _WholeDollarSimulationRowState();
+}
+
+class _WholeDollarSimulationRowState extends State<_WholeDollarSimulationRow> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _wholeDollarText(widget.value));
+  }
+
+  @override
+  void didUpdateWidget(covariant _WholeDollarSimulationRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextText = _wholeDollarText(widget.value);
+    if (_controller.text != nextText) {
+      _controller.value = TextEditingValue(
+        text: nextText,
+        selection: TextSelection.collapsed(offset: nextText.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _wholeDollarText(double value) => value.round().toString();
+
+  void _handleTextChanged(String text) {
+    final parsed = int.tryParse(text);
+    if (parsed != null) {
+      widget.onChanged(parsed.toDouble());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentValue = widget.value.roundToDouble();
+    final savings = widget.expense.amount - currentValue;
+    final sliderMax = math.max((widget.expense.amount * 3).round(), 500);
+
+    return _SimulationRowLayout(
+      expense: widget.expense,
+      value: currentValue,
+      savings: savings,
+      sliderMax: sliderMax.toDouble(),
+      divisions: math.max(sliderMax, 1),
+      controller: _controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: false),
+      onTextChanged: _handleTextChanged,
+      onSliderChanged: (value) => widget.onChanged(value.roundToDouble()),
+    );
+  }
+}
+
 class _SimulationRow extends StatelessWidget {
   const _SimulationRow({
     required this.expense,
@@ -2525,13 +3006,53 @@ class _SimulationRow extends StatelessWidget {
     final savings = expense.amount - value;
     final sliderMax = math.max(expense.amount * 3, 500);
     final controller = TextEditingController(
-      text: value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2),
+      text:
+          value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2),
     )..selection = TextSelection.collapsed(
         offset: value % 1 == 0
             ? value.toInt().toString().length
             : value.toStringAsFixed(2).length,
       );
 
+    return _SimulationRowLayout(
+      expense: expense,
+      value: value,
+      savings: savings,
+      sliderMax: sliderMax.toDouble(),
+      divisions: math.max((sliderMax / 5).round(), 1),
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      onTextChanged: (text) => onChanged(double.tryParse(text) ?? 0),
+      onSliderChanged: onChanged,
+    );
+  }
+}
+
+class _SimulationRowLayout extends StatelessWidget {
+  const _SimulationRowLayout({
+    required this.expense,
+    required this.value,
+    required this.savings,
+    required this.sliderMax,
+    required this.divisions,
+    required this.controller,
+    required this.keyboardType,
+    required this.onTextChanged,
+    required this.onSliderChanged,
+  });
+
+  final _BudgetExpense expense;
+  final double value;
+  final double savings;
+  final double sliderMax;
+  final int divisions;
+  final TextEditingController controller;
+  final TextInputType keyboardType;
+  final ValueChanged<String> onTextChanged;
+  final ValueChanged<double> onSliderChanged;
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2549,8 +3070,7 @@ class _SimulationRow extends StatelessWidget {
             if (savings > 0.5)
               Container(
                 margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: _withAlpha(JournalColors.success, 0.08),
                   borderRadius: BorderRadius.circular(999),
@@ -2571,8 +3091,7 @@ class _SimulationRow extends StatelessWidget {
               width: 88,
               child: CupertinoTextField(
                 controller: controller,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: keyboardType,
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 prefix: const Padding(
                   padding: EdgeInsets.only(left: 8),
@@ -2593,7 +3112,7 @@ class _SimulationRow extends StatelessWidget {
                   color: JournalColors.textPrimary,
                   fontSize: 13,
                 ),
-                onChanged: (text) => onChanged(double.tryParse(text) ?? 0),
+                onChanged: onTextChanged,
               ),
             ),
           ],
@@ -2608,11 +3127,11 @@ class _SimulationRow extends StatelessWidget {
               overlayColor: _withAlpha(JournalColors.accent, 0.12),
             ),
             child: Slider(
-              value: value.clamp(0.0, sliderMax.toDouble()).toDouble(),
-              max: sliderMax.toDouble(),
+              value: value.clamp(0.0, sliderMax).toDouble(),
+              max: sliderMax,
               min: 0,
-              divisions: math.max((sliderMax / 5).round(), 1),
-              onChanged: onChanged,
+              divisions: divisions,
+              onChanged: onSliderChanged,
             ),
           ),
         ),
@@ -2827,6 +3346,81 @@ class _BudgetExpense {
 
   final String name;
   final double amount;
+}
+
+class _SavedComparisonExpense {
+  const _SavedComparisonExpense({
+    required this.name,
+    required this.amount,
+  });
+
+  final String name;
+  final double amount;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'amount': amount,
+      };
+
+  factory _SavedComparisonExpense.fromJson(Map<String, dynamic> json) {
+    return _SavedComparisonExpense(
+      name: (json['name'] ?? '').toString(),
+      amount: (json['amount'] is num)
+          ? (json['amount'] as num).toDouble()
+          : double.tryParse(json['amount'].toString()) ?? 0,
+    );
+  }
+}
+
+class _SavedBudgetComparison {
+  const _SavedBudgetComparison({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+    required this.rent,
+    required this.utilities,
+    required this.expenses,
+  });
+
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  final double rent;
+  final double utilities;
+  final List<_SavedComparisonExpense> expenses;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'createdAt': createdAt.toIso8601String(),
+        'rent': rent,
+        'utilities': utilities,
+        'expenses': expenses.map((expense) => expense.toJson()).toList(),
+      };
+
+  factory _SavedBudgetComparison.fromJson(Map<String, dynamic> json) {
+    final expenses = (json['expenses'] as List<dynamic>? ?? const [])
+        .map((item) => _SavedComparisonExpense.fromJson(
+              item is Map<String, dynamic>
+                  ? item
+                  : Map<String, dynamic>.from(item as Map),
+            ))
+        .toList();
+
+    return _SavedBudgetComparison(
+      id: (json['id'] ?? DateTime.now().microsecondsSinceEpoch).toString(),
+      name: (json['name'] ?? 'Saved what-if').toString(),
+      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      rent: (json['rent'] is num)
+          ? (json['rent'] as num).toDouble()
+          : double.tryParse(json['rent'].toString()) ?? 0,
+      utilities: (json['utilities'] is num)
+          ? (json['utilities'] as num).toDouble()
+          : double.tryParse(json['utilities'].toString()) ?? 0,
+      expenses: expenses,
+    );
+  }
 }
 
 class _BudgetSnapshot {
