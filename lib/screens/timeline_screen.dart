@@ -56,6 +56,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   bool _summaryTtsLoading = false;
   bool _summaryTtsSequenceActive = false;
   int _summaryTtsRequestCounter = 0;
+  int _summaryRefreshRequestCounter = 0;
   String? _summaryTtsError;
   String? _summaryTtsTempAudioPath;
 
@@ -151,6 +152,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 
   Future<void> _regenerateSummary() async {
+    final requestId = ++_summaryRefreshRequestCounter;
     if (mounted) {
       setState(() {
         _masterSummary = null;
@@ -159,9 +161,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
     }
     try {
       final tone = await _getPreferredTone();
-      await _api.generateTherapistInsight(tone: tone, force: true);
-      final result = await _loadBestCachedSummary(tone);
+      final generated = _normalizeInsightPayload(
+        await _api.generateTherapistInsight(tone: tone, force: true),
+      );
+      final result = generated != null
+          ? (tone, generated)
+          : await _loadCachedSummaryForTone(tone);
       if (mounted) {
+        if (requestId != _summaryRefreshRequestCounter) return;
         setState(() {
           _summaryTone = result.$1;
           _masterSummary = result.$2;
@@ -172,11 +179,12 @@ class _TimelineScreenState extends State<TimelineScreen> {
       Map<String, dynamic>? cached;
       try {
         final tone = await _getPreferredTone();
-        final result = await _loadBestCachedSummary(tone);
+        final result = await _loadCachedSummaryForTone(tone);
         cached = result.$2;
         if (cached != null) _summaryTone = result.$1;
       } catch (_) {}
       if (mounted) {
+        if (requestId != _summaryRefreshRequestCounter) return;
         setState(() {
           _masterSummary = cached;
           _summaryLoading = false;
