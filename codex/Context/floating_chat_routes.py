@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger("journal")
 
-ANTHROPIC_IMAGE_MAX_BYTES = 5 * 1024 * 1024
-ANTHROPIC_IMAGE_TARGET_BYTES = 4_500_000
+ANTHROPIC_IMAGE_MAX_BASE64_BYTES = 5 * 1024 * 1024
+ANTHROPIC_IMAGE_TARGET_BASE64_BYTES = 4_800_000
 ANTHROPIC_IMAGE_MAX_DIMENSION = 1568
 SAGE_VISION_MODEL = "claude-sonnet-4-6"
 DEFAULT_SAGE_MAX_TOKENS = 1400
@@ -59,7 +59,7 @@ def _normalize_image_for_anthropic(
 ) -> tuple[str, str]:
     """
     Resize/recompress image payloads so Anthropic vision requests stay below
-    the 5 MB decoded image limit.
+    Anthropic's 5 MB base64 image-source limit.
     """
     if "," in raw_b64:
         raw_b64 = raw_b64.split(",", 1)[1]
@@ -69,7 +69,7 @@ def _normalize_image_for_anthropic(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image base64 for {filename or 'attachment'}: {e}")
 
-    if len(image_bytes) <= ANTHROPIC_IMAGE_TARGET_BYTES:
+    if len(raw_b64.encode("ascii", errors="ignore")) <= ANTHROPIC_IMAGE_TARGET_BASE64_BYTES:
         return media_type, raw_b64
 
     try:
@@ -110,11 +110,11 @@ def _normalize_image_for_anthropic(
         out = BytesIO()
         image.save(out, format="JPEG", quality=quality, optimize=True, progressive=True)
         resized_bytes = out.getvalue()
-        if len(resized_bytes) <= ANTHROPIC_IMAGE_TARGET_BYTES:
+        if len(base64.b64encode(resized_bytes)) <= ANTHROPIC_IMAGE_TARGET_BASE64_BYTES:
             break
 
     attempts = 0
-    while len(resized_bytes) > ANTHROPIC_IMAGE_TARGET_BYTES and attempts < 6:
+    while len(base64.b64encode(resized_bytes)) > ANTHROPIC_IMAGE_TARGET_BASE64_BYTES and attempts < 8:
         attempts += 1
         next_size = (
             max(1, int(image.width * 0.85)),
@@ -125,12 +125,14 @@ def _normalize_image_for_anthropic(
         image.save(out, format="JPEG", quality=75, optimize=True, progressive=True)
         resized_bytes = out.getvalue()
 
-    if len(resized_bytes) > ANTHROPIC_IMAGE_MAX_BYTES:
+    resized_b64 = base64.b64encode(resized_bytes).decode("ascii")
+    if len(resized_b64.encode("ascii")) > ANTHROPIC_IMAGE_MAX_BASE64_BYTES:
         raise HTTPException(
             status_code=413,
             detail=(
                 f"Image remains too large after server resize: "
-                f"{len(resized_bytes)} bytes > {ANTHROPIC_IMAGE_MAX_BYTES} bytes"
+                f"{len(resized_b64.encode('ascii'))} base64 bytes > "
+                f"{ANTHROPIC_IMAGE_MAX_BASE64_BYTES} bytes"
             ),
         )
 
@@ -140,7 +142,7 @@ def _normalize_image_for_anthropic(
         len(image_bytes),
         len(resized_bytes),
     )
-    return "image/jpeg", base64.b64encode(resized_bytes).decode("ascii")
+    return "image/jpeg", resized_b64
 
 
 def register_floating_chat_routes(app, require_any_user):

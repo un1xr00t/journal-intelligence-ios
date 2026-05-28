@@ -9,6 +9,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image/image.dart' as img;
@@ -203,9 +204,9 @@ const _kSupportedSageImageExtensions = <String>{
 };
 
 const _kMaxSageFileChars = 12000;
-const _kMaxSageImageBytes = 12 * 1024 * 1024;
-const _kAnthropicImageMaxBytes = 5 * 1024 * 1024;
-const _kAnthropicImageTargetBytes = 4500000;
+const _kMaxSageSourceImageBytes = 50 * 1024 * 1024;
+const _kAnthropicImageMaxBase64Bytes = 5 * 1024 * 1024;
+const _kAnthropicImageTargetBase64Bytes = 4800000;
 const _kAnthropicImageMaxDimension = 1568;
 const _kSeededSummaryTranscriptMaxChars = 900;
 const _kSeededSummaryTranscriptMaxBytes = 1200;
@@ -437,6 +438,10 @@ String _imageMediaTypeForExtension(String extension) {
   }
 }
 
+int _base64ByteLengthForRawBytes(int byteLength) {
+  return ((byteLength + 2) ~/ 3) * 4;
+}
+
 class _NormalizedSageImage {
   const _NormalizedSageImage({
     required this.bytes,
@@ -449,12 +454,23 @@ class _NormalizedSageImage {
   final String mediaType;
 }
 
+class _SageImageNormalizeRequest {
+  const _SageImageNormalizeRequest({
+    required this.bytes,
+    required this.extension,
+  });
+
+  final Uint8List bytes;
+  final String extension;
+}
+
 Future<_NormalizedSageImage?> _normalizeSageImageBytes({
   required Uint8List bytes,
   required String extension,
 }) async {
   if (bytes.isEmpty) return null;
-  if (bytes.length <= _kAnthropicImageTargetBytes) {
+  if (_base64ByteLengthForRawBytes(bytes.length) <=
+      _kAnthropicImageTargetBase64Bytes) {
     return _NormalizedSageImage(
       bytes: bytes,
       extension: extension,
@@ -462,7 +478,16 @@ Future<_NormalizedSageImage?> _normalizeSageImageBytes({
     );
   }
 
-  final decoded = img.decodeImage(bytes);
+  return compute(
+    _normalizeOversizedSageImageBytes,
+    _SageImageNormalizeRequest(bytes: bytes, extension: extension),
+  );
+}
+
+_NormalizedSageImage? _normalizeOversizedSageImageBytes(
+  _SageImageNormalizeRequest request,
+) {
+  final decoded = img.decodeImage(request.bytes);
   if (decoded == null) return null;
 
   var working = img.bakeOrientation(decoded);
@@ -488,7 +513,8 @@ Future<_NormalizedSageImage?> _normalizeSageImageBytes({
   Uint8List resizedBytes = Uint8List(0);
   for (final quality in [85, 80, 75, 70, 65, 60, 55]) {
     resizedBytes = encoded(img.encodeJpg(working, quality: quality));
-    if (resizedBytes.length <= _kAnthropicImageTargetBytes) {
+    if (_base64ByteLengthForRawBytes(resizedBytes.length) <=
+        _kAnthropicImageTargetBase64Bytes) {
       return _NormalizedSageImage(
         bytes: resizedBytes,
         extension: 'jpg',
@@ -498,7 +524,9 @@ Future<_NormalizedSageImage?> _normalizeSageImageBytes({
   }
 
   var attempts = 0;
-  while (resizedBytes.length > _kAnthropicImageTargetBytes && attempts < 6) {
+  while (_base64ByteLengthForRawBytes(resizedBytes.length) >
+          _kAnthropicImageTargetBase64Bytes &&
+      attempts < 8) {
     attempts += 1;
     final nextWidth = (working.width * 0.85).floor().clamp(1, working.width);
     final nextHeight = (working.height * 0.85).floor().clamp(1, working.height);
@@ -514,7 +542,9 @@ Future<_NormalizedSageImage?> _normalizeSageImageBytes({
     resizedBytes = encoded(img.encodeJpg(working, quality: 75));
   }
 
-  if (resizedBytes.isEmpty || resizedBytes.length > _kAnthropicImageMaxBytes) {
+  if (resizedBytes.isEmpty ||
+      _base64ByteLengthForRawBytes(resizedBytes.length) >
+          _kAnthropicImageMaxBase64Bytes) {
     return null;
   }
 
@@ -2928,7 +2958,7 @@ class _SageFileDraft {
       if (!await imageFile.exists()) return null;
       final bytes = await imageFile.readAsBytes();
       if (bytes.isEmpty) return null;
-      if (bytes.length > _kMaxSageImageBytes) {
+      if (bytes.length > _kMaxSageSourceImageBytes) {
         onOversizedImage?.call(file.name);
         return null;
       }
@@ -2976,7 +3006,7 @@ class _SageFileDraft {
 
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) return null;
-    if (bytes.length > _kMaxSageImageBytes) {
+    if (bytes.length > _kMaxSageSourceImageBytes) {
       onOversizedImage?.call(file.name);
       return null;
     }
@@ -3019,7 +3049,9 @@ class _SageFileDraft {
 
     if (_kSupportedSageImageExtensions.contains(ext)) {
       final bytes = await file.readAsBytes();
-      if (bytes.isEmpty || bytes.length > _kMaxSageImageBytes) return null;
+      if (bytes.isEmpty || bytes.length > _kMaxSageSourceImageBytes) {
+        return null;
+      }
       final normalized = await _normalizeSageImageBytes(
         bytes: bytes,
         extension: ext,
