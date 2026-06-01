@@ -39,10 +39,13 @@ class JournalApp extends StatefulWidget {
 }
 
 class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
+  static const _minimumAwayDurationForLock = Duration(milliseconds: 700);
+
   final _launchRouteService = LaunchRouteService();
   AuthProvider? _authProvider;
   bool _bootstrapping = true;
   bool _lifecycleLockEnabled = false;
+  DateTime? _lastLifecycleExitAt;
 
   Future<bool> _handleExternalRoute(String? route) async {
     if (!mounted) return false;
@@ -158,9 +161,16 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
-        appLock.armForResumeLock();
+        _lastLifecycleExitAt = DateTime.now();
         break;
       case AppLifecycleState.resumed:
+        final exitAt = _lastLifecycleExitAt;
+        _lastLifecycleExitAt = null;
+        if (exitAt == null ||
+            DateTime.now().difference(exitAt) < _minimumAwayDurationForLock) {
+          return;
+        }
+        appLock.armForResumeLock();
         appLock.handleAppResumed(
           authenticated: context.read<AuthProvider>().isAuthenticated,
         );
