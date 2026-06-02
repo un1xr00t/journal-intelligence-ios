@@ -8,12 +8,16 @@ POST /api/floatchat/message   — AI chat using cached context string from front
 
 from __future__ import annotations
 import base64
+from datetime import datetime, timezone
+import hashlib
 from io import BytesIO
 import json
 import logging
-from typing import Optional
+import uuid
+from typing import Any, Optional
 
 import anthropic
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -26,6 +30,9 @@ SAGE_VISION_MODEL = "claude-sonnet-4-6"
 DEFAULT_SAGE_MAX_TOKENS = 1400
 MIN_SAGE_MAX_TOKENS = 200
 MAX_SAGE_MAX_TOKENS = 2500
+MAX_SAVED_CHAT_MESSAGES = 200
+MAX_SAVED_CHAT_CONTEXT_CHARS = 120_000
+MAX_SAVED_CHAT_CONTENT_CHARS = 80_000
 
 
 class ChatMessage(BaseModel):
@@ -49,6 +56,136 @@ class ChatRequest(BaseModel):
     )
     images: list[ImageAttachment] = Field(default_factory=list)            # top-level shorthand
     image_attachments: list[ImageAttachment] = Field(default_factory=list) # alternate key iOS may send
+
+
+class SavedChatMessage(BaseModel):
+    role: str
+    content: str
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SavedChatRequest(BaseModel):
+    title: Optional[str] = None
+    context_string: str = ""
+    messages: list[SavedChatMessage] = Field(default_factory=list)
+    web_search_enabled: bool = False
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _collapse_saved_text(value: str, limit: int) -> str:
+    collapsed = " ".join((value or "").split()).strip()
+    if len(collapsed) <= limit:
+        return collapsed
+    return collapsed[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _saved_chat_cipher(user_id: int) -> Fernet:
+    from src.auth.auth_service import JWT_SECRET
+
+    seed = f"{JWT_SECRET}:floatchat-saved:{user_id}".encode("utf-8")
+    key = base64.urlsafe_b64encode(hashlib.sha256(seed).digest())
+    return Fernet(key)
+
+
+def _encrypt_saved_value(user_id: int, value: Any) -> str:
+    raw = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return _saved_chat_cipher(user_id).encrypt(raw).decode("ascii")
+
+
+def _decrypt_saved_value(user_id: int, token: str, fallback: Any) -> Any:
+    try:
+        raw = _saved_chat_cipher(user_id).decrypt((token or "").encode("ascii"))
+        return json.loads(raw.decode("utf-8"))
+    except (InvalidToken, ValueError, TypeError, json.JSONDecodeError):
+        return fallback
+
+
+def _normalize_saved_messages(messages: list[SavedChatMessage]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for message in messages[:MAX_SAVED_CHAT_MESSAGES]:
+        role = (message.role or "").strip()
+        if role not in {"user", "assistant"}:
+            continue
+        content = (message.content or "")[:MAX_SAVED_CHAT_CONTENT_CHARS]
+        if not content.strip():
+            continue
+        normalized.append({
+            "role": role,
+            "content": content,
+            "actions": message.actions if isinstance(message.actions, list) else [],
+            "attachments": message.attachments if isinstance(message.attachments, list) else [],
+        })
+    return normalized
+
+
+def _derive_saved_title(messages: list[dict[str, Any]], explicit_title: Optional[str]) -> str:
+    explicit = (explicit_title or "").strip()
+    if explicit:
+        return _collapse_saved_text(explicit, 80)
+    for message in messages:
+        if message.get("role") == "user":
+            content = str(message.get("content") or "").strip()
+            if content:
+                return _collapse_saved_text(content, 80)
+    return "Saved Sage conversation"
+
+
+def _derive_saved_preview(messages: list[dict[str, Any]]) -> str:
+    for message in reversed(messages):
+        content = str(message.get("content") or "").strip()
+        if content:
+            return _collapse_saved_text(content, 180)
+    return "No preview available."
+
+
+def _ensure_saved_chat_table(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS floatchat_saved_conversations (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            title_enc TEXT NOT NULL,
+            preview_enc TEXT NOT NULL,
+            context_enc TEXT NOT NULL,
+            messages_enc TEXT NOT NULL,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            web_search_enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_floatchat_saved_user_updated
+        ON floatchat_saved_conversations(user_id, updated_at DESC)
+        """
+    )
+
+
+def _saved_chat_row_response(user_id: int, row, include_detail: bool = False) -> dict[str, Any]:
+    title = _decrypt_saved_value(user_id, row["title_enc"], "Saved Sage conversation")
+    preview = _decrypt_saved_value(user_id, row["preview_enc"], "")
+    result = {
+        "id": row["id"],
+        "title": str(title or "Saved Sage conversation"),
+        "preview": str(preview or ""),
+        "message_count": int(row["message_count"] or 0),
+        "web_search_enabled": bool(row["web_search_enabled"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "encrypted_at_rest": True,
+    }
+    if include_detail:
+        result["context_string"] = str(_decrypt_saved_value(user_id, row["context_enc"], "") or "")
+        messages = _decrypt_saved_value(user_id, row["messages_enc"], [])
+        result["messages"] = messages if isinstance(messages, list) else []
+    return result
 
 
 def _normalize_image_for_anthropic(
@@ -363,6 +500,201 @@ def register_floating_chat_routes(app, require_any_user):
             "context_string": context_string,
             "entry_count": entry_count,
         }
+
+    # ── Saved Sage conversations ─────────────────────────────────────────────
+    @app.get("/api/floatchat/saved")
+    async def list_saved_chats(current_user: dict = Depends(require_any_user)):
+        from src.auth.auth_db import get_db
+
+        user_id = int(current_user["id"])
+        conn = get_db()
+        try:
+            _ensure_saved_chat_table(conn)
+            rows = conn.execute(
+                """
+                SELECT id, user_id, title_enc, preview_enc, context_enc,
+                       messages_enc, message_count, web_search_enabled,
+                       created_at, updated_at
+                FROM floatchat_saved_conversations
+                WHERE user_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
+            return [_saved_chat_row_response(user_id, row) for row in rows]
+        finally:
+            conn.close()
+
+    @app.get("/api/floatchat/saved/{conversation_id}")
+    async def get_saved_chat(conversation_id: str, current_user: dict = Depends(require_any_user)):
+        from src.auth.auth_db import get_db
+
+        user_id = int(current_user["id"])
+        conn = get_db()
+        try:
+            _ensure_saved_chat_table(conn)
+            row = conn.execute(
+                """
+                SELECT id, user_id, title_enc, preview_enc, context_enc,
+                       messages_enc, message_count, web_search_enabled,
+                       created_at, updated_at
+                FROM floatchat_saved_conversations
+                WHERE id = ? AND user_id = ?
+                """,
+                (conversation_id, user_id),
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Saved conversation not found.")
+            return _saved_chat_row_response(user_id, row, include_detail=True)
+        finally:
+            conn.close()
+
+    @app.post("/api/floatchat/saved")
+    async def create_saved_chat(body: SavedChatRequest, current_user: dict = Depends(require_any_user)):
+        from src.auth.auth_db import get_db
+
+        user_id = int(current_user["id"])
+        messages = _normalize_saved_messages(body.messages)
+        if not messages:
+            raise HTTPException(status_code=400, detail="No messages provided.")
+
+        now = _utc_now_iso()
+        conversation_id = uuid.uuid4().hex
+        title = _derive_saved_title(messages, body.title)
+        preview = _derive_saved_preview(messages)
+        context_string = (body.context_string or "")[:MAX_SAVED_CHAT_CONTEXT_CHARS]
+
+        conn = get_db()
+        try:
+            _ensure_saved_chat_table(conn)
+            conn.execute(
+                """
+                INSERT INTO floatchat_saved_conversations (
+                    id, user_id, title_enc, preview_enc, context_enc,
+                    messages_enc, message_count, web_search_enabled,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    conversation_id,
+                    user_id,
+                    _encrypt_saved_value(user_id, title),
+                    _encrypt_saved_value(user_id, preview),
+                    _encrypt_saved_value(user_id, context_string),
+                    _encrypt_saved_value(user_id, messages),
+                    len(messages),
+                    1 if body.web_search_enabled else 0,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                """
+                SELECT id, user_id, title_enc, preview_enc, context_enc,
+                       messages_enc, message_count, web_search_enabled,
+                       created_at, updated_at
+                FROM floatchat_saved_conversations
+                WHERE id = ? AND user_id = ?
+                """,
+                (conversation_id, user_id),
+            ).fetchone()
+            return _saved_chat_row_response(user_id, row, include_detail=True)
+        finally:
+            conn.close()
+
+    @app.put("/api/floatchat/saved/{conversation_id}")
+    async def update_saved_chat(
+        conversation_id: str,
+        body: SavedChatRequest,
+        current_user: dict = Depends(require_any_user),
+    ):
+        from src.auth.auth_db import get_db
+
+        user_id = int(current_user["id"])
+        messages = _normalize_saved_messages(body.messages)
+        if not messages:
+            raise HTTPException(status_code=400, detail="No messages provided.")
+
+        now = _utc_now_iso()
+        title = _derive_saved_title(messages, body.title)
+        preview = _derive_saved_preview(messages)
+        context_string = (body.context_string or "")[:MAX_SAVED_CHAT_CONTEXT_CHARS]
+
+        conn = get_db()
+        try:
+            _ensure_saved_chat_table(conn)
+            existing = conn.execute(
+                "SELECT id FROM floatchat_saved_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            ).fetchone()
+            if not existing:
+                raise HTTPException(status_code=404, detail="Saved conversation not found.")
+            conn.execute(
+                """
+                UPDATE floatchat_saved_conversations
+                SET title_enc = ?,
+                    preview_enc = ?,
+                    context_enc = ?,
+                    messages_enc = ?,
+                    message_count = ?,
+                    web_search_enabled = ?,
+                    updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    _encrypt_saved_value(user_id, title),
+                    _encrypt_saved_value(user_id, preview),
+                    _encrypt_saved_value(user_id, context_string),
+                    _encrypt_saved_value(user_id, messages),
+                    len(messages),
+                    1 if body.web_search_enabled else 0,
+                    now,
+                    conversation_id,
+                    user_id,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                """
+                SELECT id, user_id, title_enc, preview_enc, context_enc,
+                       messages_enc, message_count, web_search_enabled,
+                       created_at, updated_at
+                FROM floatchat_saved_conversations
+                WHERE id = ? AND user_id = ?
+                """,
+                (conversation_id, user_id),
+            ).fetchone()
+            return _saved_chat_row_response(user_id, row, include_detail=True)
+        finally:
+            conn.close()
+
+    @app.post("/api/floatchat/saved/{conversation_id}")
+    async def upsert_saved_chat_legacy_post(
+        conversation_id: str,
+        body: SavedChatRequest,
+        current_user: dict = Depends(require_any_user),
+    ):
+        return await update_saved_chat(conversation_id, body, current_user)
+
+    @app.delete("/api/floatchat/saved/{conversation_id}")
+    async def delete_saved_chat(conversation_id: str, current_user: dict = Depends(require_any_user)):
+        from src.auth.auth_db import get_db
+
+        user_id = int(current_user["id"])
+        conn = get_db()
+        try:
+            _ensure_saved_chat_table(conn)
+            cur = conn.execute(
+                "DELETE FROM floatchat_saved_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            )
+            conn.commit()
+            if cur.rowcount < 1:
+                raise HTTPException(status_code=404, detail="Saved conversation not found.")
+            return {"message": "Saved conversation deleted."}
+        finally:
+            conn.close()
 
     # ── POST /api/floatchat/message ───────────────────────────────────────────
     @app.post("/api/floatchat/message")

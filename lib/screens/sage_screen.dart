@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -10,7 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show compute;
-import 'package:flutter/material.dart' show SelectionArea;
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -3986,6 +3985,13 @@ class _MessageBubble extends StatelessWidget {
 
   bool get _isUser => message.role == 'user';
 
+  Future<void> _copyMessage() async {
+    final text = message.text.trim();
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    await HapticFeedback.selectionClick();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bubbleRadius = BorderRadius.only(
@@ -4005,73 +4011,75 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment:
               _isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: EdgeInsets.fromLTRB(
-                message.attachments.isNotEmpty ? 12 : 16,
-                message.attachments.isNotEmpty ? 12 : 14,
-                message.attachments.isNotEmpty ? 12 : 16,
-                14,
-              ),
-              decoration: BoxDecoration(
-                color: _isUser ? null : _withAlpha(JournalColors.bgCard, 0.9),
-                gradient: _isUser
-                    ? LinearGradient(
-                        colors: [
-                          _withAlpha(JournalColors.accent2, 0.92),
-                          _withAlpha(JournalColors.accent, 0.88),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : LinearGradient(
-                        colors: [
-                          _withAlpha(JournalColors.bgCardAlt, 0.96),
-                          _withAlpha(JournalColors.bgSurface, 0.9),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                borderRadius: bubbleRadius,
-                border: Border.all(
-                  color: _isUser
-                      ? _withAlpha(JournalColors.textPrimary, 0.12)
-                      : _withAlpha(JournalColors.borderBright, 0.42),
+            GestureDetector(
+              onTap: _copyMessage,
+              onLongPress: _copyMessage,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  message.attachments.isNotEmpty ? 12 : 16,
+                  message.attachments.isNotEmpty ? 12 : 14,
+                  message.attachments.isNotEmpty ? 12 : 16,
+                  14,
                 ),
-                boxShadow: [
-                  BoxShadow(
+                decoration: BoxDecoration(
+                  color: _isUser ? null : _withAlpha(JournalColors.bgCard, 0.9),
+                  gradient: _isUser
+                      ? LinearGradient(
+                          colors: [
+                            _withAlpha(JournalColors.accent2, 0.92),
+                            _withAlpha(JournalColors.accent, 0.88),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : LinearGradient(
+                          colors: [
+                            _withAlpha(JournalColors.bgCardAlt, 0.96),
+                            _withAlpha(JournalColors.bgSurface, 0.9),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                  borderRadius: bubbleRadius,
+                  border: Border.all(
                     color: _isUser
-                        ? JournalColors.accentGlow
-                        : _withAlpha(JournalColors.bgBase, 0.44),
-                    blurRadius: _isUser ? 22 : 18,
-                    offset: const Offset(0, 10),
+                        ? _withAlpha(JournalColors.textPrimary, 0.12)
+                        : _withAlpha(JournalColors.borderBright, 0.42),
                   ),
-                  if (_isUser)
+                  boxShadow: [
                     BoxShadow(
-                      color: _withAlpha(JournalColors.accent2, 0.16),
-                      blurRadius: 28,
-                      offset: const Offset(0, 2),
+                      color: _isUser
+                          ? JournalColors.accentGlow
+                          : _withAlpha(JournalColors.bgBase, 0.44),
+                      blurRadius: _isUser ? 22 : 18,
+                      offset: const Offset(0, 10),
                     ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (message.attachments.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: message.attachments
-                          .map((attachment) => _SageMessageAttachmentTile(
-                              attachment: attachment))
-                          .toList(),
-                    ),
-                    if (message.text.trim().isNotEmpty)
-                      const SizedBox(height: 10),
+                    if (_isUser)
+                      BoxShadow(
+                        color: _withAlpha(JournalColors.accent2, 0.16),
+                        blurRadius: 28,
+                        offset: const Offset(0, 2),
+                      ),
                   ],
-                  if (message.text.trim().isNotEmpty)
-                    _isUser
-                        ? SelectionArea(
-                            child: Text(
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.attachments.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: message.attachments
+                            .map((attachment) => _SageMessageAttachmentTile(
+                                attachment: attachment))
+                            .toList(),
+                      ),
+                      if (message.text.trim().isNotEmpty)
+                        const SizedBox(height: 10),
+                    ],
+                    if (message.text.trim().isNotEmpty)
+                      _isUser
+                          ? Text(
                               message.text,
                               style: const TextStyle(
                                 color: JournalColors.textPrimary,
@@ -4079,10 +4087,8 @@ class _MessageBubble extends StatelessWidget {
                                 height: 1.42,
                                 fontWeight: FontWeight.w700,
                               ),
-                            ),
-                          )
-                        : SelectionArea(
-                            child: MarkdownBody(
+                            )
+                          : MarkdownBody(
                               data: message.text,
                               shrinkWrap: true,
                               selectable: false,
@@ -4104,8 +4110,8 @@ class _MessageBubble extends StatelessWidget {
                                 blockSpacing: 8,
                               ),
                             ),
-                          ),
-                ],
+                  ],
+                ),
               ),
             ),
             if (!_isUser) ...[
@@ -4114,6 +4120,39 @@ class _MessageBubble extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  GestureDetector(
+                    onTap: _copyMessage,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.bgSurface, 0.9),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: JournalColors.border),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.doc_on_clipboard,
+                            color: JournalColors.accent,
+                            size: 14,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Copy',
+                            style: TextStyle(
+                              color: JournalColors.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   GestureDetector(
                     onTap: () => onToggleSpeak(message),
                     child: Container(

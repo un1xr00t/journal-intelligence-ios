@@ -231,6 +231,7 @@ class AuthProvider extends ChangeNotifier {
     await _settingsSync.restoreFromServer();
     await _followUpTasks.syncTasksFromServer();
     await _orbitLedger.syncEntriesFromServer();
+    await _api.migrateLocalSavedFloatchatConversationsToServer();
   }
 
   void _restoreServerBackedLocalDataInBackground() {
