@@ -69,6 +69,9 @@ const _kAllowedEntryAttachmentExtensions = <String>{
 
 const int _kEntryAttachmentTargetBytes = 4 * 1024 * 1024;
 const int _kEntryAttachmentMaxDimension = 2000;
+const int _kArgumentTrackerImageTargetBytes = 900 * 1024;
+const int _kArgumentTrackerImageMaxDimension = 2200;
+const int _kArgumentTrackerImageMinDimension = 1600;
 
 class JournalUrlContextException implements Exception {
   const JournalUrlContextException(this.message);
@@ -94,6 +97,18 @@ class EntryAttachmentUploadException implements Exception {
 
 class _PreparedEntryAttachment {
   const _PreparedEntryAttachment({
+    required this.bytes,
+    required this.filename,
+    required this.mediaType,
+  });
+
+  final Uint8List bytes;
+  final String filename;
+  final MediaType mediaType;
+}
+
+class _PreparedArgumentTrackerAttachment {
+  const _PreparedArgumentTrackerAttachment({
     required this.bytes,
     required this.filename,
     required this.mediaType,
@@ -236,6 +251,98 @@ Future<_PreparedEntryAttachment> _prepareEntryAttachment({
   );
 }
 
+bool _isArgumentTrackerImage(String filename) {
+  final extension = _filenameExtension(filename);
+  return {
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.gif',
+  }.contains(extension);
+}
+
+Future<_PreparedArgumentTrackerAttachment> _prepareArgumentTrackerAttachment({
+  required String filePath,
+  required String filename,
+}) async {
+  final originalBytes = await File(filePath).readAsBytes();
+  if (!_isArgumentTrackerImage(filename)) {
+    return _PreparedArgumentTrackerAttachment(
+      bytes: originalBytes,
+      filename: filename,
+      mediaType: _attachmentMimeType(filename),
+    );
+  }
+
+  final decoded = img.decodeImage(originalBytes);
+  if (decoded == null) {
+    return _PreparedArgumentTrackerAttachment(
+      bytes: originalBytes,
+      filename: filename,
+      mediaType: _attachmentMimeType(filename),
+    );
+  }
+
+  var working = img.bakeOrientation(decoded);
+  if (working.width > _kArgumentTrackerImageMaxDimension ||
+      working.height > _kArgumentTrackerImageMaxDimension) {
+    if (working.width >= working.height) {
+      working = img.copyResize(
+        working,
+        width: _kArgumentTrackerImageMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    } else {
+      working = img.copyResize(
+        working,
+        height: _kArgumentTrackerImageMaxDimension,
+        interpolation: img.Interpolation.cubic,
+      );
+    }
+  }
+
+  Uint8List resizedBytes = Uint8List(0);
+  for (final quality in [88, 84, 80, 76, 72, 68, 64]) {
+    resizedBytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+    if (resizedBytes.length <= _kArgumentTrackerImageTargetBytes) {
+      break;
+    }
+  }
+
+  var attempts = 0;
+  while (
+      resizedBytes.length > _kArgumentTrackerImageTargetBytes && attempts < 8) {
+    attempts += 1;
+    final currentLongest =
+        working.width >= working.height ? working.width : working.height;
+    if (currentLongest <= _kArgumentTrackerImageMinDimension) break;
+    final nextWidth = (working.width * 0.92).floor().clamp(1, working.width);
+    final nextHeight = (working.height * 0.92).floor().clamp(1, working.height);
+    if (nextWidth == working.width && nextHeight == working.height) break;
+    working = img.copyResize(
+      working,
+      width: nextWidth,
+      height: nextHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+    resizedBytes = Uint8List.fromList(img.encodeJpg(working, quality: 72));
+  }
+
+  if (kDebugMode) {
+    debugPrint(
+      'argument tracker normalized $filename '
+      'from ${originalBytes.length} bytes to ${resizedBytes.length} bytes',
+    );
+  }
+
+  return _PreparedArgumentTrackerAttachment(
+    bytes: resizedBytes.isEmpty ? originalBytes : resizedBytes,
+    filename: '${_filenameStem(filename)}.jpg',
+    mediaType: MediaType('image', 'jpeg'),
+  );
+}
+
 class SavedFloatchatMessage {
   const SavedFloatchatMessage({
     required this.role,
@@ -313,6 +420,63 @@ class SavedFloatchatConversation {
                   Map<String, dynamic>.from(item)))
               .toList() ??
           const <SavedFloatchatMessage>[],
+    );
+  }
+}
+
+class ArgumentTrackerAttachment {
+  const ArgumentTrackerAttachment({
+    required this.filename,
+    this.filePath,
+    this.bytes,
+  });
+
+  final String filename;
+  final String? filePath;
+  final List<int>? bytes;
+}
+
+class ArgumentTrackerReport {
+  const ArgumentTrackerReport({
+    required this.id,
+    required this.title,
+    required this.eventSummary,
+    required this.preview,
+    required this.result,
+    required this.attachmentCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.inputText,
+    this.attachments = const [],
+  });
+
+  final String id;
+  final String title;
+  final String eventSummary;
+  final String preview;
+  final String result;
+  final int attachmentCount;
+  final String createdAt;
+  final String updatedAt;
+  final String? inputText;
+  final List<Map<String, dynamic>> attachments;
+
+  factory ArgumentTrackerReport.fromJson(Map<String, dynamic> json) {
+    return ArgumentTrackerReport(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Argument report',
+      eventSummary: json['event_summary']?.toString() ?? '',
+      preview: json['preview']?.toString() ?? '',
+      result: json['result']?.toString() ?? '',
+      attachmentCount: (json['attachment_count'] as num?)?.toInt() ?? 0,
+      createdAt: json['created_at']?.toString() ?? '',
+      updatedAt: json['updated_at']?.toString() ?? '',
+      inputText: json['input_text']?.toString(),
+      attachments: (json['attachments'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          const <Map<String, dynamic>>[],
     );
   }
 }
@@ -1580,6 +1744,105 @@ class ApiService {
 
   Future<void> deleteSavedFloatchatConversation(String conversationId) async {
     await _authedDelete('/api/floatchat/saved/$conversationId');
+  }
+
+  // ── Argument Tracker ─────────────────────────────────────────
+
+  Future<List<ArgumentTrackerReport>> listArgumentTrackerReports() async {
+    final res = await _authedGet('/api/argument-tracker/reports');
+    final data = res.data;
+    final items = data is List
+        ? data
+        : (data is Map ? data['reports'] as List? ?? const [] : const []);
+    return items
+        .whereType<Map>()
+        .map((item) =>
+            ArgumentTrackerReport.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<ArgumentTrackerReport> getArgumentTrackerReport(
+    String reportId,
+  ) async {
+    final res = await _authedGet('/api/argument-tracker/reports/$reportId');
+    return ArgumentTrackerReport.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
+  Future<ArgumentTrackerReport> generateArgumentTrackerReport({
+    required String title,
+    required String eventSummary,
+    required String inputText,
+    required String contextString,
+    required List<ArgumentTrackerAttachment> attachments,
+  }) async {
+    final files = <MultipartFile>[];
+    for (final attachment in attachments) {
+      final filename = attachment.filename.trim().isEmpty
+          ? 'attachment'
+          : attachment.filename.trim();
+      final filePath = attachment.filePath;
+      if (filePath != null && filePath.trim().isNotEmpty) {
+        final prepared = await _prepareArgumentTrackerAttachment(
+          filePath: filePath,
+          filename: filename,
+        );
+        files.add(MultipartFile.fromBytes(
+          prepared.bytes,
+          filename: prepared.filename,
+          contentType: prepared.mediaType,
+        ));
+      } else if (attachment.bytes != null) {
+        if (_isArgumentTrackerImage(filename) && attachment.bytes != null) {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'argument_tracker_image_',
+          );
+          final tempFile = File('${tempDir.path}/$filename');
+          await tempFile.writeAsBytes(attachment.bytes!, flush: true);
+          final prepared = await _prepareArgumentTrackerAttachment(
+            filePath: tempFile.path,
+            filename: filename,
+          );
+          files.add(MultipartFile.fromBytes(
+            prepared.bytes,
+            filename: prepared.filename,
+            contentType: prepared.mediaType,
+          ));
+        } else {
+          files.add(MultipartFile.fromBytes(
+            attachment.bytes!,
+            filename: filename,
+            contentType: _attachmentMimeType(filename),
+          ));
+        }
+      }
+    }
+
+    final formData = FormData.fromMap({
+      'title': title,
+      'event_summary': eventSummary,
+      'input_text': inputText,
+      'context_string': contextString,
+      if (files.isNotEmpty) 'files': files,
+    });
+
+    final res = await _dio.post(
+      '/api/argument-tracker/generate',
+      data: formData,
+      options: Options(
+        headers: {'Authorization': 'Bearer $_accessToken'},
+        receiveTimeout: const Duration(minutes: 20),
+        sendTimeout: const Duration(minutes: 10),
+      ),
+    );
+    return ArgumentTrackerReport.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
+  Future<void> deleteArgumentTrackerReport(String reportId) async {
+    await _authedDelete('/api/argument-tracker/reports/$reportId');
   }
 
   Future<List<int>> voiceSpeak({

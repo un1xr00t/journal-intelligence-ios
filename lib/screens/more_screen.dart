@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 
 import '../theme/app_theme.dart';
 import 'admin_screen.dart';
+import 'argument_tracker_screen.dart';
 import 'ask_journal_screen.dart';
 import 'budget_planner_screen.dart';
 import 'detective_screen.dart';
@@ -132,6 +133,14 @@ class MoreScreen extends StatelessWidget {
             'Case Building',
             'Organize records, exports, and supporting details.',
             const Color(0xFF10B981), [
+          _Item(
+            label: 'Argument Tracker',
+            subtitle: 'Generate forensic case reports from arguments',
+            icon: CupertinoIcons.doc_text_search,
+            iconColor: JournalColors.success,
+            badge: 'New',
+            builder: (_) => const ArgumentTrackerScreen(),
+          ),
           _Item(
             label: 'Contradictions',
             subtitle: 'AI-flagged inconsistencies in your journal',
