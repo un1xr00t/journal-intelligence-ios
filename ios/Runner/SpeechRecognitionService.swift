@@ -9,6 +9,8 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
   private var recognitionTask: SFSpeechRecognitionTask?
   private var recognizer = SFSpeechRecognizer(locale: Locale.current)
+  private var isListening = false
+  private var hasInputTap = false
 
   func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     eventSink = events
@@ -24,18 +26,22 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
   func start(result: @escaping FlutterResult) {
     requestPermissions { [weak self] permissionError in
       guard let self else {
-        result(
-          FlutterError(
-            code: "voice_unavailable",
-            message: "Voice capture is unavailable.",
-            details: nil
+        DispatchQueue.main.async {
+          result(
+            FlutterError(
+              code: "voice_unavailable",
+              message: "Voice capture is unavailable.",
+              details: nil
+            )
           )
-        )
+        }
         return
       }
 
       if let permissionError {
-        result(permissionError)
+        DispatchQueue.main.async {
+          result(permissionError)
+        }
         return
       }
 
@@ -63,14 +69,12 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
   }
 
   func stop() {
-    audioEngine.stop()
-    recognitionRequest?.endAudio()
+    stopRecognition(cancelTask: false)
     emit(status: "stopped", transcript: nil, isListening: false, isFinal: true, error: nil)
   }
 
   func cancel() {
-    recognitionTask?.cancel()
-    stopRecognition()
+    stopRecognition(cancelTask: true)
     emit(status: "cancelled", transcript: nil, isListening: false, isFinal: true, error: nil)
   }
 
@@ -104,7 +108,7 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
   }
 
   private func startRecognition() throws {
-    cancel()
+    stopRecognition(cancelTask: true)
 
     recognizer = SFSpeechRecognizer(locale: Locale.current)
     guard let recognizer, recognizer.isAvailable else {
@@ -125,53 +129,77 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
 
     let inputNode = audioEngine.inputNode
     let format = inputNode.outputFormat(forBus: 0)
-    inputNode.removeTap(onBus: 0)
+    if hasInputTap {
+      inputNode.removeTap(onBus: 0)
+      hasInputTap = false
+    }
     inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
       self?.recognitionRequest?.append(buffer)
     }
+    hasInputTap = true
 
     audioEngine.prepare()
-    try audioEngine.start()
+    do {
+      try audioEngine.start()
+      isListening = true
+    } catch {
+      stopRecognition(cancelTask: true)
+      throw error
+    }
 
     recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
       guard let self else { return }
 
       if let result {
         let text = result.bestTranscription.formattedString
-        self.emit(
-          status: result.isFinal ? "final" : "listening",
-          transcript: text,
-          isListening: !result.isFinal,
-          isFinal: result.isFinal,
-          error: nil
-        )
-        if result.isFinal {
-          self.stopRecognition()
+        DispatchQueue.main.async {
+          self.emit(
+            status: result.isFinal ? "final" : "listening",
+            transcript: text,
+            isListening: !result.isFinal,
+            isFinal: result.isFinal,
+            error: nil
+          )
+          if result.isFinal {
+            self.stopRecognition(cancelTask: false)
+          }
         }
       }
 
       if let error {
-        self.stopRecognition()
-        self.emit(
-          status: "error",
-          transcript: nil,
-          isListening: false,
-          isFinal: true,
-          error: error.localizedDescription
-        )
+        DispatchQueue.main.async {
+          self.stopRecognition(cancelTask: true)
+          self.emit(
+            status: "error",
+            transcript: nil,
+            isListening: false,
+            isFinal: true,
+            error: error.localizedDescription
+          )
+        }
       }
     }
 
     emit(status: "listening", transcript: nil, isListening: true, isFinal: false, error: nil)
   }
 
-  private func stopRecognition() {
-    audioEngine.stop()
-    audioEngine.inputNode.removeTap(onBus: 0)
+  private func stopRecognition(cancelTask: Bool) {
+    if audioEngine.isRunning {
+      audioEngine.stop()
+    }
+    if hasInputTap {
+      audioEngine.inputNode.removeTap(onBus: 0)
+      hasInputTap = false
+    }
     recognitionRequest?.endAudio()
     recognitionRequest = nil
-    recognitionTask?.cancel()
+    if cancelTask {
+      recognitionTask?.cancel()
+    } else {
+      recognitionTask?.finish()
+    }
     recognitionTask = nil
+    isListening = false
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
   }
 
@@ -182,13 +210,19 @@ final class SpeechRecognitionService: NSObject, FlutterStreamHandler {
     isFinal: Bool,
     error: String?
   ) {
-    guard let eventSink else { return }
-    eventSink([
+    let payload: [String: Any] = [
       "status": status,
       "transcript": transcript as Any,
       "isListening": isListening,
       "isFinal": isFinal,
       "error": error as Any,
-    ])
+    ]
+    if Thread.isMainThread {
+      eventSink?(payload)
+    } else {
+      DispatchQueue.main.async { [weak self] in
+        self?.eventSink?(payload)
+      }
+    }
   }
 }

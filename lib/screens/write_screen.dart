@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
+import '../services/follow_up_tasks_service.dart';
+import '../services/voice_entry_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 
@@ -301,6 +303,17 @@ class _WriteScreenState extends State<WriteScreen> {
     );
     if (result == null || !mounted) return;
     _urlCtrl.text = result.trim();
+  }
+
+  Future<void> _showVoiceReflectionSheet() async {
+    _focusNode.unfocus();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (_) => const DefaultTextStyle(
+        style: TextStyle(decoration: TextDecoration.none),
+        child: _VoiceReflectionSheet(),
+      ),
+    );
   }
 
   void _removeImage(int index) {
@@ -912,6 +925,46 @@ class _WriteScreenState extends State<WriteScreen> {
                                   ),
                                 ),
                               );
+                              final voiceButton = GestureDetector(
+                                onTap:
+                                    _saving ? null : _showVoiceReflectionSheet,
+                                child: Container(
+                                  height: 54,
+                                  decoration: BoxDecoration(
+                                    color: _withAlpha(
+                                      JournalColors.accent,
+                                      0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: JournalColors.borderBright,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        CupertinoIcons.mic_fill,
+                                        color: _saving
+                                            ? JournalColors.textMuted
+                                            : JournalColors.textPrimary,
+                                        size: 19,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        'Voice Session',
+                                        style: TextStyle(
+                                          color: _saving
+                                              ? JournalColors.textMuted
+                                              : JournalColors.textPrimary,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
 
                               final saveButton = _SaveEntryButton(
                                 enabled: _canSave,
@@ -935,6 +988,11 @@ class _WriteScreenState extends State<WriteScreen> {
                                     const SizedBox(height: 12),
                                     SizedBox(
                                       width: double.infinity,
+                                      child: voiceButton,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
                                       child: saveButton,
                                     ),
                                   ],
@@ -946,6 +1004,8 @@ class _WriteScreenState extends State<WriteScreen> {
                                   Expanded(child: photoButton),
                                   const SizedBox(width: 12),
                                   Expanded(child: linkButton),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: voiceButton),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     flex: 2,
@@ -980,6 +1040,966 @@ class _WriteScreenState extends State<WriteScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceReflectionSheet extends StatefulWidget {
+  const _VoiceReflectionSheet();
+
+  @override
+  State<_VoiceReflectionSheet> createState() => _VoiceReflectionSheetState();
+}
+
+class _VoiceReflectionSheetState extends State<_VoiceReflectionSheet> {
+  final _api = ApiService();
+  final _followUps = FollowUpTaskService();
+  final _voice = VoiceEntryService();
+  final _transcriptCtrl = TextEditingController();
+  final _transcriptFocus = FocusNode();
+
+  StreamSubscription<VoiceEntryEvent>? _voiceSub;
+  VoiceReflectionAnalysis? _analysis;
+  String? _fallbackReflection;
+  String? _error;
+  String? _savedMessage;
+  bool _listening = false;
+  bool _analyzing = false;
+  bool _saving = false;
+  Set<int> _acceptedFollowUps = {};
+  Set<int> _acceptedTasks = {};
+
+  bool get _hasTranscript => _transcriptCtrl.text.trim().isNotEmpty;
+  bool get _canAnalyze => _hasTranscript && !_listening && !_analyzing;
+  bool get _canSave => _hasTranscript && !_saving && !_listening;
+
+  @override
+  void initState() {
+    super.initState();
+    _transcriptCtrl.addListener(() => setState(() {}));
+    _transcriptFocus.addListener(() => setState(() {}));
+    _voiceSub = _voice.events.listen(_handleVoiceEvent);
+  }
+
+  @override
+  void dispose() {
+    if (_listening) {
+      unawaited(_voice.cancelListening());
+    }
+    _voiceSub?.cancel();
+    _transcriptFocus.dispose();
+    _transcriptCtrl.dispose();
+    super.dispose();
+  }
+
+  void _dismissKeyboard() {
+    _transcriptFocus.unfocus();
+    FocusScope.of(context).unfocus();
+  }
+
+  void _handleVoiceEvent(VoiceEntryEvent event) {
+    if (!mounted) return;
+    setState(() {
+      _listening = event.isListening;
+      final error = event.error?.trim();
+      if (error != null && error.isNotEmpty) {
+        _error = error;
+      }
+      final transcript = event.transcript?.trim();
+      if (transcript != null && transcript.isNotEmpty) {
+        _transcriptCtrl.value = TextEditingValue(
+          text: transcript,
+          selection: TextSelection.collapsed(offset: transcript.length),
+        );
+      }
+    });
+  }
+
+  Future<void> _startListening() async {
+    _dismissKeyboard();
+    setState(() {
+      _error = null;
+      _savedMessage = null;
+      _fallbackReflection = null;
+    });
+    try {
+      await _voice.startListening();
+      if (mounted) setState(() => _listening = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _listening = false;
+          _error = _parseVoiceError(e);
+        });
+      }
+    }
+  }
+
+  Future<void> _stopListening() async {
+    try {
+      await _voice.stopListening();
+      if (mounted) setState(() => _listening = false);
+    } catch (e) {
+      if (mounted) setState(() => _error = _parseVoiceError(e));
+    }
+  }
+
+  Future<void> _clear() async {
+    await _voice.cancelListening();
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _analysis = null;
+      _fallbackReflection = null;
+      _error = null;
+      _savedMessage = null;
+      _acceptedFollowUps = {};
+      _acceptedTasks = {};
+      _transcriptCtrl.clear();
+    });
+  }
+
+  Future<void> _analyze() async {
+    _dismissKeyboard();
+    final transcript = _transcriptCtrl.text.trim();
+    if (transcript.isEmpty) return;
+    setState(() {
+      _analyzing = true;
+      _error = null;
+      _fallbackReflection = null;
+      _savedMessage = null;
+    });
+    try {
+      final analysis = await _api.analyzeVoiceReflection(
+        transcript: transcript,
+      );
+      if (!mounted) return;
+      setState(() {
+        _analysis = analysis;
+        _acceptedFollowUps =
+            Set<int>.from(List.generate(analysis.followUps.length, (i) => i));
+        _acceptedTasks =
+            Set<int>.from(List.generate(analysis.tasks.length, (i) => i));
+        _analyzing = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _analysis = null;
+        _analyzing = false;
+        _error = _parseError(e);
+      });
+    }
+  }
+
+  Future<void> _saveSession() async {
+    _dismissKeyboard();
+    final transcript = _transcriptCtrl.text.trim();
+    if (transcript.isEmpty) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+      _savedMessage = null;
+    });
+
+    var analysis = _analysis;
+    try {
+      analysis ??= await _api.analyzeVoiceReflection(transcript: transcript);
+      final result =
+          await _api.createEntry(text: _entryText(transcript, analysis));
+      final entryId = (result['entry_id'] as num?)?.toInt();
+      if (entryId != null && _analysis == null) {
+        try {
+          final reflection =
+              await _api.getReflection(entryId, tone: 'therapist');
+          _fallbackReflection = reflection['reflection']?.toString();
+        } catch (_) {}
+      }
+      await _saveAcceptedFollowUps(analysis);
+      if (!mounted) return;
+      setState(() {
+        _analysis = analysis;
+        _saving = false;
+        _savedMessage = 'Voice reflection saved with accepted follow-ups.';
+      });
+    } catch (e) {
+      try {
+        final result = await _api.createEntry(text: transcript);
+        final entryId = (result['entry_id'] as num?)?.toInt();
+        if (entryId != null) {
+          final reflection =
+              await _api.getReflection(entryId, tone: 'therapist');
+          _fallbackReflection = reflection['reflection']?.toString();
+        }
+        if (!mounted) return;
+        setState(() {
+          _saving = false;
+          _savedMessage =
+              'Voice entry saved. Structured analysis needs the backend route deployed.';
+          _error = null;
+        });
+      } catch (fallbackError) {
+        if (!mounted) return;
+        setState(() {
+          _saving = false;
+          _error = _parseError(fallbackError);
+        });
+      }
+    }
+  }
+
+  Future<void> _saveAcceptedFollowUps(VoiceReflectionAnalysis analysis) async {
+    final selectedActions = <VoiceReflectionAction>[
+      for (final index in _acceptedFollowUps)
+        if (index >= 0 && index < analysis.followUps.length)
+          analysis.followUps[index],
+      for (final index in _acceptedTasks)
+        if (index >= 0 && index < analysis.tasks.length) analysis.tasks[index],
+    ];
+    if (selectedActions.isEmpty) return;
+
+    final existing = await _followUps.loadTasks();
+    final now = DateTime.now();
+    final additions = selectedActions.map((action) {
+      final followUpAt =
+          action.followUpAt ?? DateTime(now.year, now.month, now.day + 3);
+      return FollowUpTask(
+        id: '${now.microsecondsSinceEpoch}-${action.title.hashCode}',
+        title: action.title,
+        bucket: 'personal',
+        status: 'active',
+        priority: _normalizedPriority(action.priority),
+        createdAt: now,
+        lastTouchedAt: now,
+        nextAction: action.nextAction,
+        notes: 'Extracted from a voice reflection session.',
+        followUpAt: followUpAt,
+        followUpTimeSet: action.followUpAt != null,
+      );
+    }).toList();
+
+    await _followUps.saveTasks([...existing, ...additions]);
+  }
+
+  String _normalizedPriority(String? priority) {
+    switch (priority?.trim().toLowerCase()) {
+      case 'urgent':
+      case 'high':
+        return 'high';
+      case 'low':
+        return 'low';
+      default:
+        return 'normal';
+    }
+  }
+
+  String _entryText(String transcript, VoiceReflectionAnalysis analysis) {
+    final lines = <String>[
+      'Voice Reflection Session',
+      '',
+      'Transcript:',
+      transcript,
+    ];
+    if (analysis.summary.isNotEmpty) {
+      lines.addAll(['', 'What I heard:', analysis.summary]);
+    }
+    _addNamedList(lines, 'Emotions', analysis.emotions);
+    _addNamedList(lines, 'Topics', analysis.topics);
+    _addNamedList(
+      lines,
+      'Follow-ups',
+      analysis.followUps.map((item) => item.title).toList(),
+    );
+    _addNamedList(
+      lines,
+      'Tasks',
+      analysis.tasks.map((item) => item.title).toList(),
+    );
+    _addNamedList(lines, 'Unresolved questions', analysis.unresolvedQuestions);
+    return lines.join('\n').trim();
+  }
+
+  void _addNamedList(List<String> lines, String label, List<String> items) {
+    if (items.isEmpty) return;
+    lines.addAll(['', '$label:']);
+    lines.addAll(items.map((item) => '- $item'));
+  }
+
+  String _parseVoiceError(dynamic e) {
+    final raw = e.toString();
+    if (raw.contains('not available')) {
+      return 'Voice capture is not available on this device.';
+    }
+    return 'Could not start voice capture. $raw';
+  }
+
+  String _parseError(dynamic e) {
+    final str = e.toString();
+    final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
+    if (match != null) return match.group(1)!;
+    if (str.contains('404')) {
+      return 'Voice analysis route is not deployed yet.';
+    }
+    if (str.contains('SocketException') || str.contains('Failed host lookup')) {
+      return 'Cannot reach server. Check your network.';
+    }
+    return 'Voice reflection failed. $str';
+  }
+
+  void _toggleAccepted(Set<int> source, int index, bool followUp) {
+    final next = Set<int>.from(source);
+    if (next.contains(index)) {
+      next.remove(index);
+    } else {
+      next.add(index);
+    }
+    setState(() {
+      if (followUp) {
+        _acceptedFollowUps = next;
+      } else {
+        _acceptedTasks = next;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final analysis = _analysis;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.88,
+        decoration: const BoxDecoration(
+          color: JournalColors.bgBase,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: JournalColors.borderBright, width: 0.5),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _withAlpha(JournalColors.accent, 0.14),
+                        border: Border.all(color: JournalColors.borderBright),
+                      ),
+                      child: Icon(
+                        _listening
+                            ? CupertinoIcons.waveform
+                            : CupertinoIcons.mic_fill,
+                        color: JournalColors.textPrimary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'VOICE REFLECTION',
+                            style: TextStyle(
+                              color: JournalColors.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'Speak freely, then review what Sage extracts.',
+                            style: TextStyle(
+                              color: JournalColors.textPrimary,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_transcriptFocus.hasFocus)
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        onPressed: _dismissKeyboard,
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            color: JournalColors.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    else
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.pop(context),
+                        child: const Icon(
+                          CupertinoIcons.xmark_circle_fill,
+                          color: JournalColors.textMuted,
+                          size: 26,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(20, 6, 20, safeBottom + 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GlassCard(
+                        accentBorder: _listening || _hasTranscript,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CupertinoTextField(
+                              controller: _transcriptCtrl,
+                              focusNode: _transcriptFocus,
+                              placeholder:
+                                  'Your transcript appears here. You can edit before saving.',
+                              placeholderStyle: const TextStyle(
+                                color: JournalColors.textMuted,
+                                fontSize: 15,
+                                height: 1.45,
+                              ),
+                              style: const TextStyle(
+                                color: JournalColors.textPrimary,
+                                fontSize: 15,
+                                height: 1.65,
+                              ),
+                              minLines: 7,
+                              maxLines: null,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: _withAlpha(
+                                  JournalColors.bgSurface,
+                                  0.74,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _listening
+                                      ? JournalColors.borderBright
+                                      : JournalColors.border,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _VoiceSheetButton(
+                                    label: _listening ? 'Stop' : 'Record',
+                                    icon: _listening
+                                        ? CupertinoIcons.stop_fill
+                                        : CupertinoIcons.mic_fill,
+                                    color: _listening
+                                        ? JournalColors.danger
+                                        : JournalColors.accent,
+                                    onTap: _listening
+                                        ? _stopListening
+                                        : _startListening,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _VoiceSheetButton(
+                                    label: _analyzing ? 'Analyzing' : 'Analyze',
+                                    icon: CupertinoIcons.sparkles,
+                                    color: JournalColors.info,
+                                    disabled: !_canAnalyze,
+                                    loading: _analyzing,
+                                    onTap: _analyze,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                _IconActionButton(
+                                  icon: CupertinoIcons.trash,
+                                  disabled: !_hasTranscript && !_listening,
+                                  onTap: _clear,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (analysis != null) ...[
+                        const SizedBox(height: 16),
+                        _AnalysisCard(
+                          analysis: analysis,
+                          acceptedFollowUps: _acceptedFollowUps,
+                          acceptedTasks: _acceptedTasks,
+                          onToggleFollowUp: (index) => _toggleAccepted(
+                            _acceptedFollowUps,
+                            index,
+                            true,
+                          ),
+                          onToggleTask: (index) => _toggleAccepted(
+                            _acceptedTasks,
+                            index,
+                            false,
+                          ),
+                        ),
+                      ],
+                      if (_fallbackReflection?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 16),
+                        _FallbackReflectionCard(text: _fallbackReflection!),
+                      ],
+                      if (_error != null || _savedMessage != null) ...[
+                        const SizedBox(height: 16),
+                        _StatusBanner(
+                          icon: _savedMessage != null
+                              ? CupertinoIcons.check_mark_circled_solid
+                              : CupertinoIcons.exclamationmark_triangle_fill,
+                          title: _savedMessage != null
+                              ? 'Saved'
+                              : 'Voice reflection issue',
+                          message: _savedMessage ?? _error!,
+                          color: _savedMessage != null
+                              ? JournalColors.success
+                              : JournalColors.danger,
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _SaveEntryButton(
+                        enabled: _canSave,
+                        saving: _saving,
+                        saved: _savedMessage != null,
+                        onPressed: _saveSession,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceSheetButton extends StatelessWidget {
+  const _VoiceSheetButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.disabled = false,
+    this.loading = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool disabled;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final inactive = disabled || loading;
+    return GestureDetector(
+      onTap: inactive ? null : onTap,
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          color: inactive ? JournalColors.bgCardAlt : _withAlpha(color, 0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: inactive ? JournalColors.border : _withAlpha(color, 0.34),
+          ),
+        ),
+        child: Center(
+          child: loading
+              ? const CupertinoActivityIndicator(color: JournalColors.accent)
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      color: inactive ? JournalColors.textMuted : color,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: inactive
+                            ? JournalColors.textMuted
+                            : JournalColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconActionButton extends StatelessWidget {
+  const _IconActionButton({
+    required this.icon,
+    required this.onTap,
+    this.disabled = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: disabled ? null : onTap,
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Icon(
+          icon,
+          color: disabled ? JournalColors.textMuted : JournalColors.textPrimary,
+          size: 18,
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalysisCard extends StatelessWidget {
+  const _AnalysisCard({
+    required this.analysis,
+    required this.acceptedFollowUps,
+    required this.acceptedTasks,
+    required this.onToggleFollowUp,
+    required this.onToggleTask,
+  });
+
+  final VoiceReflectionAnalysis analysis;
+  final Set<int> acceptedFollowUps;
+  final Set<int> acceptedTasks;
+  final ValueChanged<int> onToggleFollowUp;
+  final ValueChanged<int> onToggleTask;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      accentBorder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'WHAT I HEARD',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+          if (analysis.summary.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              analysis.summary,
+              style: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 15,
+                height: 1.55,
+              ),
+            ),
+          ],
+          _ChipSection(title: 'Emotions', items: analysis.emotions),
+          _ChipSection(title: 'Topics', items: analysis.topics),
+          _ReviewActionSection(
+            title: 'Follow-ups',
+            actions: analysis.followUps,
+            selected: acceptedFollowUps,
+            onToggle: onToggleFollowUp,
+          ),
+          _ReviewActionSection(
+            title: 'Tasks',
+            actions: analysis.tasks,
+            selected: acceptedTasks,
+            onToggle: onToggleTask,
+          ),
+          _QuestionSection(items: analysis.unresolvedQuestions),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChipSection extends StatelessWidget {
+  const _ChipSection({required this.title, required this.items});
+
+  final String title;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: items.map((item) => _ReviewChip(label: item)).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewActionSection extends StatelessWidget {
+  const _ReviewActionSection({
+    required this.title,
+    required this.actions,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final String title;
+  final List<VoiceReflectionAction> actions;
+  final Set<int> selected;
+  final ValueChanged<int> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < actions.length; i++) ...[
+            _ReviewActionTile(
+              action: actions[i],
+              selected: selected.contains(i),
+              onTap: () => onToggle(i),
+            ),
+            if (i != actions.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewActionTile extends StatelessWidget {
+  const _ReviewActionTile({
+    required this.action,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final VoiceReflectionAction action;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? _withAlpha(JournalColors.accent, 0.12)
+              : _withAlpha(JournalColors.bgSurface, 0.72),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? JournalColors.borderBright : JournalColors.border,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              selected
+                  ? CupertinoIcons.check_mark_circled_solid
+                  : CupertinoIcons.circle,
+              color: selected ? JournalColors.accent : JournalColors.textMuted,
+              size: 19,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    action.title,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (action.nextAction?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      action.nextAction!,
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewChip extends StatelessWidget {
+  const _ReviewChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: _withAlpha(JournalColors.info, 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _withAlpha(JournalColors.info, 0.24)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: JournalColors.textPrimary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuestionSection extends StatelessWidget {
+  const _QuestionSection({required this.items});
+
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'UNRESOLVED QUESTIONS',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final item in items) ...[
+            Text(
+              item,
+              style: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FallbackReflectionCard extends StatelessWidget {
+  const _FallbackReflectionCard({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      accentBorder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'REFLECTION',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 15,
+              height: 1.55,
+            ),
           ),
         ],
       ),

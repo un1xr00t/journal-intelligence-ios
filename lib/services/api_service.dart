@@ -4,6 +4,7 @@
 // Uses Dio + CookieManager so the HttpOnly refresh_token cookie is handled
 // exactly like the web app — no backend changes required.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
 
 import 'ai_response_limits.dart';
+import 'identity_memory_service.dart';
 import 'local_storage_paths.dart';
 import 'native_session_bridge.dart';
 
@@ -522,6 +524,131 @@ class TimelinePage {
   final bool hasMore;
 }
 
+String _voiceAnalysisText(dynamic value) => value?.toString().trim() ?? '';
+
+List<String> _voiceAnalysisStringList(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .map((item) {
+        if (item is Map) {
+          return _voiceAnalysisText(
+            item['title'] ?? item['label'] ?? item['text'] ?? item['name'],
+          );
+        }
+        return _voiceAnalysisText(item);
+      })
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
+}
+
+Map<String, dynamic> _voiceAnalysisJsonFromText(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return const {};
+
+  final unfenced = trimmed
+      .replaceFirst(RegExp(r'^```(?:json)?\s*', multiLine: true), '')
+      .replaceFirst(RegExp(r'\s*```$', multiLine: true), '')
+      .trim();
+
+  for (final candidate in [
+    unfenced,
+    _voiceAnalysisJsonCandidate(unfenced),
+  ]) {
+    if (candidate == null || candidate.trim().isEmpty) continue;
+    try {
+      final decoded = jsonDecode(candidate);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+  }
+
+  return {'summary': trimmed};
+}
+
+String? _voiceAnalysisJsonCandidate(String value) {
+  final start = value.indexOf('{');
+  final end = value.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  return value.substring(start, end + 1);
+}
+
+class VoiceReflectionAction {
+  const VoiceReflectionAction({
+    required this.title,
+    this.nextAction,
+    this.priority,
+    this.followUpAt,
+  });
+
+  final String title;
+  final String? nextAction;
+  final String? priority;
+  final DateTime? followUpAt;
+
+  factory VoiceReflectionAction.fromJson(dynamic value) {
+    if (value is! Map) {
+      return VoiceReflectionAction(title: _voiceAnalysisText(value));
+    }
+
+    final json = Map<String, dynamic>.from(value);
+    final title = _voiceAnalysisText(
+      json['title'] ?? json['task'] ?? json['label'] ?? json['text'],
+    );
+    final followUpRaw =
+        _voiceAnalysisText(json['follow_up_at'] ?? json['due_at']);
+    return VoiceReflectionAction(
+      title: title,
+      nextAction: _voiceAnalysisText(json['next_action']).isEmpty
+          ? null
+          : _voiceAnalysisText(json['next_action']),
+      priority: _voiceAnalysisText(json['priority']).isEmpty
+          ? null
+          : _voiceAnalysisText(json['priority']),
+      followUpAt: followUpRaw.isEmpty ? null : DateTime.tryParse(followUpRaw),
+    );
+  }
+}
+
+class VoiceReflectionAnalysis {
+  const VoiceReflectionAnalysis({
+    required this.summary,
+    required this.emotions,
+    required this.topics,
+    required this.followUps,
+    required this.tasks,
+    required this.unresolvedQuestions,
+  });
+
+  final String summary;
+  final List<String> emotions;
+  final List<String> topics;
+  final List<VoiceReflectionAction> followUps;
+  final List<VoiceReflectionAction> tasks;
+  final List<String> unresolvedQuestions;
+
+  factory VoiceReflectionAnalysis.fromJson(Map<String, dynamic> json) {
+    final root = json['analysis'] is Map
+        ? Map<String, dynamic>.from(json['analysis'] as Map)
+        : json;
+    return VoiceReflectionAnalysis(
+      summary: _voiceAnalysisText(
+        root['summary'] ?? root['reflection'] ?? root['what_i_heard'],
+      ),
+      emotions: _voiceAnalysisStringList(root['emotions']),
+      topics: _voiceAnalysisStringList(root['topics']),
+      followUps: (root['follow_ups'] as List? ?? const [])
+          .map(VoiceReflectionAction.fromJson)
+          .where((item) => item.title.isNotEmpty)
+          .toList(growable: false),
+      tasks: (root['tasks'] as List? ?? const [])
+          .map(VoiceReflectionAction.fromJson)
+          .where((item) => item.title.isNotEmpty)
+          .toList(growable: false),
+      unresolvedQuestions:
+          _voiceAnalysisStringList(root['unresolved_questions']),
+    );
+  }
+}
+
 class ApiService {
   static const String baseUrl = 'https://journal.williamthomas.name';
   static const String _inviteTokenStorageKey = 'invite_access_token';
@@ -536,6 +663,7 @@ class ApiService {
   late final CookieJar _cookieJar;
   late final Future<void> _ready;
   final _storage = const FlutterSecureStorage();
+  final _identityMemory = IdentityMemoryService();
 
   String? _accessToken;
   String? _inviteAccessToken;
@@ -605,6 +733,24 @@ class ApiService {
     } catch (_) {
       // Keep normal auth/logout flows working even if the Siri bridge is unavailable.
     }
+  }
+
+  Future<String> getIdentityMemoryContext() {
+    return _identityMemory.buildContextBlock();
+  }
+
+  Future<void> correctIdentityMemory({
+    required String name,
+    required String type,
+    required String description,
+    List<String> aliases = const [],
+  }) {
+    return _identityMemory.applyCorrection(
+      name: name,
+      type: type,
+      description: description,
+      aliases: aliases,
+    );
   }
 
   Future<void> setInviteAccessToken(String token) async {
@@ -1424,14 +1570,14 @@ class ApiService {
     if (!forceRefresh &&
         _floatchatContextString != null &&
         _floatchatContextString!.trim().isNotEmpty) {
-      return _floatchatContextString!;
+      return _identityMemory.appendContext(_floatchatContextString!);
     }
 
     final res = await _authedGet('/api/floatchat/context');
     final data = Map<String, dynamic>.from(res.data as Map);
     final contextString = data['context_string']?.toString().trim() ?? '';
     _floatchatContextString = contextString;
-    return contextString;
+    return _identityMemory.appendContext(contextString);
   }
 
   Future<Map<String, dynamic>> sendFloatchatMessage({
@@ -1448,9 +1594,11 @@ class ApiService {
         .where((item) => item['kind']?.toString() != 'image')
         .toList();
 
+    final identityContextString =
+        await _identityMemory.appendContext(contextString);
     final body = <String, dynamic>{
       'messages': messages,
-      'context_string': contextString,
+      'context_string': identityContextString,
       'max_tokens': maxTokens,
       if (webSearchEnabled) 'enable_web_search': true,
       if (fileAttachments.isNotEmpty) 'attachments': fileAttachments,
@@ -1565,6 +1713,77 @@ class ApiService {
       ),
     );
     return List<int>.from(res.data ?? const <int>[]);
+  }
+
+  Future<VoiceReflectionAnalysis> analyzeVoiceReflection({
+    required String transcript,
+  }) async {
+    try {
+      final res = await _authedPost('/api/voice/reflection/analyze', data: {
+        'transcript': transcript,
+      });
+      return VoiceReflectionAnalysis.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
+      );
+    } on DioException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      return _analyzeVoiceReflectionWithSage(transcript: transcript);
+    }
+  }
+
+  Future<VoiceReflectionAnalysis> _analyzeVoiceReflectionWithSage({
+    required String transcript,
+  }) async {
+    final contextString = await getFloatchatContext();
+    final prompt = '''
+Analyze this voice journal transcript and return only valid JSON.
+
+Use the provided journal context to resolve names, people, pets, places, and recurring references before making assumptions. If the context identifies someone, reflect that identity in the summary/topics/follow-ups. Do not create unresolved questions asking who a named entity is unless the journal context genuinely does not identify them.
+
+Required shape:
+{
+  "summary": "short reflective summary",
+  "emotions": ["emotion"],
+  "topics": ["topic"],
+  "follow_ups": [
+    {
+      "title": "thing to revisit",
+      "next_action": "optional concrete next step",
+      "priority": "low|normal|high",
+      "follow_up_at": null
+    }
+  ],
+  "tasks": [
+    {
+      "title": "task",
+      "next_action": "optional concrete next step",
+      "priority": "low|normal|high",
+      "follow_up_at": null
+    }
+  ],
+  "unresolved_questions": ["question"]
+}
+
+Do not include markdown fences or commentary. Use null for unknown dates.
+
+Transcript:
+$transcript
+''';
+
+    final res = await sendFloatchatMessage(
+      contextString: contextString,
+      maxTokens: 1200,
+      messages: [
+        {
+          'role': 'user',
+          'content': prompt,
+        },
+      ],
+    );
+    final reply = res['reply']?.toString() ?? '';
+    return VoiceReflectionAnalysis.fromJson(
+      _voiceAnalysisJsonFromText(reply),
+    );
   }
 
   Future<Map<String, dynamic>> getVoiceSettings() async {
@@ -1684,7 +1903,18 @@ class ApiService {
       if (normalizedContextUrls.isNotEmpty)
         'context_urls': normalizedContextUrls,
     });
-    return res.data as Map<String, dynamic>;
+    final data = res.data as Map<String, dynamic>;
+    final entryId = (data['entry_id'] as num?)?.toInt().toString();
+    if (entryId != null && entryId.isNotEmpty) {
+      unawaited(
+        _identityMemory.learnFromEntry(
+          entryId: entryId,
+          text: text,
+          seenAt: entryDate == null ? null : DateTime.tryParse(entryDate),
+        ),
+      );
+    }
+    return data;
   }
 
   Future<Map<String, dynamic>> updateEntry(int entryId, String text) async {
@@ -1764,9 +1994,23 @@ class ApiService {
   // ── Ask My Journal (RAG) ──────────────────────────────────────
 
   Future<Map<String, dynamic>> askJournal(String question) async {
-    final res =
-        await _authedPost('/api/journal/ask', data: {'query': question});
+    final identityContext = await _identityMemory.buildContextBlock();
+    final query = identityContext.trim().isEmpty
+        ? question
+        : '''
+Use this known identity memory to resolve recurring names before answering. Do not treat these identity notes as journal evidence unless the matched entries support the answer.
+
+$identityContext
+
+Question: $question
+''';
+    final res = await _authedPost('/api/journal/ask', data: {'query': query});
     return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> rebuildIdentityMemoryFromJournal({int pageSize = 100}) async {
+    final entries = await getAllEntriesForExport(pageSize: pageSize);
+    await _identityMemory.rebuildFromEntries(entries);
   }
 
   Future<Map<String, dynamic>> getPeopleIntelligence() async {
