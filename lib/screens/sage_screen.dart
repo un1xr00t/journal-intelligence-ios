@@ -60,8 +60,8 @@ it's right.
 WHAT YOU KNOW:
 You have access to context sections below when present: journal summaries,
 emotional patterns, memory profile, people intelligence, budget data, fairness
-ledger, mental health signals, proof vault summaries, detective cases, exit
-plan, resources, alerts, and settings.
+ledger, mental health signals, proof vault summaries, detective cases, argument
+tracker reports, exit plan, resources, alerts, and settings.
 
 HOW TO USE DATA:
 Use the user's real data when it is present. If a section is missing, stale,
@@ -75,6 +75,11 @@ a journal anecdote for real budget data.
 
 People: when someone is mentioned, connect to people intelligence, journal
 patterns, fairness data, evidence, and detective cases if present.
+
+Arguments/conflict: when the user asks about a fight, accusation, evidence, or
+relationship pattern, use Argument Tracker reports if present. Treat report
+previews as compact summaries unless the full report is explicitly included in
+the current prompt.
 
 ANTI-REPETITION:
 Do not keep surfacing the same life event or detail because it is in context.
@@ -1363,6 +1368,7 @@ $sessionToneInstruction
       ),
       _loadVaultContext(),
       _loadDetectiveContext(),
+      _loadArgumentTrackerContext(),
       _safeDataSection(
         'EXIT PLAN',
         _api.exitPlanGet,
@@ -1539,6 +1545,56 @@ ${available.join('\n\n')}
             if (research.isNotEmpty) 'case_research': research,
           },
           maxChars: 6200);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _loadArgumentTrackerContext() async {
+    try {
+      final reports = await _api
+          .listArgumentTrackerReports()
+          .timeout(const Duration(seconds: 8));
+      final detailedReports = <Map<String, dynamic>>[];
+
+      for (final report in reports.take(4)) {
+        try {
+          final detail = await _api
+              .getArgumentTrackerReport(report.id)
+              .timeout(const Duration(seconds: 4));
+          detailedReports.add({
+            'id': detail.id,
+            'title': detail.title,
+            'event_summary': detail.eventSummary,
+            'preview': detail.preview,
+            'input_text': detail.inputText,
+            'result': detail.result,
+            'attachments': detail.attachments,
+            'attachment_count': detail.attachmentCount,
+            'created_at': detail.createdAt,
+            'updated_at': detail.updatedAt,
+          });
+        } catch (_) {
+          detailedReports.add({
+            'id': report.id,
+            'title': report.title,
+            'event_summary': report.eventSummary,
+            'preview': report.preview,
+            'attachment_count': report.attachmentCount,
+            'created_at': report.createdAt,
+            'updated_at': report.updatedAt,
+          });
+        }
+      }
+
+      return _dataSection(
+          'ARGUMENT TRACKER REPORTS',
+          {
+            'reports': detailedReports,
+            'report_count_loaded': detailedReports.length,
+            'total_saved_reports': reports.length,
+          },
+          maxChars: 14000);
     } catch (_) {
       return null;
     }
