@@ -1,9 +1,15 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -77,6 +83,8 @@ class _ProofVaultScreenState extends State<ProofVaultScreen> {
 
   bool _loading = true;
   bool _summarizing = false;
+  bool _exportingPdf = false;
+  bool _exportingZip = false;
   String? _error;
   String? _summaryError;
   List<Map<String, dynamic>> _folders = [];
@@ -229,6 +237,388 @@ class _ProofVaultScreenState extends State<ProofVaultScreen> {
         meta: summary,
       ),
     );
+  }
+
+  Future<void> _exportProofVaultPdf() async {
+    if (_exportingPdf || _folders.isEmpty) return;
+    setState(() => _exportingPdf = true);
+    try {
+      final backup = await _loadBackupData();
+      final bytes = _buildProofVaultPdf(backup);
+      final dir = await getTemporaryDirectory();
+      final filename = _backupFilename('pdf');
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'Proof Vault Backup',
+        sharePositionOrigin:
+            box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Could not back up Proof Vault', e);
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
+
+  Future<void> _exportProofVaultZip() async {
+    if (_exportingZip || _folders.isEmpty) return;
+    setState(() => _exportingZip = true);
+    try {
+      final backup = await _loadBackupData();
+      final bytes = _buildProofVaultWebsiteZip(backup);
+      final dir = await getTemporaryDirectory();
+      final filename = _backupFilename('zip');
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/zip')],
+        subject: 'Proof Vault Backup',
+        sharePositionOrigin:
+            box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Could not back up Proof Vault', e);
+    } finally {
+      if (mounted) setState(() => _exportingZip = false);
+    }
+  }
+
+  Future<_VaultBackup> _loadBackupData() async {
+    final folders = <_VaultBackupFolder>[];
+    for (var folderIndex = 0; folderIndex < _folders.length; folderIndex += 1) {
+      final folder = _folders[folderIndex];
+      final itemsRaw = await _api.vaultGetFolderItems(folder['id'].toString());
+      final items = <_VaultBackupItem>[];
+      for (final itemRaw in itemsRaw) {
+        final item = Map<String, dynamic>.from(itemRaw as Map);
+        final photos = <_VaultBackupPhoto>[];
+        for (final photoRaw in List<dynamic>.from(item['photos'] ?? [])) {
+          final photo = Map<String, dynamic>.from(photoRaw as Map);
+          final photoId = photo['id'].toString();
+          final itemId = item['id'].toString();
+          final filename = photo['original_filename']?.toString();
+          final bytes = await _api.fetchImageBytes(
+            '/api/vault/items/$itemId/photos/$photoId/image',
+          );
+          photos.add(
+            _VaultBackupPhoto(
+              id: photoId,
+              filename: _safePhotoFilename(filename, photoId),
+              bytes: Uint8List.fromList(bytes),
+            ),
+          );
+        }
+        items.add(
+          _VaultBackupItem(
+            id: item['id'].toString(),
+            title: item['title']?.toString() ?? 'Untitled',
+            notes: item['notes']?.toString() ?? '',
+            itemDate: item['item_date']?.toString(),
+            photos: photos,
+          ),
+        );
+      }
+      folders.add(
+        _VaultBackupFolder(
+          id: folder['id'].toString(),
+          name: folder['name']?.toString() ?? 'Folder ${folderIndex + 1}',
+          description: folder['description']?.toString() ?? '',
+          icon: folder['icon']?.toString() ?? '',
+          items: items,
+        ),
+      );
+    }
+    return _VaultBackup(
+      generatedAt: DateTime.now(),
+      folders: folders,
+    );
+  }
+
+  List<int> _buildProofVaultWebsiteZip(_VaultBackup backup) {
+    final archive = Archive();
+    final manifest = backup.toJson();
+    final manifestBytes =
+        utf8.encode(const JsonEncoder.withIndent('  ').convert(manifest));
+    final indexBytes = utf8.encode(_buildProofVaultHtml(backup));
+    archive.addFile(
+      ArchiveFile(
+        'manifest.json',
+        manifestBytes.length,
+        manifestBytes,
+      ),
+    );
+    archive.addFile(
+      ArchiveFile(
+        'index.html',
+        indexBytes.length,
+        indexBytes,
+      ),
+    );
+
+    for (var folderIndex = 0;
+        folderIndex < backup.folders.length;
+        folderIndex += 1) {
+      final folder = backup.folders[folderIndex];
+      final folderPath =
+          '${(folderIndex + 1).toString().padLeft(2, '0')}-${_slug(folder.name)}';
+      archive.addFile(
+        ArchiveFile(
+          '$folderPath/folder.txt',
+          utf8.encode(folder.textSummary).length,
+          utf8.encode(folder.textSummary),
+        ),
+      );
+      for (var itemIndex = 0; itemIndex < folder.items.length; itemIndex += 1) {
+        final item = folder.items[itemIndex];
+        final itemPath =
+            '$folderPath/${(itemIndex + 1).toString().padLeft(2, '0')}-${_slug(item.title)}';
+        archive.addFile(
+          ArchiveFile(
+            '$itemPath/entry.txt',
+            utf8.encode(item.textSummary).length,
+            utf8.encode(item.textSummary),
+          ),
+        );
+        for (var photoIndex = 0;
+            photoIndex < item.photos.length;
+            photoIndex += 1) {
+          final photo = item.photos[photoIndex];
+          final photoPath =
+              '$itemPath/photos/${(photoIndex + 1).toString().padLeft(2, '0')}-${photo.filename}';
+          archive
+              .addFile(ArchiveFile(photoPath, photo.bytes.length, photo.bytes));
+        }
+      }
+    }
+
+    return ZipEncoder().encode(archive)!;
+  }
+
+  String _buildProofVaultHtml(_VaultBackup backup) {
+    final buffer = StringBuffer()
+      ..writeln('<!doctype html>')
+      ..writeln('<html lang="en">')
+      ..writeln('<head>')
+      ..writeln('<meta charset="utf-8">')
+      ..writeln(
+          '<meta name="viewport" content="width=device-width, initial-scale=1">')
+      ..writeln('<title>Proof Vault Backup</title>')
+      ..writeln('<style>')
+      ..writeln(
+          'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0c0c18;color:#e8e8f0;margin:0;padding:32px;line-height:1.55}')
+      ..writeln('main{max-width:920px;margin:0 auto}')
+      ..writeln(
+          'section{border:1px solid rgba(99,102,241,.22);border-radius:18px;padding:20px;margin:20px 0;background:#10101e}')
+      ..writeln(
+          'article{border-top:1px solid rgba(99,102,241,.18);padding-top:16px;margin-top:16px}')
+      ..writeln(
+          'h1,h2,h3{line-height:1.2} .muted{color:#9898b0} img{max-width:100%;border-radius:12px;border:1px solid rgba(99,102,241,.18);margin:8px 0 14px}')
+      ..writeln('</style>')
+      ..writeln('</head><body><main>')
+      ..writeln('<h1>Proof Vault Backup</h1>')
+      ..writeln(
+          '<p class="muted">Generated ${_htmlEscape(DateFormat('MMMM d, yyyy h:mm a').format(backup.generatedAt))}</p>');
+
+    for (var folderIndex = 0;
+        folderIndex < backup.folders.length;
+        folderIndex += 1) {
+      final folder = backup.folders[folderIndex];
+      final folderPath =
+          '${(folderIndex + 1).toString().padLeft(2, '0')}-${_slug(folder.name)}';
+      buffer
+        ..writeln('<section>')
+        ..writeln(
+            '<h2>${_htmlEscape('${folder.icon} ${folder.name}'.trim())}</h2>');
+      if (folder.description.trim().isNotEmpty) {
+        buffer
+            .writeln('<p class="muted">${_htmlEscape(folder.description)}</p>');
+      }
+      for (var itemIndex = 0; itemIndex < folder.items.length; itemIndex += 1) {
+        final item = folder.items[itemIndex];
+        final itemPath =
+            '$folderPath/${(itemIndex + 1).toString().padLeft(2, '0')}-${_slug(item.title)}';
+        buffer
+          ..writeln('<article>')
+          ..writeln('<h3>${_htmlEscape(item.title)}</h3>')
+          ..writeln(
+              '<p class="muted">${_htmlEscape(_formatDate(item.itemDate))}</p>');
+        if (item.notes.trim().isNotEmpty) {
+          buffer.writeln(
+              '<p>${_htmlEscape(item.notes).replaceAll('\n', '<br>')}</p>');
+        }
+        for (var photoIndex = 0;
+            photoIndex < item.photos.length;
+            photoIndex += 1) {
+          final photo = item.photos[photoIndex];
+          final src =
+              '$itemPath/photos/${(photoIndex + 1).toString().padLeft(2, '0')}-${photo.filename}';
+          buffer.writeln(
+              '<img src="${_htmlEscape(src)}" alt="${_htmlEscape(photo.filename)}">');
+        }
+        buffer.writeln('</article>');
+      }
+      buffer.writeln('</section>');
+    }
+
+    buffer.writeln('</main></body></html>');
+    return buffer.toString();
+  }
+
+  List<int> _buildProofVaultPdf(_VaultBackup backup) {
+    final document = PdfDocument();
+    document.pageSettings.margins.all = 36;
+    var page = document.pages.add();
+    var y = 0.0;
+    final titleFont = PdfStandardFont(
+      PdfFontFamily.helvetica,
+      22,
+      style: PdfFontStyle.bold,
+    );
+    final folderFont = PdfStandardFont(
+      PdfFontFamily.helvetica,
+      17,
+      style: PdfFontStyle.bold,
+    );
+    final itemFont = PdfStandardFont(
+      PdfFontFamily.helvetica,
+      13,
+      style: PdfFontStyle.bold,
+    );
+    final bodyFont = PdfStandardFont(PdfFontFamily.helvetica, 11);
+    final metaFont = PdfStandardFont(PdfFontFamily.helvetica, 9);
+
+    PdfPage ensureSpace(double needed) {
+      final height = page.getClientSize().height;
+      if (y + needed <= height) return page;
+      page = document.pages.add();
+      y = 0;
+      return page;
+    }
+
+    void drawText(
+      String text,
+      PdfFont font, {
+      PdfColor? color,
+      double gap = 10,
+      double lineSpacing = 3,
+    }) {
+      ensureSpace(48);
+      final bounds = Rect.fromLTWH(
+        0,
+        y,
+        page.getClientSize().width,
+        page.getClientSize().height - y,
+      );
+      final result = PdfTextElement(
+        text: _pdfSafeText(text),
+        font: font,
+        brush: PdfSolidBrush(color ?? PdfColor(35, 35, 45)),
+        format: PdfStringFormat(lineSpacing: lineSpacing),
+      ).draw(
+        page: page,
+        bounds: bounds,
+        format: PdfLayoutFormat(layoutType: PdfLayoutType.paginate),
+      );
+      page = result?.page ?? page;
+      y = (result?.bounds.bottom ?? y) + gap;
+    }
+
+    drawText(
+      'Proof Vault Backup',
+      titleFont,
+      color: PdfColor(20, 20, 30),
+      gap: 6,
+    );
+    drawText(
+      'Generated ${DateFormat('MMMM d, yyyy h:mm a').format(backup.generatedAt)}',
+      metaFont,
+      color: PdfColor(120, 120, 135),
+      gap: 18,
+    );
+
+    for (final folder in backup.folders) {
+      drawText(
+        '${folder.icon} ${folder.name}'.trim(),
+        folderFont,
+        color: PdfColor(20, 20, 30),
+        gap: 6,
+      );
+      if (folder.description.trim().isNotEmpty) {
+        drawText(folder.description, bodyFont, color: PdfColor(70, 70, 85));
+      }
+      for (final item in folder.items) {
+        drawText(item.title, itemFont, color: PdfColor(35, 35, 45), gap: 4);
+        drawText(_formatDate(item.itemDate), metaFont,
+            color: PdfColor(120, 120, 135), gap: 8);
+        if (item.notes.trim().isNotEmpty) {
+          drawText(item.notes, bodyFont, color: PdfColor(45, 45, 58), gap: 12);
+        }
+        for (final photo in item.photos) {
+          try {
+            final bitmap = PdfBitmap(photo.bytes);
+            final maxWidth = page.getClientSize().width;
+            final drawWidth = maxWidth;
+            final drawHeight =
+                (drawWidth * bitmap.height / bitmap.width).clamp(90.0, 360.0);
+            ensureSpace(drawHeight + 28);
+            page.graphics.drawString(
+              _pdfSafeText(photo.filename),
+              metaFont,
+              brush: PdfSolidBrush(PdfColor(120, 120, 135)),
+              bounds: Rect.fromLTWH(0, y, maxWidth, 12),
+            );
+            y += 16;
+            page.graphics.drawImage(
+              bitmap,
+              Rect.fromLTWH(0, y, drawWidth, drawHeight),
+            );
+            y += drawHeight + 14;
+          } catch (_) {
+            drawText(
+              'Photo skipped: ${photo.filename}',
+              metaFont,
+              color: PdfColor(160, 80, 80),
+            );
+          }
+        }
+        y += 8;
+      }
+      y += 10;
+    }
+
+    final pages = document.pages;
+    for (var i = 0; i < pages.count; i += 1) {
+      final current = pages[i];
+      current.graphics.drawString(
+        'Journal Intelligence Proof Vault',
+        metaFont,
+        brush: PdfSolidBrush(PdfColor(120, 120, 135)),
+        bounds: Rect.fromLTWH(
+          0,
+          current.getClientSize().height - 16,
+          current.getClientSize().width,
+          14,
+        ),
+        format: PdfStringFormat(alignment: PdfTextAlignment.right),
+      );
+    }
+
+    final bytes = document.saveSync();
+    document.dispose();
+    return bytes;
+  }
+
+  String _backupFilename(String extension) {
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    return 'proof_vault_backup_$stamp.$extension';
   }
 
   int get _totalItems => _folders.fold<int>(
@@ -402,6 +792,18 @@ class _ProofVaultScreenState extends State<ProofVaultScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+              ),
+            if (_folders.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _ProofVaultBackupCard(
+                    exportingPdf: _exportingPdf,
+                    exportingZip: _exportingZip,
+                    onExportPdf: _exportProofVaultPdf,
+                    onExportZip: _exportProofVaultZip,
                   ),
                 ),
               ),
@@ -1189,6 +1591,78 @@ class _FolderCard extends StatelessWidget {
                   color: JournalColors.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProofVaultBackupCard extends StatelessWidget {
+  const _ProofVaultBackupCard({
+    required this.exportingPdf,
+    required this.exportingZip,
+    required this.onExportPdf,
+    required this.onExportZip,
+  });
+
+  final bool exportingPdf;
+  final bool exportingZip;
+  final VoidCallback onExportPdf;
+  final VoidCallback onExportZip;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                CupertinoIcons.archivebox,
+                color: JournalColors.accent,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Backup Proof Vault',
+                  style: TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Export folders, entries, descriptions, and attached photos in the same structure.',
+            style: TextStyle(
+              color: JournalColors.textMuted,
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _SecondaryButton(
+                  label: exportingZip ? 'Building ZIP…' : 'Website ZIP',
+                  onTap: exportingPdf || exportingZip ? null : onExportZip,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _PrimaryButton(
+                  label: exportingPdf ? 'Building PDF…' : 'PDF Backup',
+                  onTap: exportingPdf || exportingZip ? null : onExportPdf,
                 ),
               ),
             ],
@@ -2547,6 +3021,125 @@ class _QuickLogData {
   final String itemDate;
 }
 
+class _VaultBackup {
+  const _VaultBackup({
+    required this.generatedAt,
+    required this.folders,
+  });
+
+  final DateTime generatedAt;
+  final List<_VaultBackupFolder> folders;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'generated_at': generatedAt.toIso8601String(),
+      'folder_count': folders.length,
+      'item_count': folders.fold<int>(
+        0,
+        (sum, folder) => sum + folder.items.length,
+      ),
+      'photo_count': folders.fold<int>(
+        0,
+        (sum, folder) =>
+            sum +
+            folder.items.fold<int>(
+              0,
+              (inner, item) => inner + item.photos.length,
+            ),
+      ),
+      'folders': folders.map((folder) => folder.toJson()).toList(),
+    };
+  }
+}
+
+class _VaultBackupFolder {
+  const _VaultBackupFolder({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.icon,
+    required this.items,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String icon;
+  final List<_VaultBackupItem> items;
+
+  String get textSummary {
+    return [
+      'Folder: $name',
+      if (description.trim().isNotEmpty) 'Description: $description',
+      'Entries: ${items.length}',
+    ].join('\n');
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'icon': icon,
+      'item_count': items.length,
+      'items': items.map((item) => item.toJson()).toList(),
+    };
+  }
+}
+
+class _VaultBackupItem {
+  const _VaultBackupItem({
+    required this.id,
+    required this.title,
+    required this.notes,
+    required this.itemDate,
+    required this.photos,
+  });
+
+  final String id;
+  final String title;
+  final String notes;
+  final String? itemDate;
+  final List<_VaultBackupPhoto> photos;
+
+  String get textSummary {
+    return [
+      'Title: $title',
+      'Date: ${_formatDate(itemDate)}',
+      if (notes.trim().isNotEmpty) 'Description:\n$notes',
+      'Photos: ${photos.length}',
+    ].join('\n\n');
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': notes,
+      'item_date': itemDate,
+      'photo_count': photos.length,
+      'photos': photos
+          .map((photo) => {
+                'id': photo.id,
+                'filename': photo.filename,
+              })
+          .toList(),
+    };
+  }
+}
+
+class _VaultBackupPhoto {
+  const _VaultBackupPhoto({
+    required this.id,
+    required this.filename,
+    required this.bytes,
+  });
+
+  final String id;
+  final String filename;
+  final Uint8List bytes;
+}
+
 DateTime? _parseDate(String? value) {
   if (value == null || value.isEmpty) return null;
   try {
@@ -2610,4 +3203,47 @@ Color _colorFromHex(String? hex) {
 
 String _colorToHex(Color color) {
   return '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+}
+
+String _safePhotoFilename(String? filename, String fallbackId) {
+  final raw = (filename == null || filename.trim().isEmpty)
+      ? 'photo_$fallbackId.jpg'
+      : filename.trim();
+  final sanitized = raw
+      .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
+      .replaceAll(RegExp(r'\s+'), '_')
+      .replaceAll(RegExp(r'_+'), '_');
+  return sanitized.isEmpty ? 'photo_$fallbackId.jpg' : sanitized;
+}
+
+String _slug(String value) {
+  final slug = value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'-+'), '-')
+      .replaceAll(RegExp(r'^-|-$'), '');
+  return slug.isEmpty ? 'untitled' : slug;
+}
+
+String _htmlEscape(String value) {
+  return const HtmlEscape(HtmlEscapeMode.element).convert(value);
+}
+
+String _pdfSafeText(String value) {
+  final normalized = value
+      .replaceAll('\u2018', "'")
+      .replaceAll('\u2019', "'")
+      .replaceAll('\u201C', '"')
+      .replaceAll('\u201D', '"')
+      .replaceAll('\u2013', '-')
+      .replaceAll('\u2014', '-')
+      .replaceAll('\u2026', '...');
+  final buffer = StringBuffer();
+  for (final rune in normalized.runes) {
+    if (rune == 10 || rune == 13 || rune == 9 || (rune >= 32 && rune <= 126)) {
+      buffer.writeCharCode(rune);
+    }
+  }
+  final sanitized = buffer.toString().replaceAll(RegExp(r'[ \t]+\n'), '\n');
+  return sanitized.trim().isEmpty ? 'Untitled' : sanitized;
 }
