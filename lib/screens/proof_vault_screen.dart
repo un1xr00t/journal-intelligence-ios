@@ -13,6 +13,7 @@ const _kSuggestedFolders = <({String name, String icon, Color color})>[
   (name: 'Medical & Health', icon: '🏥', color: Color(0xFFEF4444)),
   (name: 'School & Education', icon: '🏫', color: JournalColors.accent),
   (name: 'Daily Care', icon: '🧸', color: Color(0xFF10B981)),
+  (name: 'Neglect', icon: '🧹', color: JournalColors.orange),
   (name: 'Financial Support', icon: '💰', color: Color(0xFFF59E0B)),
   (name: 'Activities', icon: '⚽', color: Color(0xFF8B5CF6)),
   (name: 'Communications', icon: '📞', color: Color(0xFF06B6D4)),
