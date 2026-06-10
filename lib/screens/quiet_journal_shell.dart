@@ -316,8 +316,7 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
         blockScale:
             (prefs.getDouble(_kQuietJournalCalendarBlockScaleKey) ?? 1.0)
                 .clamp(0.8, 1.2),
-        sortOrder:
-            _calendarSortOrderFromName(
+        sortOrder: _calendarSortOrderFromName(
               prefs.getString(_kQuietJournalCalendarSortOrderKey),
             ) ??
             _QuietJournalCalendarSortOrder.ascending,
@@ -365,9 +364,9 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     );
     final shouldRefocusCurrentMonth =
         _activeView == _QuietJournalView.calendar &&
-        normalized.autoFocusCurrentMonth &&
-        (normalized.hideEmptyDays != _calendarSettings.hideEmptyDays ||
-            normalized.sortOrder != _calendarSettings.sortOrder);
+            normalized.autoFocusCurrentMonth &&
+            (normalized.hideEmptyDays != _calendarSettings.hideEmptyDays ||
+                normalized.sortOrder != _calendarSettings.sortOrder);
     setState(() {
       _calendarSettings = normalized;
       if (!normalized.autoFocusCurrentMonth) {
@@ -466,11 +465,10 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     final position = controller.position;
     switch (view) {
       case _QuietJournalView.calendar:
-        final shouldLoadMore =
-            _calendarSettings.sortOrder ==
-                    _QuietJournalCalendarSortOrder.ascending
-                ? position.pixels <= 320
-                : position.pixels >= position.maxScrollExtent - 320;
+        final shouldLoadMore = _calendarSettings.sortOrder ==
+                _QuietJournalCalendarSortOrder.ascending
+            ? position.pixels <= 320
+            : position.pixels >= position.maxScrollExtent - 320;
         if (shouldLoadMore) {
           _loadMore();
         }
@@ -570,11 +568,10 @@ class _QuietJournalHomeScreenState extends State<_QuietJournalHomeScreen> {
     if (context == null) {
       if (attempt == 0) {
         final position = _calendarScrollController.position;
-        final target =
-            _calendarSettings.sortOrder ==
-                    _QuietJournalCalendarSortOrder.ascending
-                ? position.maxScrollExtent
-                : position.minScrollExtent;
+        final target = _calendarSettings.sortOrder ==
+                _QuietJournalCalendarSortOrder.ascending
+            ? position.maxScrollExtent
+            : position.minScrollExtent;
         _calendarScrollController.jumpTo(target);
       }
       if (attempt < 6) {
@@ -1794,9 +1791,8 @@ class _QuietCalendarView extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final extraBottomPadding = settings.hideEmptyDays
-            ? constraints.maxHeight * 0.58
-            : 0.0;
+        final extraBottomPadding =
+            settings.hideEmptyDays ? constraints.maxHeight * 0.58 : 0.0;
 
         return ListView.builder(
           controller: controller,
@@ -1930,23 +1926,23 @@ class _CalendarMonthCard extends StatelessWidget {
               ),
             )
           else
-          GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            shrinkWrap: true,
-            itemCount: visibleCells.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: gridSpacing,
-              crossAxisSpacing: gridSpacing,
-              childAspectRatio: childAspectRatio,
+            GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: visibleCells.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: gridSpacing,
+                crossAxisSpacing: gridSpacing,
+                childAspectRatio: childAspectRatio,
+              ),
+              itemBuilder: (context, index) {
+                return _CalendarDayCell(
+                  data: visibleCells[index],
+                  settings: settings,
+                );
+              },
             ),
-            itemBuilder: (context, index) {
-              return _CalendarDayCell(
-                data: visibleCells[index],
-                settings: settings,
-              );
-            },
-          ),
         ],
       ),
     );
@@ -3306,26 +3302,41 @@ DateTime? _entryDate(Map<String, dynamic> entry) {
   return DateTime.tryParse(raw)?.toLocal();
 }
 
+DateTime? _entrySortDate(Map<String, dynamic> entry) {
+  final raw =
+      entry['ingested_at']?.toString() ?? entry['entry_date']?.toString();
+  if (raw == null || raw.isEmpty) return null;
+  return DateTime.tryParse(raw)?.toLocal();
+}
+
 int? _entryId(Map<String, dynamic> entry) {
   return (entry['id'] as num?)?.toInt();
 }
 
 int _sortEntriesAsc(Map<String, dynamic> a, Map<String, dynamic> b) {
-  final aDate = _entryDate(a);
-  final bDate = _entryDate(b);
-  if (aDate == null && bDate == null) return 0;
+  final aDate = _entrySortDate(a);
+  final bDate = _entrySortDate(b);
+  if (aDate == null && bDate == null) {
+    return (_entryId(a) ?? 0).compareTo(_entryId(b) ?? 0);
+  }
   if (aDate == null) return -1;
   if (bDate == null) return 1;
-  return aDate.compareTo(bDate);
+  final byDate = aDate.compareTo(bDate);
+  if (byDate != 0) return byDate;
+  return (_entryId(a) ?? 0).compareTo(_entryId(b) ?? 0);
 }
 
 int _sortEntriesDesc(Map<String, dynamic> a, Map<String, dynamic> b) {
-  final aDate = _entryDate(a);
-  final bDate = _entryDate(b);
-  if (aDate == null && bDate == null) return 0;
+  final aDate = _entrySortDate(a);
+  final bDate = _entrySortDate(b);
+  if (aDate == null && bDate == null) {
+    return (_entryId(b) ?? 0).compareTo(_entryId(a) ?? 0);
+  }
   if (aDate == null) return 1;
   if (bDate == null) return -1;
-  return bDate.compareTo(aDate);
+  final byDate = bDate.compareTo(aDate);
+  if (byDate != 0) return byDate;
+  return (_entryId(b) ?? 0).compareTo(_entryId(a) ?? 0);
 }
 
 _QuietJournalCalendarSortOrder? _calendarSortOrderFromName(String? raw) {
@@ -4082,7 +4093,7 @@ class _QuietJournalDayScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sortedEntries = [...entries]..sort(_sortEntriesAsc);
+    final sortedEntries = [...entries]..sort(_sortEntriesDesc);
     final photoCount = sortedEntries.fold<int>(
       0,
       (sum, entry) => sum + _entryImages(entry, imageAttachmentsByEntry).length,

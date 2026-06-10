@@ -44,6 +44,9 @@ class _WriteScreenState extends State<WriteScreen> {
 
   bool _saving = false;
   bool _saved = false;
+  bool _processingPhotos = false;
+  bool _photosReady = false;
+  int _processingPhotoCount = 0;
   String? _error;
 
   // Pending images to attach after save
@@ -330,6 +333,9 @@ class _WriteScreenState extends State<WriteScreen> {
       _saving = true;
       _error = null;
       _saved = false;
+      _processingPhotos = false;
+      _photosReady = false;
+      _processingPhotoCount = 0;
     });
     try {
       for (final img in _pendingImages) {
@@ -344,6 +350,7 @@ class _WriteScreenState extends State<WriteScreen> {
         contextUrls: _hasReferenceUrl ? [_urlCtrl.text.trim()] : const [],
       );
       final entryId = result['entry_id'] as int?;
+      final photoCount = _pendingImages.length;
 
       // Upload any pending images
       if (entryId != null && _pendingImages.isNotEmpty) {
@@ -367,12 +374,18 @@ class _WriteScreenState extends State<WriteScreen> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _saved = true;
+          _saved = photoCount == 0;
+          _processingPhotos = entryId != null && photoCount > 0;
+          _processingPhotoCount = photoCount;
           _pendingImages.clear();
         });
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) setState(() => _saved = false);
-        });
+        if (entryId != null && photoCount > 0) {
+          unawaited(_watchEntryAttachmentProcessing(entryId));
+        } else {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) setState(() => _saved = false);
+          });
+        }
       }
     } catch (e) {
       final msg = _parseError(e);
@@ -383,6 +396,46 @@ class _WriteScreenState extends State<WriteScreen> {
         });
       }
     }
+  }
+
+  Future<void> _watchEntryAttachmentProcessing(int entryId) async {
+    for (var attempt = 0; attempt < 100; attempt += 1) {
+      try {
+        final status = await _api.getEntryAttachmentProcessingStatus(entryId);
+        final pendingCount = (status['pending_count'] as num?)?.toInt() ?? 0;
+        final processing = status['processing'] == true || pendingCount > 0;
+        if (!mounted) return;
+        if (!processing) {
+          setState(() {
+            _processingPhotos = false;
+            _photosReady = true;
+            _saved = true;
+            _processingPhotoCount = 0;
+          });
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted) {
+              setState(() {
+                _saved = false;
+                _photosReady = false;
+              });
+            }
+          });
+          return;
+        }
+        setState(() => _processingPhotoCount = pendingCount);
+      } catch (_) {}
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    if (!mounted) return;
+    setState(() {
+      _processingPhotos = false;
+      _saved = true;
+      _photosReady = false;
+      _processingPhotoCount = 0;
+    });
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _saved = false);
+    });
   }
 
   String _parseError(dynamic e) {
@@ -400,6 +453,13 @@ class _WriteScreenState extends State<WriteScreen> {
       if (str.contains('SocketException') ||
           str.contains('Failed host lookup')) {
         return 'Cannot reach server. Check your network.';
+      }
+      if (str.contains('Connection reset by peer')) {
+        return 'The upload connection was interrupted. Check the timeline before retrying; some photos may have saved already.';
+      }
+      if (str.toLowerCase().contains('receive timeout') ||
+          str.toLowerCase().contains('send timeout')) {
+        return 'Uploading photos took too long. Try again on Wi-Fi or with fewer photos at once.';
       }
       if (str.contains('401')) {
         return 'Session expired. Please log out and back in.';
@@ -1018,21 +1078,33 @@ class _WriteScreenState extends State<WriteScreen> {
                         ],
                       ),
                     ),
-                    if (_saved || _error != null) ...[
+                    if (_saved || _processingPhotos || _error != null) ...[
                       const SizedBox(height: 16),
                       _StatusBanner(
-                        icon: _saved
-                            ? CupertinoIcons.check_mark_circled_solid
-                            : CupertinoIcons.exclamationmark_triangle_fill,
-                        title: _saved
-                            ? 'Saved to your journal'
-                            : 'Couldn\'t save yet',
-                        message: _saved
-                            ? 'Your words and attachments are safely tucked into the timeline.'
-                            : _error!,
-                        color: _saved
-                            ? JournalColors.success
-                            : JournalColors.danger,
+                        icon: _processingPhotos
+                            ? CupertinoIcons.clock_fill
+                            : _saved
+                                ? CupertinoIcons.check_mark_circled_solid
+                                : CupertinoIcons.exclamationmark_triangle_fill,
+                        title: _processingPhotos
+                            ? 'Finalizing photos'
+                            : _saved
+                                ? 'Saved to your journal'
+                                : 'Couldn\'t save yet',
+                        message: _processingPhotos
+                            ? _processingPhotoCount > 0
+                                ? 'Your entry is saved. $_processingPhotoCount photo ${_processingPhotoCount == 1 ? 'summary is' : 'summaries are'} still processing, so it will appear in Timeline when ready.'
+                                : 'Your entry is saved. Photo summaries are still processing, so it will appear in Timeline when ready.'
+                            : _saved
+                                ? _photosReady
+                                    ? 'Photo summaries are done. The entry is ready in Timeline.'
+                                    : 'Your words and attachments are safely tucked into the timeline.'
+                                : _error!,
+                        color: _processingPhotos
+                            ? JournalColors.info
+                            : _saved
+                                ? JournalColors.success
+                                : JournalColors.danger,
                       ),
                     ],
                     const SizedBox(height: 40),

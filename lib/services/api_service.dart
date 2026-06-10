@@ -69,6 +69,7 @@ const _kAllowedEntryAttachmentExtensions = <String>{
 
 const int _kEntryAttachmentTargetBytes = 4 * 1024 * 1024;
 const int _kEntryAttachmentMaxDimension = 2000;
+const Duration _kEntryAttachmentUploadTimeout = Duration(minutes: 3);
 const int _kArgumentTrackerImageTargetBytes = 900 * 1024;
 const int _kArgumentTrackerImageMaxDimension = 2200;
 const int _kArgumentTrackerImageMinDimension = 1600;
@@ -1661,6 +1662,7 @@ class ApiService {
     required String contextString,
     bool webSearchEnabled = false,
     List<Map<String, dynamic>> attachments = const [],
+    Map<String, dynamic> contextHints = const {},
     int maxTokens = AiResponseLimits.sageReplyMaxTokens,
   }) async {
     final imageAttachments = attachments
@@ -1679,6 +1681,7 @@ class ApiService {
       if (webSearchEnabled) 'enable_web_search': true,
       if (fileAttachments.isNotEmpty) 'attachments': fileAttachments,
       if (imageAttachments.isNotEmpty) 'images': imageAttachments,
+      if (contextHints.isNotEmpty) 'context_hints': contextHints,
     };
 
     final res = await _authedPost(
@@ -2103,6 +2106,10 @@ $transcript
       final res = await _dio.post(
         '/api/entries/$entryId/attachments',
         data: formData,
+        options: Options(
+          sendTimeout: _kEntryAttachmentUploadTimeout,
+          receiveTimeout: _kEntryAttachmentUploadTimeout,
+        ),
       );
       return res.data as Map<String, dynamic>;
     } on EntryAttachmentUploadException {
@@ -2132,6 +2139,13 @@ $transcript
     final res = await _authedGet('/api/entries/$entryId/attachments');
     final body = res.data as Map<String, dynamic>? ?? {};
     return List<dynamic>.from(body['attachments'] ?? const []);
+  }
+
+  Future<Map<String, dynamic>> getEntryAttachmentProcessingStatus(
+      int entryId) async {
+    final res =
+        await _authedGet('/api/entries/$entryId/attachment-processing-status');
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   // ── AI Reflections ────────────────────────────────────────────
