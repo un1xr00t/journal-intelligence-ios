@@ -677,6 +677,7 @@ class SageHandoff {
     this.initialAssistantMessage,
     this.prefillText,
     this.initialAttachments = const [],
+    this.contextHints = const {},
     this.autoSendPrefill = false,
     this.autoSendPrefillHidden = false,
     this.autoStartGreeting = true,
@@ -688,6 +689,7 @@ class SageHandoff {
       : initialAssistantMessage = null,
         prefillText = null,
         initialAttachments = const [],
+        contextHints = const {},
         autoSendPrefill = false,
         autoSendPrefillHidden = false,
         autoStartGreeting = false,
@@ -700,6 +702,7 @@ class SageHandoff {
   })  : initialAssistantMessage = insight,
         prefillText = null,
         initialAttachments = const [],
+        contextHints = const {},
         autoSendPrefill = false,
         autoSendPrefillHidden = false,
         autoStartGreeting = false,
@@ -708,6 +711,7 @@ class SageHandoff {
   final String? initialAssistantMessage;
   final String? prefillText;
   final List<SageHandoffAttachment> initialAttachments;
+  final Map<String, dynamic> contextHints;
   final bool autoSendPrefill;
   final bool autoSendPrefillHidden;
   final bool autoStartGreeting;
@@ -1754,6 +1758,7 @@ $latestContent
         contextString: _buildContextPayload(_contextString!),
         webSearchEnabled: _settings.webSearchEnabled,
         maxTokens: AiResponseLimits.sageReplyMaxTokens,
+        contextHints: _handoff.contextHints,
         attachments: outgoing.attachments
             .map((attachment) => attachment.toApiAttachmentPayload())
             .where((payload) => payload.isNotEmpty)

@@ -1700,11 +1700,17 @@ $entryText
       final rawEntryText = await _resolveEntryTextForSage();
       final entryText = _prepareEntryTextForSage(rawEntryText);
       if (entryText.isEmpty || !mounted) return;
+      final entryId = widget.entry['id'];
       if (!mounted) return;
       await pushSageScreen(
         context,
         handoff: SageHandoff(
           prefillText: _buildEntryHandoffPrompt(entryText, displayDate),
+          contextHints: {
+            if (entryId is int) 'active_entry_id': entryId,
+            'active_entry_date': displayDate,
+            'active_source': 'timeline_entry',
+          },
           autoSendPrefill: true,
           autoStartGreeting: false,
           showDefaultWelcome: false,
