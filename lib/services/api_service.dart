@@ -1844,6 +1844,19 @@ class ApiService {
     );
   }
 
+  Future<ArgumentTrackerReport> updateArgumentTrackerReport({
+    required String reportId,
+    required String result,
+  }) async {
+    final res = await _authedPut(
+      '/api/argument-tracker/reports/$reportId',
+      data: {'result': result},
+    );
+    return ArgumentTrackerReport.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
   Future<void> deleteArgumentTrackerReport(String reportId) async {
     await _authedDelete('/api/argument-tracker/reports/$reportId');
   }

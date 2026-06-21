@@ -25,6 +25,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   final _api = ApiService();
   final _titleController = TextEditingController();
   final _optionalDetailsController = TextEditingController();
+  final _reportEditorController = TextEditingController();
   final _imagePicker = ImagePicker();
   final _dateFormat = DateFormat('MMM d, yyyy • h:mm a');
 
@@ -34,6 +35,8 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   bool _loadingReports = true;
   bool _generating = false;
   bool _exportingPdf = false;
+  bool _editingReport = false;
+  bool _savingReport = false;
   String? _error;
   String? _openingId;
   String? _deletingId;
@@ -48,6 +51,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   void dispose() {
     _titleController.dispose();
     _optionalDetailsController.dispose();
+    _reportEditorController.dispose();
     super.dispose();
   }
 
@@ -152,6 +156,8 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       if (!mounted) return;
       setState(() {
         _activeReport = report;
+        _reportEditorController.text = report.result;
+        _editingReport = false;
         _reports = [report, ..._reports.where((item) => item.id != report.id)];
         _generating = false;
       });
@@ -173,6 +179,8 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       if (!mounted) return;
       setState(() {
         _activeReport = detail;
+        _reportEditorController.text = detail.result;
+        _editingReport = false;
         _openingId = null;
       });
     } catch (e) {
@@ -180,6 +188,57 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       setState(() {
         _openingId = null;
         _error = _parseError(e, fallback: 'Could not open saved report.');
+      });
+    }
+  }
+
+  void _startEditingReport() {
+    final report = _activeReport;
+    if (report == null) return;
+    _reportEditorController.text = report.result;
+    setState(() => _editingReport = true);
+  }
+
+  void _cancelEditingReport() {
+    final report = _activeReport;
+    if (report != null) _reportEditorController.text = report.result;
+    setState(() => _editingReport = false);
+  }
+
+  Future<void> _saveReportCorrections() async {
+    final report = _activeReport;
+    final result = _reportEditorController.text.trim();
+    if (report == null || _savingReport) return;
+    if (result.isEmpty) {
+      setState(() => _error = 'Report text cannot be empty.');
+      return;
+    }
+
+    setState(() {
+      _savingReport = true;
+      _error = null;
+    });
+    try {
+      final updated = await _api.updateArgumentTrackerReport(
+        reportId: report.id,
+        result: result,
+      );
+      if (!mounted) return;
+      setState(() {
+        _activeReport = updated;
+        _reports = [
+          updated,
+          ..._reports.where((item) => item.id != updated.id),
+        ];
+        _reportEditorController.text = updated.result;
+        _editingReport = false;
+        _savingReport = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingReport = false;
+        _error = _parseError(e, fallback: 'Could not save report corrections.');
       });
     }
   }
@@ -457,7 +516,13 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
                     _ReportCard(
                       report: activeReport,
                       exportingPdf: _exportingPdf,
+                      editing: _editingReport,
+                      saving: _savingReport,
+                      editorController: _reportEditorController,
                       onExportPdf: _exportActiveReportPdf,
+                      onEdit: _startEditingReport,
+                      onCancelEdit: _cancelEditingReport,
+                      onSaveEdit: _saveReportCorrections,
                     ),
                   ],
                   const SizedBox(height: 22),
@@ -821,12 +886,24 @@ class _ReportCard extends StatelessWidget {
   const _ReportCard({
     required this.report,
     required this.exportingPdf,
+    required this.editing,
+    required this.saving,
+    required this.editorController,
     required this.onExportPdf,
+    required this.onEdit,
+    required this.onCancelEdit,
+    required this.onSaveEdit,
   });
 
   final ArgumentTrackerReport report;
   final bool exportingPdf;
+  final bool editing;
+  final bool saving;
+  final TextEditingController editorController;
   final VoidCallback onExportPdf;
+  final VoidCallback onEdit;
+  final VoidCallback onCancelEdit;
+  final VoidCallback onSaveEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -852,6 +929,40 @@ class _ReportCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: saving ? null : (editing ? onCancelEdit : onEdit),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: JournalColors.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: JournalColors.borderBright),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    editing ? CupertinoIcons.xmark : CupertinoIcons.pencil,
+                    color: JournalColors.accent,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    editing ? 'Cancel Editing' : 'Correct Report Details',
+                    style: const TextStyle(
+                      color: JournalColors.accent,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           CupertinoButton(
             padding: EdgeInsets.zero,
             onPressed: exportingPdf ? null : onExportPdf,
@@ -890,41 +1001,100 @@ class _ReportCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          MarkdownBody(
-            data: report.result.trim().isEmpty
-                ? 'No generated report text returned.'
-                : report.result,
-            styleSheet: MarkdownStyleSheet(
-              p: const TextStyle(
+          if (editing) ...[
+            CupertinoTextField(
+              controller: editorController,
+              minLines: 14,
+              maxLines: null,
+              padding: const EdgeInsets.all(14),
+              cursorColor: JournalColors.accent,
+              style: const TextStyle(
                 color: JournalColors.textPrimary,
-                fontSize: 15,
-                height: 1.62,
+                fontSize: 14,
+                height: 1.5,
               ),
-              h1: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-              h2: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-              h3: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-              strong: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontWeight: FontWeight.w800,
-              ),
-              listBullet: const TextStyle(
-                color: JournalColors.textSecondary,
-                fontSize: 15,
+              decoration: BoxDecoration(
+                color: JournalColors.bgSurface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: JournalColors.borderBright),
               ),
             ),
-          ),
+            const SizedBox(height: 12),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: saving ? null : onSaveEdit,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  color:
+                      saving ? JournalColors.bgCardAlt : JournalColors.accent,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                alignment: Alignment.center,
+                child: saving
+                    ? const CupertinoActivityIndicator(
+                        color: JournalColors.accent,
+                      )
+                    : const Text(
+                        'Save Corrections',
+                        style: TextStyle(
+                          color: JournalColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+              ),
+            ),
+          ] else
+            MarkdownBody(
+              data: report.result.trim().isEmpty
+                  ? 'No generated report text returned.'
+                  : report.result,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 15,
+                  height: 1.62,
+                ),
+                h1: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+                h2: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+                h3: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+                strong: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+                blockquote: const TextStyle(
+                  color: JournalColors.textPrimary,
+                  fontSize: 15,
+                  height: 1.62,
+                  fontStyle: FontStyle.italic,
+                ),
+                blockquotePadding: const EdgeInsets.all(14),
+                blockquoteDecoration: BoxDecoration(
+                  color: JournalColors.bgSurface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: JournalColors.borderBright),
+                ),
+                listBullet: const TextStyle(
+                  color: JournalColors.textSecondary,
+                  fontSize: 15,
+                ),
+              ),
+            ),
         ],
       ),
     );
