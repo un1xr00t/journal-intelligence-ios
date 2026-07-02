@@ -631,7 +631,7 @@ class NotificationNudgeService {
     if (candidates.isEmpty) return;
 
     final now = DateTime.now();
-    await _scheduleNewSageInboxNotification(candidates, now);
+    await _notifyNewSageInboxMessages(candidates);
 
     final first = candidates.first;
     await _scheduleOneOffNotification(
@@ -659,9 +659,22 @@ class NotificationNudgeService {
     );
   }
 
-  Future<void> _scheduleNewSageInboxNotification(
+  Future<void> notifyNewSageInboxMessages(
+    List<SageInboxMessage> messages,
+  ) async {
+    final status = await getStatus();
+    if (!status.notificationsAuthorized) return;
+
+    final candidates = messages
+        .where((message) => message.isUnread && !message.isArchived)
+        .toList();
+    if (candidates.isEmpty) return;
+
+    await _notifyNewSageInboxMessages(candidates);
+  }
+
+  Future<void> _notifyNewSageInboxMessages(
     List<SageInboxMessage> candidates,
-    DateTime now,
   ) async {
     final notifiedIds = await _loadSageInboxNotifiedIds();
     final newMessages = candidates
@@ -681,7 +694,16 @@ class NotificationNudgeService {
       id: _sageInboxNewMessageId(first.id),
       title: title,
       body: body,
-      when: now.add(const Duration(minutes: 1)),
+      when: DateTime.now().add(const Duration(minutes: 1)),
+      route: '/inbox',
+      routeSage: _buildSageRoute(
+        'Open my newest Sage Inbox message titled "${first.subject}" and help me respond or act.',
+      ),
+    );
+    await _showImmediateNotification(
+      id: '${_sageInboxNewMessageId(first.id)}.now',
+      title: title,
+      body: body,
       route: '/inbox',
       routeSage: _buildSageRoute(
         'Open my newest Sage Inbox message titled "${first.subject}" and help me respond or act.',
@@ -922,6 +944,22 @@ class NotificationNudgeService {
       'month': when.month,
       'year': when.year,
       'repeats': false,
+      'route': route,
+      if (routeSage != null && routeSage.isNotEmpty) 'routeSage': routeSage,
+    });
+  }
+
+  Future<void> _showImmediateNotification({
+    required String id,
+    required String title,
+    required String body,
+    required String route,
+    String? routeSage,
+  }) async {
+    await _channel.invokeMethod<void>('showImmediateNotification', {
+      'id': id,
+      'title': title,
+      'body': body,
       'route': route,
       if (routeSage != null && routeSage.isNotEmpty) 'routeSage': routeSage,
     });

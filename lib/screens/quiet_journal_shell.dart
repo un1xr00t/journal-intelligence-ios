@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
+import '../services/notification_nudge_service.dart';
+import '../services/sage_inbox_service.dart';
 import '../theme/app_theme.dart';
 import 'settings_screen.dart';
 
@@ -2363,6 +2366,8 @@ class _QuietJournalComposeScreen extends StatefulWidget {
 class _QuietJournalComposeScreenState
     extends State<_QuietJournalComposeScreen> {
   final _api = ApiService();
+  final _sageInbox = SageInboxService();
+  final _notifications = NotificationNudgeService();
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _picker = ImagePicker();
@@ -2482,8 +2487,18 @@ class _QuietJournalComposeScreenState
         );
       }
 
-      final result = await _api.createEntry(text: _controller.text.trim());
+      final entryText = _controller.text.trim();
+      final result = await _api.createEntry(text: entryText);
       final entryId = result['entry_id'] as int?;
+      final inboxSnapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+        entryText: entryText,
+        entryId: entryId,
+      );
+      if (inboxSnapshot != null) {
+        unawaited(
+          _notifications.notifyNewSageInboxMessages(inboxSnapshot.messages),
+        );
+      }
 
       if (entryId != null && _pendingImages.isNotEmpty) {
         for (final image in _pendingImages) {

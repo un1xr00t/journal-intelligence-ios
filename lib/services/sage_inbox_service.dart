@@ -336,6 +336,9 @@ class SageInboxService {
   static const _contextMapId = 'sage_inbox.context.map.v1';
   static const _conversationFollowUpId = 'sage_inbox.conversation_followup.v1';
   static const _dailyDispatchPrefix = 'sage_inbox.daily_dispatch';
+  static const _journalSupportPrefix = 'sage_inbox.journal_support';
+  static const _journalSupportLastCreatedKey =
+      'sage_inbox.journal_support.last_created_at.v1';
 
   final FollowUpTaskService _followUps;
   final OrbitLedgerService _orbitLedger;
@@ -415,26 +418,6 @@ class SageInboxService {
         ),
       );
     }
-    if (summary.overdueCount > 0 ||
-        summary.dueSoonCount > 0 ||
-        summary.staleWaitingTasks.isNotEmpty) {
-      adaptive.add(_followUpPressureMessage(summary, now));
-    } else if (summary.openCount == 0 && tasks.isNotEmpty) {
-      adaptive.add(_followUpCleanMessage(now));
-    }
-    final orbitMessage = _orbitPressureMessage(orbitEntries, now);
-    if (orbitMessage != null) adaptive.add(orbitMessage);
-    adaptive.add(
-      _contextMapMessage(
-        now: now,
-        followUpSummary: summary,
-        orbitEntries: orbitEntries,
-        identityCount: identityEntities.length,
-        sageMemoryCount: sageMemories.length,
-        sageSettings: sageSettings,
-        recentJournalSignal: recentJournalSignal,
-      ),
-    );
 
     final merged = _mergeById([...retained, ...adaptive]);
     await _saveMessages(merged);
@@ -463,6 +446,42 @@ class SageInboxService {
     await _saveMessages(next);
     return SageInboxSnapshot(
         messages: _sorted(next), generatedAt: DateTime.now());
+  }
+
+  Future<SageInboxSnapshot?> createAdaptiveJournalCheckIn({
+    required String entryText,
+    int? entryId,
+  }) async {
+    final text = entryText.trim();
+    if (text.isEmpty) return null;
+
+    final signal = _journalSupportSignal(text);
+    if (signal == null) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final lastCreated = DateTime.tryParse(
+      prefs.getString(_journalSupportLastCreatedKey) ?? '',
+    );
+    if (lastCreated != null &&
+        now.difference(lastCreated) < const Duration(hours: 6)) {
+      return null;
+    }
+
+    final snapshot = await loadInbox();
+    final message = _journalSupportMessage(
+      now: now,
+      signal: signal,
+      entryText: text,
+      entryId: entryId,
+    );
+    final merged = _mergeById([...snapshot.messages, message]);
+    await _saveMessages(merged);
+    await prefs.setString(
+      _journalSupportLastCreatedKey,
+      now.toIso8601String(),
+    );
+    return SageInboxSnapshot(messages: _sorted(merged), generatedAt: now);
   }
 
   Future<SageInboxDetail?> loadDetail(String messageId) async {
@@ -823,118 +842,6 @@ class SageInboxService {
     );
   }
 
-  SageInboxMessage _followUpPressureMessage(
-    FollowUpTaskSummary summary,
-    DateTime now,
-  ) {
-    final task = summary.nextTask;
-    final subject = FollowUpTaskService.pressureHeadline(summary);
-    final body = [
-      FollowUpTaskService.pressureBody(summary),
-      '',
-      if (summary.overdueCount > 0)
-        'Overdue: ${summary.overdueCount}. That is the part Sage should be louder about.',
-      if (summary.dueSoonCount > 0)
-        'Due soon: ${summary.dueSoonCount}. This is where handling it early saves stress.',
-      if (summary.staleWaitingTasks.isNotEmpty)
-        'Stale waiting threads: ${summary.staleWaitingTasks.length}. Decide whether to ping, park, or close them.',
-      '',
-      'I’m bringing this up because silence turns overdue tasks into background dread. Pick one concrete move and make it smaller than your brain is making it.',
-    ].where((line) => line.trim().isNotEmpty || line.isEmpty).join('\n');
-
-    return SageInboxMessage(
-      id: _followUpPressureId,
-      subject: subject,
-      preview: task == null
-          ? 'Open Follow-Ups and choose the first real move.'
-          : FollowUpTaskService.pressureBody(summary),
-      body: body,
-      createdAt: now,
-      priority: summary.overdueCount > 0
-          ? SageInboxPriority.urgent
-          : SageInboxPriority.high,
-      status: SageInboxStatus.unread,
-      source: 'Sage local signal',
-      reason: 'Follow-Ups has overdue, due-soon, or stale waiting pressure.',
-      relatedRoute: '/follow-ups',
-      expiresAt: now.add(const Duration(hours: 18)),
-      actionItems: [
-        SageInboxActionItem(
-          label: task == null ? 'Open Follow-Ups' : task.title,
-          detail: task?.nextAction?.trim().isNotEmpty == true
-              ? task!.nextAction
-              : 'Pick one concrete next move and do not leave it abstract.',
-          route: '/follow-ups',
-        ),
-        SageInboxActionItem(
-          label: 'Open a Sage strategy thread',
-          detail:
-              'Use chat only if you need strategy, wording, or prioritizing.',
-          route: '/sage',
-          sagePrompt: task == null
-              ? 'Use my Follow-Ups context and help me choose the highest-leverage next move.'
-              : 'Use my Follow-Ups context and help me act on "${task.title}" without overthinking it.',
-        ),
-      ],
-      dataPoints: [
-        SageInboxDataPoint(
-          label: 'Open follow-ups',
-          value: '${summary.openCount}',
-          detail: 'Total active pressure in the local Follow-Ups queue.',
-        ),
-        SageInboxDataPoint(
-          label: 'Overdue',
-          value: '${summary.overdueCount}',
-          detail:
-              'These get urgent priority because delay has already started.',
-        ),
-        SageInboxDataPoint(
-          label: 'Due soon',
-          value: '${summary.dueSoonCount}',
-          detail: 'Early action here prevents another overdue loop.',
-        ),
-        if (summary.staleWaitingTasks.isNotEmpty)
-          SageInboxDataPoint(
-            label: 'Stale waiting',
-            value: '${summary.staleWaitingTasks.length}',
-            detail: 'Threads quiet for nearly a week or more.',
-          ),
-      ],
-    );
-  }
-
-  SageInboxMessage _followUpCleanMessage(DateTime now) {
-    final date = DateFormat.MMMd().format(now);
-    return SageInboxMessage(
-      id: _followUpCleanId,
-      subject: 'Follow-Ups are clear',
-      preview: 'No active follow-up pressure is sitting in the queue.',
-      body:
-          'As of $date, Follow-Ups does not have open pressure. That is useful information too: today can be about writing, proof capture, checking in with yourself, or one bigger life-admin move instead of chasing stale tasks.',
-      createdAt: now,
-      priority: SageInboxPriority.low,
-      status: SageInboxStatus.unread,
-      source: 'Sage local signal',
-      reason: 'Follow-Ups local cache has no open tasks.',
-      relatedRoute: '/follow-ups',
-      expiresAt: now.add(const Duration(hours: 24)),
-      actionItems: const [
-        SageInboxActionItem(
-          label: 'Keep the queue clean',
-          detail: 'Add a follow-up only when there is a real next action.',
-          route: '/follow-ups',
-        ),
-      ],
-      dataPoints: const [
-        SageInboxDataPoint(
-          label: 'Open follow-ups',
-          value: '0',
-          detail: 'Local Follow-Ups cache has no active tasks.',
-        ),
-      ],
-    );
-  }
-
   SageInboxMessage _dailyDispatchMessage({
     required DateTime now,
     required FollowUpTaskSummary followUpSummary,
@@ -945,7 +852,6 @@ class SageInboxService {
     required String? recentJournalSignal,
   }) {
     final dateId = DateFormat('yyyyMMdd').format(now);
-    final displayDate = DateFormat.MMMMEEEEd().format(now);
     final recentOrbit = orbitEntries
         .where(
           (entry) => entry.loggedAt.isAfter(
@@ -962,10 +868,10 @@ class SageInboxService {
 
     return SageInboxMessage(
       id: '$_dailyDispatchPrefix.$dateId',
-      subject: 'Sage Daily Dispatch',
-      preview: 'Hey William, $leadSignal',
+      subject: 'A note from Sage',
+      preview: 'Hey William, I checked the day before it started yelling.',
       body:
-          'Hey William,\n\nDaily Dispatch for $displayDate.\n\n$leadSignal\n\n${recentJournalSignal == null ? '' : 'From your recent journal context: $recentJournalSignal\n\n'}I checked the signal stack before you had to: active follow-up pressure, recent attention pulls, known identity context, saved Sage memory, and your current Sage tone. I’m not trying to flood you. I’m trying to be the friend who notices the pattern, taps you on the shoulder, and helps you move one thing.\n\nCadence: I’ll aim for one real message a day, then only interrupt again if something genuinely deserves pressure.',
+          'Hey William,\n\nI checked in on your day from the stuff the app already knows, not because you need another dashboard yelling at you.\n\n$leadSignal\n\n${recentJournalSignal == null ? '' : 'The journal piece I noticed: $recentJournalSignal\n\n'}My job here is to leave you an actual note: what seems alive, what might need a move, and what is probably just noise trying to rent space in your head.\n\nReply if you want to argue with the read, ask what to do first, or tell me it is handled.',
       createdAt: now,
       priority: followUpSummary.overdueCount > 0
           ? SageInboxPriority.high
@@ -973,23 +879,22 @@ class SageInboxService {
       status: SageInboxStatus.unread,
       source: 'Sage daily dispatch',
       reason:
-          'Daily structured sweep across local app context, generated once per calendar day.',
+          'Daily Sage note generated from local app context and recent signals.',
       relatedRoute: '/inbox',
       expiresAt: now.add(const Duration(days: 7)),
       actionItems: [
         const SageInboxActionItem(
-          label: 'Review the signal stack',
+          label: 'Reply to Sage',
           detail:
-              'Use the data points below to decide whether today needs action, reflection, or restraint.',
-          route: '/inbox',
-        ),
-        const SageInboxActionItem(
-          label: 'Discuss today’s dispatch with Sage',
-          detail:
-              'Open Sage with this exact context when you want the deeper read.',
+              'Ask the question, push back on the read, or say what happened.',
           route: '/sage',
           sagePrompt:
-              'Use my current app context, recent journal context, and today’s Sage Daily Dispatch. Talk to me like a close friend. Tell me what deserves action today, what is noise, and what I should stop carrying.',
+              'Use today’s Sage Inbox note and talk with me about it conversationally. Help me sort what matters, what is noise, and what one move would actually help.',
+        ),
+        const SageInboxActionItem(
+          label: 'Turn it into a task',
+          detail: 'Only if the message points to something real.',
+          route: '/inbox',
         ),
         if (followUpSummary.openCount > 0)
           const SageInboxActionItem(
@@ -1001,8 +906,8 @@ class SageInboxService {
       dataPoints: [
         const SageInboxDataPoint(
           label: 'Cadence',
-          value: 'Daily',
-          detail: 'One Daily Dispatch per calendar day.',
+          value: '1/day',
+          detail: 'One real Sage note per calendar day unless pressure spikes.',
         ),
         SageInboxDataPoint(
           label: 'Follow-Ups',
@@ -1072,8 +977,16 @@ class SageInboxService {
         messages: [
           {
             'role': 'system',
-            'content':
-                'You write Sage Inbox messages. Compose like Sage: close, blunt when useful, personal, alive, and not repetitive. Do not mention token policy, templates, local metadata, or implementation. Return strict JSON only with keys subject, preview, body. Subject under 70 chars. Preview under 180 chars. Body 120-260 words. Address the user as William when natural. End with a reply invitation.',
+            'content': [
+              'You write Sage Inbox messages.',
+              'Write like Sage in the live assistant: conversational, close, specific, blunt when useful, emotionally intelligent, and actually alive.',
+              'This is an inbox note, not a report, digest, status page, coaching worksheet, or task summary.',
+              'Do not use repetitive phrases like lead signal, signal stack, cadence, data points, local metadata, token policy, generated from, structured sweep, or daily dispatch unless the user used that exact phrase first.',
+              'Do not over-focus on Follow-Ups. Mention them only if they are genuinely the strongest signal, and still write the note like a person talking to William.',
+              'Use first person. Sound like Sage checked on William and has a real read. Warm pressure is allowed. Swearing is allowed only if the saved settings allow it and it fits naturally.',
+              'Return strict JSON only with keys subject, preview, body. Subject under 62 chars. Preview under 170 chars. Body 130-280 words. End with a natural invitation to reply.',
+              sageSettings.toPromptInstruction(),
+            ].join('\n'),
           },
           {
             'role': 'user',
@@ -1114,7 +1027,7 @@ class SageInboxService {
       if (dataPoints.trim().isNotEmpty) 'Data points:\n$dataPoints',
       if (actions.trim().isNotEmpty) 'Possible next moves:\n$actions',
       'Sage settings: tone=${settings.toneMode}, warmth=${settings.warmth}, directness=${settings.directness}, swearing=${settings.allowSwearing}.',
-      'Make it feel like a real message from Sage, not a report. It should be varied, specific, emotionally intelligent, and useful.',
+      'Write a fresh message. Vary the subject and rhythm from previous inbox notes. Make it feel like a real message from Sage, not a report. It should be specific, emotionally intelligent, useful, and easy to reply to.',
     ].join('\n\n');
   }
 
@@ -1243,146 +1156,112 @@ class SageInboxService {
     }
   }
 
-  SageInboxMessage? _orbitPressureMessage(
-    List<OrbitLedgerEntry> entries,
-    DateTime now,
-  ) {
-    final recent = entries
-        .where(
-          (entry) => entry.loggedAt.isAfter(
-            now.subtract(const Duration(days: 7)),
-          ),
-        )
-        .toList();
-    final highPressure = recent
-        .where((entry) =>
-            entry.urgency.toLowerCase().contains('urgent') ||
-            entry.urgency.toLowerCase().contains('high'))
-        .toList();
-    if (recent.length < 5 && highPressure.isEmpty) return null;
-
-    final first = highPressure.isNotEmpty ? highPressure.first : recent.first;
-    return SageInboxMessage(
-      id: _orbitPressureId,
-      subject: 'Your attention ledger is getting noisy',
-      preview:
-          '${recent.length} Orbit Ledger items landed in the last week. Sage should help you separate real obligations from pressure.',
-      body:
-          'Orbit Ledger is showing recent demand on your attention. The useful move is not to answer everything; it is to sort what is actually yours, what needs a boundary, and what can be ignored.\n\nMost recent pressure: ${first.request}.',
-      createdAt: now,
-      priority: highPressure.isNotEmpty
-          ? SageInboxPriority.high
-          : SageInboxPriority.normal,
-      status: SageInboxStatus.unread,
-      source: 'Sage local signal',
-      reason:
-          'Orbit Ledger has recent requests or high-urgency attention pulls.',
-      relatedRoute: '/more',
-      expiresAt: now.add(const Duration(hours: 20)),
-      actionItems: [
-        const SageInboxActionItem(
-          label: 'Review attention pulls',
-          detail:
-              'Decide what is yours, what needs a boundary, and what can wait.',
-          route: '/orbit-ledger',
-        ),
-        const SageInboxActionItem(
-          label: 'Open a Sage boundary thread',
-          detail: 'Use Sage to sort obligation, guilt, urgency, and wording.',
-          route: '/sage',
-          sagePrompt:
-              'Use my Orbit Ledger context and help me sort recent attention pulls into: mine to handle, boundary needed, can wait, or ignore.',
-        ),
-      ],
-      dataPoints: [
-        SageInboxDataPoint(
-          label: 'Recent pulls',
-          value: '${recent.length}',
-          detail: 'Orbit Ledger entries from the last 7 days.',
-        ),
-        SageInboxDataPoint(
-          label: 'High pressure',
-          value: '${highPressure.length}',
-          detail: 'Recent entries marked high or urgent.',
-        ),
-      ],
+  ({String label, String reason, SageInboxPriority priority})?
+      _journalSupportSignal(String text) {
+    final lower = text.toLowerCase();
+    final crisis = RegExp(
+      r"\b(kill myself|suicide|suicidal|end it all|can't go on|cannot go on|hurt myself|self harm|self-harm)\b",
     );
+    if (crisis.hasMatch(lower)) {
+      return (
+        label: 'Safety language',
+        reason:
+            'Your journal entry used language that can mean immediate risk.',
+        priority: SageInboxPriority.urgent,
+      );
+    }
+
+    final heavySignals = <RegExp>[
+      RegExp(r"\b(i need someone|need someone to talk|can someone talk)\b"),
+      RegExp(r"\b(i'm not okay|i am not okay|not doing okay)\b"),
+      RegExp(r"\b(breaking down|breakdown|spiraling|panic attack)\b"),
+      RegExp(r"\b(i feel alone|i'm alone|so alone|completely alone)\b"),
+      RegExp(r"\b(can't handle this|cannot handle this|too much)\b"),
+      RegExp(r"\b(i'm scared|i am scared|terrified)\b"),
+    ];
+    if (heavySignals.any((pattern) => pattern.hasMatch(lower))) {
+      return (
+        label: 'Needs connection',
+        reason:
+            'Your journal entry sounded like you might need a real-time check-in.',
+        priority: SageInboxPriority.high,
+      );
+    }
+
+    final emotionalCount = <RegExp>[
+      RegExp(r"\b(crying|cried|tears|shaking|panic|anxious|anxiety)\b"),
+      RegExp(r"\b(overwhelmed|exhausted|hopeless|numb|lonely)\b"),
+      RegExp(r"\b(afraid|scared|unsafe|trapped|stuck)\b"),
+      RegExp(r"\b(please help|help me|need help)\b"),
+    ].where((pattern) => pattern.hasMatch(lower)).length;
+
+    if (emotionalCount >= 2) {
+      return (
+        label: 'Heavy emotional load',
+        reason: 'Multiple distress signals showed up in one journal entry.',
+        priority: SageInboxPriority.high,
+      );
+    }
+
+    return null;
   }
 
-  SageInboxMessage _contextMapMessage({
+  SageInboxMessage _journalSupportMessage({
     required DateTime now,
-    required FollowUpTaskSummary followUpSummary,
-    required List<OrbitLedgerEntry> orbitEntries,
-    required int identityCount,
-    required int sageMemoryCount,
-    required SageSettings sageSettings,
-    required String? recentJournalSignal,
+    required ({String label, String reason, SageInboxPriority priority}) signal,
+    required String entryText,
+    required int? entryId,
   }) {
-    final recentOrbit = orbitEntries
-        .where(
-          (entry) => entry.loggedAt.isAfter(
-            now.subtract(const Duration(days: 14)),
-          ),
-        )
-        .length;
+    final previewText = _collapseWhitespace(entryText, maxChars: 140);
     return SageInboxMessage(
-      id: _contextMapId,
-      subject: 'Sage checked the local context map',
+      id: '$_journalSupportPrefix.${entryId ?? now.microsecondsSinceEpoch}.${DateFormat('yyyyMMddHH').format(now)}',
+      subject: signal.priority == SageInboxPriority.urgent
+          ? 'William, I want you to check in'
+          : 'Hey William, I noticed that entry',
       preview:
-          'Inbox considered Follow-Ups, Orbit Ledger, identity memory, Sage memory, Sage settings, and recent journal context.',
-      body:
-          'This is the lightweight context sweep. It checks structured local signals and recent journal context so Inbox can feel personal without asking the model to reread everything.\n\nCurrent read: ${followUpSummary.openCount} open follow-ups, $recentOrbit recent Orbit Ledger entries, $identityCount known identity facts, and $sageMemoryCount saved Sage memory notes. Sage tone is ${sageSettings.toneMode}.${recentJournalSignal == null ? '' : '\n\nRecent journal signal: $recentJournalSignal'}',
+          'That journal post sounded heavier than normal. I left you a place to answer me.',
+      body: signal.priority == SageInboxPriority.urgent
+          ? 'Hey William,\n\nI noticed language in that journal entry that could mean you are closer to the edge than usual.\n\nI am not going to turn that into a dashboard item. I want you to reply to me, call someone safe, or get near another human if this is active right now.\n\nIf this was venting and not danger, tell me that too. I can still sit with you and help sort what is actually happening.'
+          : 'Hey William,\n\nI read the shape of that journal entry and it sounded like this might be one of those moments where you do not need another task. You need someone to answer back.\n\nSo I am here. Reply to this if you want to talk through what happened, name the thing that is sitting on your chest, or just say, "stay with me for a minute."\n\nNo performance. No perfect summary. Just start with the part that feels loudest.',
       createdAt: now,
-      priority: SageInboxPriority.low,
+      priority: signal.priority,
       status: SageInboxStatus.unread,
-      source: 'Sage context map',
-      reason:
-          'A lightweight local sweep keeps Inbox aware without spending tokens.',
-      relatedRoute: '/sage',
-      expiresAt: now.add(const Duration(days: 2)),
-      actionItems: const [
-        SageInboxActionItem(
-          label: 'Open a Sage context thread',
+      source: 'Sage journal check-in',
+      reason: signal.reason,
+      relatedRoute: '/inbox',
+      expiresAt: now.add(const Duration(days: 3)),
+      actionItems: [
+        const SageInboxActionItem(
+          label: 'Reply to Sage',
           detail:
-              'Ask Sage what these signals suggest when you want deeper analysis.',
+              'Use the inbox reply box. You do not need to explain it well.',
+          route: '/inbox',
+        ),
+        const SageInboxActionItem(
+          label: 'Open Sage now',
+          detail:
+              'Talk it through in the full Sage chat if you need more room.',
           route: '/sage',
           sagePrompt:
-              'Use my current app context and tell me what matters most across Follow-Ups, Orbit Ledger, identity memory, and Sage memory. Be practical and prioritize action.',
+              'I just wrote a journal entry that sounded like I need someone to talk to. Stay with me and help me sort what is happening without turning it into a generic checklist.',
         ),
       ],
       dataPoints: [
         SageInboxDataPoint(
-          label: 'Follow-Ups',
-          value: '${followUpSummary.openCount} open',
-          detail:
-              '${followUpSummary.overdueCount} overdue, ${followUpSummary.dueSoonCount} due soon.',
+          label: 'Trigger',
+          value: signal.label,
+          detail: 'Detected locally from the saved journal text.',
+        ),
+        const SageInboxDataPoint(
+          label: 'Token cost',
+          value: '0 AI calls',
+          detail: 'This adaptive check-in used local text rules only.',
         ),
         SageInboxDataPoint(
-          label: 'Orbit Ledger',
-          value: '$recentOrbit recent',
-          detail: 'Entries logged in the last 14 days.',
+          label: 'Entry signal',
+          value: 'Included',
+          detail: previewText,
         ),
-        SageInboxDataPoint(
-          label: 'Identity memory',
-          value: '$identityCount facts',
-          detail: 'Known people and durable user-corrected/inferred context.',
-        ),
-        SageInboxDataPoint(
-          label: 'Sage memory',
-          value: '$sageMemoryCount notes',
-          detail: 'Private Sage memory items saved on this device.',
-        ),
-        SageInboxDataPoint(
-          label: 'Sage tone',
-          value: sageSettings.toneMode,
-          detail: 'Inbox can match your saved Sage personality settings.',
-        ),
-        if (recentJournalSignal != null)
-          SageInboxDataPoint(
-            label: 'Recent journal',
-            value: 'Checked',
-            detail: recentJournalSignal,
-          ),
       ],
     );
   }

@@ -11,6 +11,8 @@ import '../providers/auth_provider.dart';
 import '../providers/launch_intent_provider.dart';
 import '../services/api_service.dart';
 import '../services/follow_up_tasks_service.dart';
+import '../services/notification_nudge_service.dart';
+import '../services/sage_inbox_service.dart';
 import '../services/voice_entry_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
@@ -32,6 +34,8 @@ class WriteScreen extends StatefulWidget {
 
 class _WriteScreenState extends State<WriteScreen> {
   final _api = ApiService();
+  final _sageInbox = SageInboxService();
+  final _notifications = NotificationNudgeService();
   final _ctrl = TextEditingController();
   final _urlCtrl = TextEditingController();
   final _focusNode = FocusNode();
@@ -350,6 +354,15 @@ class _WriteScreenState extends State<WriteScreen> {
         contextUrls: _hasReferenceUrl ? [_urlCtrl.text.trim()] : const [],
       );
       final entryId = result['entry_id'] as int?;
+      final inboxSnapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+        entryText: _ctrl.text.trim(),
+        entryId: entryId,
+      );
+      if (inboxSnapshot != null) {
+        unawaited(
+          _notifications.notifyNewSageInboxMessages(inboxSnapshot.messages),
+        );
+      }
       final photoCount = _pendingImages.length;
 
       // Upload any pending images
@@ -1129,6 +1142,8 @@ class _VoiceReflectionSheet extends StatefulWidget {
 class _VoiceReflectionSheetState extends State<_VoiceReflectionSheet> {
   final _api = ApiService();
   final _followUps = FollowUpTaskService();
+  final _sageInbox = SageInboxService();
+  final _notifications = NotificationNudgeService();
   final _voice = VoiceEntryService();
   final _transcriptCtrl = TextEditingController();
   final _transcriptFocus = FocusNode();
@@ -1283,6 +1298,10 @@ class _VoiceReflectionSheetState extends State<_VoiceReflectionSheet> {
       final result =
           await _api.createEntry(text: _entryText(transcript, analysis));
       final entryId = (result['entry_id'] as num?)?.toInt();
+      await _createAdaptiveInboxCheckIn(
+        entryText: transcript,
+        entryId: entryId,
+      );
       if (entryId != null && _analysis == null) {
         try {
           final reflection =
@@ -1301,6 +1320,10 @@ class _VoiceReflectionSheetState extends State<_VoiceReflectionSheet> {
       try {
         final result = await _api.createEntry(text: transcript);
         final entryId = (result['entry_id'] as num?)?.toInt();
+        await _createAdaptiveInboxCheckIn(
+          entryText: transcript,
+          entryId: entryId,
+        );
         if (entryId != null) {
           final reflection =
               await _api.getReflection(entryId, tone: 'therapist');
@@ -1321,6 +1344,20 @@ class _VoiceReflectionSheetState extends State<_VoiceReflectionSheet> {
         });
       }
     }
+  }
+
+  Future<void> _createAdaptiveInboxCheckIn({
+    required String entryText,
+    required int? entryId,
+  }) async {
+    final inboxSnapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+      entryText: entryText,
+      entryId: entryId,
+    );
+    if (inboxSnapshot == null) return;
+    unawaited(
+      _notifications.notifyNewSageInboxMessages(inboxSnapshot.messages),
+    );
   }
 
   Future<void> _saveAcceptedFollowUps(VoiceReflectionAnalysis analysis) async {

@@ -94,6 +94,8 @@ final class NotificationBridge: NSObject, CLLocationManagerDelegate, UNUserNotif
       resolveAddress(call.arguments, result: result)
     case "scheduleCalendarNotification":
       scheduleCalendarNotification(call.arguments, result: result)
+    case "showImmediateNotification":
+      showImmediateNotification(call.arguments, result: result)
     case "scheduleLocationNotification":
       scheduleLocationNotification(call.arguments, result: result)
     case "getDeliveredLocationEvents":
@@ -302,6 +304,55 @@ final class NotificationBridge: NSObject, CLLocationManagerDelegate, UNUserNotif
           result(
             FlutterError(
               code: "schedule_calendar_failed",
+              message: error.localizedDescription,
+              details: nil
+            )
+          )
+        } else {
+          result(nil)
+        }
+      }
+    }
+  }
+
+  private func showImmediateNotification(_ rawArguments: Any?, result: @escaping FlutterResult) {
+    guard let arguments = rawArguments as? [String: Any],
+          let id = arguments["id"] as? String,
+          let title = arguments["title"] as? String,
+          let body = arguments["body"] as? String else {
+      result(
+        FlutterError(
+          code: "invalid_immediate_notification",
+          message: "Missing immediate notification arguments.",
+          details: nil
+        )
+      )
+      return
+    }
+
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    content.sound = .default
+    if let route = arguments["route"] as? String, !route.isEmpty {
+      content.userInfo["route"] = route
+    }
+    if let routeSage = arguments["routeSage"] as? String, !routeSage.isEmpty {
+      content.userInfo["route_sage"] = routeSage
+    }
+    if let categoryId = arguments["categoryId"] as? String, !categoryId.isEmpty {
+      content.categoryIdentifier = categoryId
+    }
+
+    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+    let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+
+    center.add(request) { error in
+      DispatchQueue.main.async {
+        if let error {
+          result(
+            FlutterError(
+              code: "show_immediate_failed",
               message: error.localizedDescription,
               details: nil
             )

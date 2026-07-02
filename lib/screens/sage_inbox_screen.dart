@@ -397,70 +397,18 @@ class _SageInboxDetailScreenState extends State<SageInboxDetailScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate(
                     [
-                      GlassCard(
-                        accentBorder:
-                            message.priority == SageInboxPriority.urgent,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                _PriorityPill(priority: message.priority),
-                                const Spacer(),
-                                Text(
-                                  DateFormat.MMMd().add_jm().format(
-                                        message.createdAt,
-                                      ),
-                                  style: const TextStyle(
-                                    color: JournalColors.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Text(
-                              message.subject,
-                              style: const TextStyle(
-                                color: JournalColors.textPrimary,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              message.preview,
-                              style: const TextStyle(
-                                color: JournalColors.textSecondary,
-                                fontSize: 14,
-                                height: 1.45,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _MessageLetterCard(message: message),
                       const SizedBox(height: 18),
-                      const SectionHeader(title: 'Full message'),
-                      const SizedBox(height: 8),
-                      GlassCard(
-                        child: Text(
-                          message.body,
-                          style: const TextStyle(
-                            color: JournalColors.textPrimary,
-                            fontSize: 16,
-                            height: 1.65,
-                          ),
-                        ),
+                      _ReplyPanel(
+                        replies: detail?.replies ?? const [],
+                        controller: _replyController,
+                        sending: _sending,
+                        error: _error,
+                        onSend: _sendReply,
                       ),
-                      if (message.dataPoints.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        const SectionHeader(title: 'Data points considered'),
-                        const SizedBox(height: 8),
-                        _DataPointGrid(dataPoints: message.dataPoints),
-                      ],
                       if (message.actionItems.isNotEmpty) ...[
                         const SizedBox(height: 18),
-                        const SectionHeader(title: 'Useful next moves'),
+                        const SectionHeader(title: 'Useful ways in'),
                         const SizedBox(height: 8),
                         ...message.actionItems.map(
                           (item) => Padding(
@@ -470,19 +418,17 @@ class _SageInboxDetailScreenState extends State<SageInboxDetailScreen> {
                         ),
                       ],
                       const SizedBox(height: 18),
-                      _ReplyPanel(
-                        replies: detail?.replies ?? const [],
-                        controller: _replyController,
-                        sending: _sending,
-                        error: _error,
-                        onSend: _sendReply,
-                      ),
-                      const SizedBox(height: 18),
                       _InboxTaskPanel(
                         tasks: detail?.tasks ?? const [],
                         onCreateTask: _createTaskFromMessage,
                         onOpenTasks: _openTasks,
                       ),
+                      if (message.dataPoints.isNotEmpty) ...[
+                        const SizedBox(height: 18),
+                        const SectionHeader(title: 'Context Sage used'),
+                        const SizedBox(height: 8),
+                        _DataPointGrid(dataPoints: message.dataPoints),
+                      ],
                       const SizedBox(height: 8),
                       _MessageMetadata(message: message),
                     ],
@@ -517,17 +463,17 @@ class _InboxHero extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: JournalColors.accent.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: JournalColors.borderBright),
                 ),
                 child: const Icon(
                   CupertinoIcons.tray_full,
                   color: JournalColors.accent,
-                  size: 21,
+                  size: 20,
                 ),
               ),
               const SizedBox(width: 12),
@@ -547,7 +493,7 @@ class _InboxHero extends StatelessWidget {
                     Text(
                       unreadCount == 0
                           ? 'No unread Sage messages.'
-                          : '$unreadCount unread ${unreadCount == 1 ? 'message' : 'messages'} waiting.',
+                          : '$unreadCount unread. $activeCount active total.',
                       style: const TextStyle(
                         color: JournalColors.textSecondary,
                         fontSize: 13,
@@ -558,26 +504,93 @@ class _InboxHero extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _HeroStat(value: '$activeCount', label: 'Active'),
-              const SizedBox(width: 10),
-              _HeroStat(value: '$unreadCount', label: 'Unread'),
-              const Spacer(),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                color: onMarkAllRead == null ? null : JournalColors.accent,
+          if (onMarkAllRead != null) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                color: JournalColors.accent,
                 onPressed: onMarkAllRead,
                 child: const Text(
-                  'Clear unread',
-                  style: TextStyle(fontSize: 13),
+                  'Mark all read',
+                  style: TextStyle(
+                    color: CupertinoColors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageLetterCard extends StatelessWidget {
+  const _MessageLetterCard({required this.message});
+
+  final SageInboxMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      accentBorder: message.priority == SageInboxPriority.urgent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _PriorityPill(priority: message.priority),
+              const Spacer(),
+              Text(
+                DateFormat.MMMd().add_jm().format(message.createdAt),
+                style: const TextStyle(
+                  color: JournalColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message.subject,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 24,
+              height: 1.1,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (message.preview.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              message.preview,
+              style: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 14,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          Container(
+            height: 1,
+            color: JournalColors.border,
+          ),
+          const SizedBox(height: 18),
+          Text(
+            message.body,
+            style: const TextStyle(
+              color: JournalColors.textPrimary,
+              fontSize: 16,
+              height: 1.62,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -1434,29 +1447,42 @@ class _DataPointGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: dataPoints
-          .map((point) => _DataPointChip(dataPoint: point))
-          .toList(growable: false),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = constraints.maxWidth < 340
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 10) / 2;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: dataPoints
+              .map(
+                (point) => _DataPointChip(
+                  dataPoint: point,
+                  width: itemWidth,
+                ),
+              )
+              .toList(growable: false),
+        );
+      },
     );
   }
 }
 
 class _DataPointChip extends StatelessWidget {
-  const _DataPointChip({required this.dataPoint});
+  const _DataPointChip({required this.dataPoint, required this.width});
 
   final SageInboxDataPoint dataPoint;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 156,
+      width: width,
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: JournalColors.bgCard,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: JournalColors.border),
       ),
       child: Column(
@@ -1476,11 +1502,11 @@ class _DataPointChip extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             dataPoint.value,
-            maxLines: 2,
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: JournalColors.textPrimary,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w800,
             ),
           ),
