@@ -21,6 +21,7 @@ import 'my_story_screen.dart';
 import 'orbit_ledger_screen.dart';
 import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
+import 'sage_inbox_screen.dart';
 import 'sage_screen.dart';
 import 'settings_screen.dart';
 import 'war_room_screen.dart';
@@ -61,6 +62,14 @@ class MoreScreen extends StatelessWidget {
   List<_Section> _sections() => [
         _Section('Featured', 'Frequently used tools and analysis views.',
             JournalColors.accent, [
+          _Item(
+            label: 'Inbox',
+            subtitle: 'Full Sage messages, action items, and reminders',
+            icon: CupertinoIcons.tray_full,
+            iconColor: JournalColors.accent,
+            badge: 'New',
+            builder: (_) => const SageInboxScreen(),
+          ),
           _Item(
             label: 'Sage',
             subtitle: 'Best friend assistant with full journal context',
@@ -345,11 +354,20 @@ class MoreScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _FeatureBanner(
-                      title: 'Sage',
-                      subtitle: 'Your personal assistant',
+                      title: 'Inbox',
+                      subtitle: 'Full Sage messages with clear next actions.',
                       color: JournalColors.accent,
-                      icon: CupertinoIcons.sparkles,
-                      onTap: () => pushSageScreen(context),
+                      icon: CupertinoIcons.tray_full,
+                      onTap: () => Navigator.push(
+                        context,
+                        CupertinoPageRoute(
+                          builder: (ctx) => DefaultTextStyle.merge(
+                            style: const TextStyle(
+                                decoration: TextDecoration.none),
+                            child: const SageInboxScreen(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),

@@ -9,11 +9,13 @@ import 'package:provider/provider.dart';
 
 import '../providers/launch_intent_provider.dart';
 import '../services/notification_nudge_service.dart';
+import '../services/sage_inbox_service.dart';
 import 'carplay_companion_screen.dart';
 
 import 'budget_planner_screen.dart';
 import 'notification_nudges_screen.dart';
 import 'resources_screen.dart';
+import 'sage_inbox_screen.dart';
 import 'siri_capture_screen.dart';
 import 'today_screen.dart';
 import 'write_screen.dart';
@@ -36,6 +38,7 @@ class _HomeShellState extends State<HomeShell> {
   late int _selectedIndex;
   LaunchIntentProvider? _launchIntent;
   final _notificationNudgeService = NotificationNudgeService();
+  final _sageInboxService = SageInboxService();
   int _lastHandledIntentVersion = 0;
   bool _carPlayCompanionVisible = false;
   bool _sageVisible = false;
@@ -164,6 +167,7 @@ class _HomeShellState extends State<HomeShell> {
       '/resources' => const ResourcesScreen(),
       '/budget' => const BudgetPlannerScreen(),
       '/notification-nudges' => const NotificationNudgesScreen(),
+      '/inbox' || '/sage-inbox' => const SageInboxScreen(),
       _ => null,
     };
   }
@@ -239,6 +243,10 @@ class _HomeShellState extends State<HomeShell> {
     try {
       final settings = await _notificationNudgeService.loadSettings();
       await _notificationNudgeService.refreshFollowUpReminders();
+      final inboxSnapshot = await _sageInboxService.refreshAdaptiveMessages();
+      await _notificationNudgeService.refreshSageInboxNotifications(
+        inboxSnapshot.messages,
+      );
       if (!settings.locationPromptsEnabled &&
           !settings.journalPatternPromptsEnabled) {
         return;

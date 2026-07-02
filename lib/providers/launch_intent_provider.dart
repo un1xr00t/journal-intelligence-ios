@@ -92,7 +92,7 @@ class LaunchIntentProvider extends ChangeNotifier {
       '/timeline' => 1,
       '/write' || '/compose' || '/siri-capture' => 2,
       '/ask' || '/intelligence' || '/sage' || '/detective' => 3,
-      '/more' || '/settings' => 4,
+      '/more' || '/settings' || '/inbox' || '/sage-inbox' => 4,
       _ => null,
     };
   }
