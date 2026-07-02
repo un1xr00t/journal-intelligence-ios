@@ -72,9 +72,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleBiometricLogin() async {
     setState(() => _biometricLoading = true);
     try {
+      // Security (H6): biometricOnly true — device passcode fallback would
+      // let anyone with the PIN replay the stored credentials.
       final didAuth = await _localAuth.authenticate(
         localizedReason: 'Sign in to Journal Intelligence',
-        options: const AuthenticationOptions(biometricOnly: false),
+        options: const AuthenticationOptions(biometricOnly: true),
       );
       if (!didAuth) {
         if (mounted) setState(() => _biometricLoading = false);

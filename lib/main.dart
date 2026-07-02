@@ -47,6 +47,10 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
   bool _lifecycleLockEnabled = false;
   DateTime? _lastLifecycleExitAt;
 
+  // Security (L2): when true, an opaque cover hides journal content so the
+  // iOS app switcher snapshot doesn't leak sensitive text.
+  bool _obscureForAppSwitcher = false;
+
   Future<bool> _handleExternalRoute(String? route) async {
     if (!mounted) return false;
     final handled = context.read<LaunchIntentProvider>().registerRoute(route);
@@ -154,6 +158,12 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Security (L2): toggle the app-switcher privacy cover for every
+    // lifecycle change, independent of the app-lock gating below.
+    final shouldObscure = state != AppLifecycleState.resumed;
+    if (shouldObscure != _obscureForAppSwitcher && mounted) {
+      setState(() => _obscureForAppSwitcher = shouldObscure);
+    }
     if (!_lifecycleLockEnabled || !mounted) return;
     final appLock = context.read<AppLockProvider>();
     switch (state) {
@@ -193,6 +203,27 @@ class _JournalAppState extends State<JournalApp> with WidgetsBindingObserver {
       title: 'Journal Intelligence',
       theme: AppTheme.dark,
       debugShowCheckedModeBanner: false,
+      // Security (L2): opaque cover over all content while the app is not
+      // resumed, so the iOS app switcher snapshot never shows journal text.
+      builder: (context, child) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            if (_obscureForAppSwitcher)
+              const ColoredBox(
+                color: JournalColors.bgBase,
+                child: Center(
+                  child: Icon(
+                    Icons.lock_outline_rounded,
+                    size: 44,
+                    color: JournalColors.textMuted,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
       home: DefaultTextStyle.merge(
         style: const TextStyle(decoration: TextDecoration.none),
         child: Consumer4<AuthProvider, LaunchIntentProvider,

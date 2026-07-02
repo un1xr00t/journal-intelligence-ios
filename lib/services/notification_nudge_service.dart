@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
@@ -324,6 +325,27 @@ class NotificationNudgeService {
   final _api = ApiService();
   final _followUpTasks = FollowUpTaskService();
 
+  // Security (H8/H9): nudge settings contain named-place GPS coordinates and
+  // the observed-event list is a timestamped movement history. Both now live
+  // in FlutterSecureStorage (iOS Keychain) instead of SharedPreferences
+  // (plaintext .plist, included in device backups). Key names are unchanged;
+  // _readSecureWithMigration lazily migrates any pre-existing
+  // SharedPreferences value into secure storage and deletes the plaintext copy.
+  static const _secureStorage = FlutterSecureStorage();
+
+  Future<String?> _readSecureWithMigration(String key) async {
+    final secureValue = await _secureStorage.read(key: key);
+    if (secureValue != null && secureValue.trim().isNotEmpty) {
+      return secureValue;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final legacyValue = prefs.getString(key);
+    if (legacyValue == null || legacyValue.trim().isEmpty) return null;
+    await _secureStorage.write(key: key, value: legacyValue);
+    await prefs.remove(key);
+    return legacyValue;
+  }
+
   Future<NotificationBridgeStatus> getStatus() async {
     final raw = await _channel.invokeMethod<Map<Object?, Object?>>('getStatus');
     return NotificationBridgeStatus.fromMap(raw ?? const {});
@@ -384,8 +406,7 @@ class NotificationNudgeService {
   }
 
   Future<NotificationNudgeSettings> loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
+    final raw = await _readSecureWithMigration(_prefsKey);
     if (raw == null || raw.isEmpty) {
       return NotificationNudgeSettings.defaults();
     }
@@ -400,16 +421,17 @@ class NotificationNudgeService {
   }
 
   Future<void> saveSettings(NotificationNudgeSettings settings) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefsKey, jsonEncode(settings.toJson()));
+    await _secureStorage.write(
+      key: _prefsKey,
+      value: jsonEncode(settings.toJson()),
+    );
     final settingsSync = UserSettingsSyncService();
     await settingsSync.markLocalSettingsDirty();
     await settingsSync.pushLocalSettingsToServer(throwOnFailure: true);
   }
 
   Future<List<LocationNudgeEvent>> loadObservedLocationEvents() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_observedLocationEventsKey);
+    final raw = await _readSecureWithMigration(_observedLocationEventsKey);
     if (raw == null || raw.trim().isEmpty) return const [];
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
@@ -427,14 +449,13 @@ class NotificationNudgeService {
   Future<void> _saveObservedLocationEvents(
     List<LocationNudgeEvent> events,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
     final capped = [...events]
       ..sort((a, b) => a.deliveredAt.compareTo(b.deliveredAt));
     final trimmed =
         capped.length > 160 ? capped.sublist(capped.length - 160) : capped;
-    await prefs.setString(
-      _observedLocationEventsKey,
-      jsonEncode(trimmed.map((event) => event.toJson()).toList()),
+    await _secureStorage.write(
+      key: _observedLocationEventsKey,
+      value: jsonEncode(trimmed.map((event) => event.toJson()).toList()),
     );
   }
 

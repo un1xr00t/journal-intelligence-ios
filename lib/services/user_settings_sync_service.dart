@@ -128,8 +128,12 @@ class UserSettingsSyncService {
       appPreferences['app_shell_mode'] = appShellMode;
     }
 
+    // Security (H8/H9): nudge settings (contain GPS coords) now live in
+    // secure storage. SharedPreferences reads remain as legacy fallback for
+    // values written before the migration.
     final notificationNudges =
-        _decodeMap(prefs.getString(notificationNudgesKey)) ??
+        _decodeMap(await _secureStorage.read(key: notificationNudgesKey)) ??
+            _decodeMap(prefs.getString(notificationNudgesKey)) ??
             _decodeMap(prefs.getString(_legacyNotificationNudgesKey));
     if (notificationNudges != null) {
       appPreferences['notification_nudges'] = notificationNudges;
@@ -176,8 +180,12 @@ class UserSettingsSyncService {
 
     final notificationNudges = _asMap(appPreferences['notification_nudges']);
     if (notificationNudges != null) {
-      await prefs.setString(
-          notificationNudgesKey, jsonEncode(notificationNudges));
+      // Security (H8/H9): write to secure storage and drop any plaintext copy.
+      await _secureStorage.write(
+        key: notificationNudgesKey,
+        value: jsonEncode(notificationNudges),
+      );
+      await prefs.remove(notificationNudgesKey);
     }
 
     final sageSettings = _asMap(appPreferences['sage_settings']);
@@ -209,6 +217,8 @@ class UserSettingsSyncService {
       return true;
     }
 
+    final nudges = await _secureStorage.read(key: notificationNudgesKey);
+    if (nudges != null && nudges.isNotEmpty) return true;
     final sageSettings = await _secureStorage.read(key: sageSettingsKey);
     if (sageSettings != null && sageSettings.isNotEmpty) return true;
     final sageMemory = await _secureStorage.read(key: sageMemoryItemsKey);

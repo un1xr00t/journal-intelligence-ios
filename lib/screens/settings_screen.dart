@@ -282,9 +282,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     passwordCtrl.dispose();
     if (password == null || password.isEmpty) return;
     try {
+      // Security (H6): biometricOnly true — device passcode fallback would
+      // let anyone with the PIN enable/replay biometric sign-in.
       final didAuth = await _localAuth.authenticate(
         localizedReason: 'Confirm to enable Face ID sign-in',
-        options: const AuthenticationOptions(biometricOnly: false),
+        options: const AuthenticationOptions(biometricOnly: true),
       );
       if (!didAuth) return;
       await _storage.write(key: 'biometric_username', value: username);

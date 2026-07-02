@@ -1561,9 +1561,28 @@ class ApiService {
       await _dio.post('/auth/logout');
     } catch (_) {}
     await clearTokens();
+    // Security (H10): explicit sign-out must revoke biometric quick-login.
+    // Deliberately done here (user-initiated logout) and NOT in clearTokens(),
+    // which also runs on silent refresh failure — wiping there would disable
+    // Face ID sign-in every time a session expires.
+    await _storage.delete(key: 'biometric_username');
+    await _storage.delete(key: 'biometric_password');
+    _voiceSettingsCache = null;
+    _voiceSettingsCachedAt = null;
   }
 
-  Future<String?> refreshAccessToken() async {
+  // Security (M1): single-flight guard. Concurrent 401s used to trigger
+  // parallel /auth/refresh calls (token rotation race). All callers now
+  // share one in-flight refresh future.
+  Future<String?>? _refreshInFlight;
+
+  Future<String?> refreshAccessToken() {
+    return _refreshInFlight ??= _doRefreshAccessToken().whenComplete(() {
+      _refreshInFlight = null;
+    });
+  }
+
+  Future<String?> _doRefreshAccessToken() async {
     await _ready;
     try {
       // Cookie jar automatically sends the refresh_token cookie
@@ -3222,9 +3241,17 @@ class _AuthInterceptor extends Interceptor {
   final ApiService _api;
   _AuthInterceptor(this._api);
 
+  // Auth endpoints must never trigger a refresh-and-retry: a 401 from
+  // /auth/refresh itself would otherwise recurse (and, with the M1
+  // single-flight guard, self-await). Pre-existing recursion risk, now fixed.
+  static const _noRetryPaths = ['/auth/refresh', '/auth/logout', '/auth/login'];
+
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401 && _api._accessToken != null) {
+    final path = err.requestOptions.path;
+    if (err.response?.statusCode == 401 &&
+        _api._accessToken != null &&
+        !_noRetryPaths.any(path.startsWith)) {
       final newToken = await _api.refreshAccessToken();
       if (newToken != null) {
         _api.setAccessToken(newToken);
