@@ -112,8 +112,36 @@ class _NotificationNudgesScreenState extends State<NotificationNudgesScreen>
       final status = await _service.requestNotificationPermission();
       if (!mounted) return;
       setState(() => _status = status);
+      if (status.notificationsAuthorized) {
+        await _resyncCurrentSchedules();
+      }
     } catch (e) {
       _showMessage('Could not request notification permission.', details: e);
+    }
+  }
+
+  Future<void> _resyncCurrentSchedules() async {
+    if (!mounted) return;
+    setState(() {
+      _syncing = true;
+      _error = null;
+    });
+
+    try {
+      final patternProfile = await _buildPatternProfileFor(_settings);
+      await _service.syncSchedules(
+        _settings,
+        journalPatternProfile: patternProfile,
+      );
+      if (!mounted) return;
+      setState(() {
+        _patternProfile = patternProfile;
+        _syncing = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _syncing = false);
+      _showMessage('Could not update your nudges.', details: e);
     }
   }
 

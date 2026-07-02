@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
 import 'follow_up_tasks_service.dart';
+import 'sage_inbox_service.dart';
 import 'user_settings_sync_service.dart';
 
 class NotificationBridgeStatus {
@@ -308,6 +309,7 @@ class NotificationNudgeService {
   static const _prefsKey = 'notification_nudges.settings.v1';
   static const _observedLocationEventsKey =
       'notification_nudges.location_events.v1';
+  static const _sageInboxNotifiedIdsKey = 'sage_inbox.notified_message_ids.v1';
   static const _morningId = 'nudge.morning';
   static const _eveningId = 'nudge.evening';
   static const _weeklyWyattId = 'nudge.weekly_wyatt';
@@ -316,6 +318,9 @@ class NotificationNudgeService {
   static const _followUpsUpcomingId = 'nudge.followups.upcoming';
   static const _followUpsUpcomingExtraId = 'nudge.followups.upcoming.extra';
   static const _followUpsWaitingId = 'nudge.followups.waiting';
+  static const _sageInboxDailyId = 'sage.inbox.daily_dispatch';
+  static const _sageInboxPrimaryId = 'sage.inbox.primary';
+  static const _sageInboxSecondaryId = 'sage.inbox.secondary';
   final _api = ApiService();
   final _followUpTasks = FollowUpTaskService();
 
@@ -463,6 +468,7 @@ class NotificationNudgeService {
     bool persistSettings = false,
   }) async {
     final previousSettings = await loadSettings();
+    final status = await getStatus();
     final idsToCancel = <String>{
       ..._allNotificationIdsFor(previousSettings),
       ..._allNotificationIdsFor(nextSettings),
@@ -472,6 +478,13 @@ class NotificationNudgeService {
       await _channel.invokeMethod<void>('cancelNotifications', {
         'ids': idsToCancel,
       });
+    }
+
+    if (!status.notificationsAuthorized) {
+      if (persistSettings) {
+        await saveSettings(nextSettings);
+      }
+      return;
     }
 
     if (nextSettings.morningPromptEnabled) {
@@ -576,6 +589,110 @@ class NotificationNudgeService {
     await _syncFollowUpReminders();
   }
 
+  Future<void> refreshSageInboxNotifications(
+    List<SageInboxMessage> messages,
+  ) async {
+    final ids = <String>[
+      _sageInboxDailyId,
+      _sageInboxPrimaryId,
+      _sageInboxSecondaryId,
+    ];
+    await _channel.invokeMethod<void>('cancelNotifications', {'ids': ids});
+
+    final status = await getStatus();
+    if (!status.notificationsAuthorized) return;
+
+    await _scheduleDailySageDispatchNotification();
+
+    final candidates = messages
+        .where((message) => message.isUnread && !message.isArchived)
+        .toList();
+    if (candidates.isEmpty) return;
+
+    final now = DateTime.now();
+    await _scheduleNewSageInboxNotification(candidates, now);
+
+    final first = candidates.first;
+    await _scheduleOneOffNotification(
+      id: _sageInboxPrimaryId,
+      title: 'Sage: ${first.subject}',
+      body: first.preview,
+      when: _sageInboxReminderTime(now, first.priority),
+      route: '/inbox',
+      routeSage: _buildSageRoute(
+        'Open my Sage Inbox message titled "${first.subject}" and help me act on it.',
+      ),
+    );
+
+    if (candidates.length < 2) return;
+    final second = candidates[1];
+    await _scheduleOneOffNotification(
+      id: _sageInboxSecondaryId,
+      title: 'Sage has another message',
+      body: second.subject,
+      when: _sageInboxReminderTime(
+        now.add(const Duration(hours: 4)),
+        second.priority,
+      ),
+      route: '/inbox',
+    );
+  }
+
+  Future<void> _scheduleNewSageInboxNotification(
+    List<SageInboxMessage> candidates,
+    DateTime now,
+  ) async {
+    final notifiedIds = await _loadSageInboxNotifiedIds();
+    final newMessages = candidates
+        .where((message) => !notifiedIds.contains(message.id))
+        .toList();
+    if (newMessages.isEmpty) return;
+
+    final first = newMessages.first;
+    final title = newMessages.length == 1
+        ? 'Sage: ${first.subject}'
+        : '${newMessages.length} new Sage messages';
+    final body = newMessages.length == 1
+        ? first.preview
+        : '${first.subject} and ${newMessages.length - 1} more';
+
+    await _scheduleOneOffNotification(
+      id: _sageInboxNewMessageId(first.id),
+      title: title,
+      body: body,
+      when: now.add(const Duration(minutes: 1)),
+      route: '/inbox',
+      routeSage: _buildSageRoute(
+        'Open my newest Sage Inbox message titled "${first.subject}" and help me respond or act.',
+      ),
+    );
+
+    notifiedIds.addAll(newMessages.map((message) => message.id));
+    await _saveSageInboxNotifiedIds(notifiedIds);
+  }
+
+  Future<Set<String>> _loadSageInboxNotifiedIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_sageInboxNotifiedIdsKey);
+    if (raw == null || raw.trim().isEmpty) return <String>{};
+    try {
+      final decoded = jsonDecode(raw) as List;
+      return decoded
+          .map((item) => item.toString())
+          .where((item) => item.trim().isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Future<void> _saveSageInboxNotifiedIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    final capped =
+        ids.length > 240 ? ids.skip(ids.length - 240).toList() : ids.toList();
+    await prefs.setString(_sageInboxNotifiedIdsKey, jsonEncode(capped));
+  }
+
   List<String> _allNotificationIdsFor(NotificationNudgeSettings settings) {
     final ids = <String>[];
     ids.add(_morningId);
@@ -586,6 +703,9 @@ class NotificationNudgeService {
     ids.add(_followUpsUpcomingId);
     ids.add(_followUpsUpcomingExtraId);
     ids.add(_followUpsWaitingId);
+    ids.add(_sageInboxDailyId);
+    ids.add(_sageInboxPrimaryId);
+    ids.add(_sageInboxSecondaryId);
     ids.addAll(
       settings.places.expand(
         (place) => [
@@ -605,6 +725,11 @@ class NotificationNudgeService {
 
   String _placeExitNotificationId(String placeId) =>
       'nudge.place.exit.$placeId';
+
+  String _sageInboxNewMessageId(String messageId) {
+    final safeId = messageId.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    return 'sage.inbox.new.$safeId';
+  }
 
   String _buildWriteRoute(String prefill) {
     return Uri(
@@ -781,6 +906,21 @@ class NotificationNudgeService {
     });
   }
 
+  Future<void> _scheduleDailySageDispatchNotification() async {
+    await _channel.invokeMethod<void>('scheduleCalendarNotification', {
+      'id': _sageInboxDailyId,
+      'title': 'Sage Daily Dispatch',
+      'body': 'Your morning read is ready: signal, context, and next moves.',
+      'hour': 8,
+      'minute': 45,
+      'repeats': true,
+      'route': '/inbox',
+      'routeSage': _buildSageRoute(
+        'Open my Sage Daily Dispatch and help me turn it into one practical move for today.',
+      ),
+    });
+  }
+
   DateTime _nextReminderTime(
     DateTime now, {
     required int preferredHour,
@@ -797,6 +937,23 @@ class NotificationNudgeService {
       scheduled = scheduled.add(const Duration(days: 1));
     }
     return scheduled;
+  }
+
+  DateTime _sageInboxReminderTime(
+    DateTime now,
+    SageInboxPriority priority,
+  ) {
+    if (priority == SageInboxPriority.urgent) {
+      return now.add(const Duration(minutes: 15));
+    }
+    if (priority == SageInboxPriority.high) {
+      return now.add(const Duration(hours: 1));
+    }
+    return _nextReminderTime(
+      now,
+      preferredHour: priority == SageInboxPriority.low ? 18 : 11,
+      preferredMinute: priority == SageInboxPriority.low ? 20 : 30,
+    );
   }
 
   DateTime _dueSoonReminderTime(
