@@ -7,10 +7,19 @@ class AiResponseLimits {
   static const int sageReplyMaxTokens = 1400;
   static const int sageUtilityMaxTokens = 500;
 
+  /// Voice-mode turns are read aloud; shorter replies generate faster and
+  /// reach the first spoken word sooner.
+  static const int sageVoiceReplyMaxTokens = 320;
+
   static const int speechChunkMaxChars = 2800;
   static const int speechChunkMaxBytes = 3500;
   static const int speechFirstChunkMaxChars = 900;
   static const int speechFirstChunkMaxBytes = 1200;
+
+  /// Tiny first chunk for hands-free voice mode so ElevenLabs returns the
+  /// opening audio as fast as possible; later chunks prefetch during playback.
+  static const int speechVoiceFirstChunkMaxChars = 280;
+  static const int speechVoiceFirstChunkMaxBytes = 380;
 
   static const int livingSummarySpeechMaxChars = 5600;
   static const int livingSummarySpeechMaxBytes = 7200;
@@ -18,7 +27,11 @@ class AiResponseLimits {
   static const int livingSummarySageHandoffMaxBytes = 7200;
 }
 
-List<String> buildSpeechChunks(String raw) {
+List<String> buildSpeechChunks(
+  String raw, {
+  int? firstChunkMaxChars,
+  int? firstChunkMaxBytes,
+}) {
   final withoutActions = raw.split('---ACTIONS---').first;
   final cleaned = withoutActions
       .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
@@ -34,10 +47,10 @@ List<String> buildSpeechChunks(String raw) {
 
   while (remaining.isNotEmpty) {
     final maxChars = firstChunk
-        ? AiResponseLimits.speechFirstChunkMaxChars
+        ? (firstChunkMaxChars ?? AiResponseLimits.speechFirstChunkMaxChars)
         : AiResponseLimits.speechChunkMaxChars;
     final maxBytes = firstChunk
-        ? AiResponseLimits.speechFirstChunkMaxBytes
+        ? (firstChunkMaxBytes ?? AiResponseLimits.speechFirstChunkMaxBytes)
         : AiResponseLimits.speechChunkMaxBytes;
 
     if (remaining.length <= maxChars &&

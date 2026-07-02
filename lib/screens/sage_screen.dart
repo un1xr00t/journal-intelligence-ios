@@ -20,7 +20,9 @@ import '../services/ai_response_limits.dart';
 import '../services/api_service.dart';
 import '../services/follow_up_tasks_service.dart';
 import '../services/sage_profile_service.dart';
+import '../services/sage_voice_conversation_controller.dart';
 import '../services/tts_audio_file_helper.dart';
+import '../services/voice_entry_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'admin_screen.dart';
@@ -38,6 +40,7 @@ import 'resources_screen.dart';
 import 'saved_sage_chats_screen.dart';
 import 'sage_settings_screen.dart';
 import 'sage_tracks_screen.dart';
+import 'sage_voice_mode_screen.dart';
 import 'settings_screen.dart';
 import 'timeline_screen.dart';
 import 'today_screen.dart';
@@ -820,6 +823,7 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   int _messageCounter = 0;
   int _ttsRequestCounter = 0;
   bool _ttsSequenceActive = false;
+  Future<Map<String, dynamic>>? _voiceSettingsFuture;
   bool _seededInitialAssistantMessage = false;
   bool _appliedInitialPrefill = false;
   bool _appliedInitialAttachments = false;
@@ -1710,10 +1714,20 @@ $latestContent
     ];
   }
 
-  Future<void> _send({
+  static const _kVoiceModeInstruction = '''
+
+[VOICE MODE — ACTIVE]
+The user is speaking hands-free (possibly driving) and your reply will be
+read aloud by TTS. Keep it to 1–4 short conversational sentences. Plain
+spoken prose only — no markdown, no lists, no headers, no links. Lead with
+the substance. Only ask a follow-up question when you actually need the
+answer to continue.''';
+
+  Future<_SageMessage?> _send({
     String? text,
     bool hiddenUserMessage = false,
     bool includePendingAttachmentsWhenHidden = false,
+    bool voiceMode = false,
   }) async {
     final typedPrompt = (text ?? _composerCtrl.text).trim();
     final outgoingAttachments =
@@ -1725,7 +1739,7 @@ $latestContent
         : outgoingAttachments.isNotEmpty
             ? 'Please review these attached files.'
             : '';
-    if (prompt.isEmpty || _replyLoading || _contextString == null) return;
+    if (prompt.isEmpty || _replyLoading || _contextString == null) return null;
 
     final outgoing = _SageMessage.user(
       _nextMessageId(),
@@ -1755,9 +1769,13 @@ $latestContent
     try {
       final response = await _api.sendFloatchatMessage(
         messages: requestMessages,
-        contextString: _buildContextPayload(_contextString!),
+        contextString: voiceMode
+            ? '${_buildContextPayload(_contextString!)}$_kVoiceModeInstruction'
+            : _buildContextPayload(_contextString!),
         webSearchEnabled: _settings.webSearchEnabled,
-        maxTokens: AiResponseLimits.sageReplyMaxTokens,
+        maxTokens: voiceMode
+            ? AiResponseLimits.sageVoiceReplyMaxTokens
+            : AiResponseLimits.sageReplyMaxTokens,
         contextHints: _handoff.contextHints,
         attachments: outgoing.attachments
             .map((attachment) => attachment.toApiAttachmentPayload())
@@ -1771,7 +1789,7 @@ $latestContent
               .toList() ??
           const <Map<String, dynamic>>[];
 
-      if (!mounted) return;
+      if (!mounted) return null;
       final assistantMessage = _SageMessage.assistant(
         _nextMessageId(),
         reply?.isNotEmpty == true
@@ -1789,16 +1807,18 @@ $latestContent
           assistantMessage.text.trim().isNotEmpty) {
         unawaited(_captureMemoryFromExchange(prompt, assistantMessage.text));
       }
+      _scrollDown();
+      return assistantMessage;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return null;
       setState(() {
         _messages = visibleMessages;
         _replyLoading = false;
         _replyError = _parseError(e);
       });
+      _scrollDown();
+      return null;
     }
-
-    _scrollDown();
   }
 
   Future<void> _captureMemoryFromExchange(
@@ -2089,7 +2109,10 @@ Return JSON only.
     });
   }
 
-  Future<void> _toggleSpeak(_SageMessage message) async {
+  Future<void> _toggleSpeak(
+    _SageMessage message, {
+    bool fastFirstChunk = false,
+  }) async {
     if (message.role != 'assistant' || message.text.trim().isEmpty) return;
 
     if (_ttsLoadingMessageId == message.id) return;
@@ -2118,16 +2141,28 @@ Return JSON only.
       final stopwatch = Stopwatch()..start();
       await configureTtsAudioPlayer(_audioPlayer);
       await _audioPlayer.stop();
-      final voiceSettings = await _api.getVoiceSettings();
+      // Voice settings rarely change; cache them so every spoken turn skips
+      // one full server round-trip. Invalidated on TTS failure below.
+      final voiceSettings =
+          await (_voiceSettingsFuture ??= _api.getVoiceSettings());
       final hasVoiceKey = voiceSettings['has_voice_key'] == true;
       final hasElevenLabsKey = voiceSettings['has_elevenlabs_key'] == true;
       final usingOpenAi = voiceSettings['using_openai'] == true;
       if (!hasVoiceKey && !hasElevenLabsKey && !usingOpenAi) {
+        _voiceSettingsFuture = null;
         throw Exception(
           'Voice requires an ElevenLabs API key. Add one in Settings → Voice, or configure ELEVENLABS_API_KEY on the server.',
         );
       }
-      final chunks = buildSpeechChunks(message.text);
+      final chunks = buildSpeechChunks(
+        message.text,
+        firstChunkMaxChars: fastFirstChunk
+            ? AiResponseLimits.speechVoiceFirstChunkMaxChars
+            : null,
+        firstChunkMaxBytes: fastFirstChunk
+            ? AiResponseLimits.speechVoiceFirstChunkMaxBytes
+            : null,
+      );
       if (chunks.isEmpty) throw Exception('No text to speak.');
       developer.log(
         'Sage TTS prepared ${chunks.length} chunk(s) for message ${message.id}',
@@ -2200,6 +2235,8 @@ Return JSON only.
         _ttsLoadingMessageId = null;
       });
     } catch (e) {
+      // Refetch voice settings on the next attempt in case they changed.
+      _voiceSettingsFuture = null;
       if (requestId != _ttsRequestCounter) return;
       _ttsSequenceActive = false;
       if (!mounted) return;
@@ -2210,6 +2247,60 @@ Return JSON only.
         _ttsErrorText = _parseTtsError(e);
       });
     }
+  }
+
+  Future<void> _stopTtsPlayback() async {
+    _ttsRequestCounter += 1;
+    _ttsSequenceActive = false;
+    await _audioPlayer.stop();
+    if (!mounted) return;
+    setState(() {
+      _speakingMessageId = null;
+      _ttsLoadingMessageId = null;
+    });
+  }
+
+  Future<void> _openVoiceMode() async {
+    if (_contextLoading || _contextString == null || _replyLoading) return;
+    _focusNode.unfocus();
+    await _stopTtsPlayback();
+
+    // Warm the voice-settings cache so the first spoken reply doesn't pay
+    // an extra round-trip before TTS can start.
+    unawaited(() async {
+      try {
+        await (_voiceSettingsFuture ??= _api.getVoiceSettings());
+      } catch (_) {
+        _voiceSettingsFuture = null;
+      }
+    }());
+
+    _SageMessage? lastVoiceReply;
+    final controller = SageVoiceConversationController(
+      voiceEntry: VoiceEntryService(),
+      sendTurn: (transcript) async {
+        final message = await _send(text: transcript, voiceMode: true);
+        lastVoiceReply = message;
+        return message?.text;
+      },
+      speakReply: () async {
+        final message = lastVoiceReply;
+        if (message == null) return false;
+        await _toggleSpeak(message, fastFirstChunk: true);
+        return _ttsErrorMessageId != message.id;
+      },
+      stopSpeaking: _stopTtsPlayback,
+    );
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => SageVoiceModeScreen(controller: controller),
+      ),
+    );
+    await controller.endSession();
+    controller.dispose();
   }
 
   Future<void> _waitForAudioToFinish() {
@@ -2873,6 +2964,7 @@ $excerpt
                 onPickAttachment: _chooseAttachmentSource,
                 onRemoveAttachment: _removeAttachment,
                 onSend: () => _send(),
+                onOpenVoiceMode: _openVoiceMode,
                 onSuggestionTap: (prompt) => _send(text: prompt),
               ),
             ],
@@ -4638,6 +4730,7 @@ class _SageInputBar extends StatelessWidget {
     required this.onPickAttachment,
     required this.onRemoveAttachment,
     required this.onSend,
+    required this.onOpenVoiceMode,
     required this.onSuggestionTap,
   });
 
@@ -4650,6 +4743,7 @@ class _SageInputBar extends StatelessWidget {
   final VoidCallback onPickAttachment;
   final ValueChanged<int> onRemoveAttachment;
   final VoidCallback onSend;
+  final VoidCallback onOpenVoiceMode;
   final ValueChanged<String> onSuggestionTap;
 
   @override
@@ -4958,6 +5052,26 @@ class _SageInputBar extends StatelessWidget {
                                   ),
                               ],
                             ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: loading ? null : onOpenVoiceMode,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _withAlpha(JournalColors.bgSurface, 0.92),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: JournalColors.border),
+                      ),
+                      child: Icon(
+                        CupertinoIcons.waveform,
+                        color: loading
+                            ? JournalColors.textMuted
+                            : JournalColors.textSecondary,
+                        size: 18,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
