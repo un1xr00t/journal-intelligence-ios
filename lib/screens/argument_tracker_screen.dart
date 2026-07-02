@@ -25,7 +25,6 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   final _api = ApiService();
   final _titleController = TextEditingController();
   final _optionalDetailsController = TextEditingController();
-  final _reportEditorController = TextEditingController();
   final _imagePicker = ImagePicker();
   final _dateFormat = DateFormat('MMM d, yyyy • h:mm a');
 
@@ -35,8 +34,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   bool _loadingReports = true;
   bool _generating = false;
   bool _exportingPdf = false;
-  bool _editingReport = false;
-  bool _savingReport = false;
+  bool _correctingReport = false;
   String? _error;
   String? _openingId;
   String? _deletingId;
@@ -51,7 +49,6 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   void dispose() {
     _titleController.dispose();
     _optionalDetailsController.dispose();
-    _reportEditorController.dispose();
     super.dispose();
   }
 
@@ -156,8 +153,6 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       if (!mounted) return;
       setState(() {
         _activeReport = report;
-        _reportEditorController.text = report.result;
-        _editingReport = false;
         _reports = [report, ..._reports.where((item) => item.id != report.id)];
         _generating = false;
       });
@@ -179,8 +174,6 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       if (!mounted) return;
       setState(() {
         _activeReport = detail;
-        _reportEditorController.text = detail.result;
-        _editingReport = false;
         _openingId = null;
       });
     } catch (e) {
@@ -192,36 +185,74 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
     }
   }
 
-  void _startEditingReport() {
+  Future<void> _promptForReportCorrection() async {
     final report = _activeReport;
-    if (report == null) return;
-    _reportEditorController.text = report.result;
-    setState(() => _editingReport = true);
-  }
+    if (report == null || _correctingReport) return;
 
-  void _cancelEditingReport() {
-    final report = _activeReport;
-    if (report != null) _reportEditorController.text = report.result;
-    setState(() => _editingReport = false);
-  }
-
-  Future<void> _saveReportCorrections() async {
-    final report = _activeReport;
-    final result = _reportEditorController.text.trim();
-    if (report == null || _savingReport) return;
-    if (result.isEmpty) {
-      setState(() => _error = 'Report text cannot be empty.');
-      return;
-    }
+    final controller = TextEditingController();
+    final correction = await showCupertinoDialog<String>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('What part would you like to correct?'),
+        content: Column(
+          children: [
+            const SizedBox(height: 8),
+            const Text(
+              'Describe the incorrect detail and the correct fact. Sage will update only the relevant parts of this case.',
+            ),
+            const SizedBox(height: 12),
+            CupertinoTextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              padding: const EdgeInsets.all(12),
+              cursorColor: JournalColors.accent,
+              placeholder:
+                  'Example: Both visible messages were sent by me. The second was not her reply.',
+              placeholderStyle: const TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 13,
+              ),
+              style: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 14,
+              ),
+              decoration: BoxDecoration(
+                color: JournalColors.bgSurface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: JournalColors.borderBright),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Correct with Sage'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (correction == null || correction.isEmpty || !mounted) return;
 
     setState(() {
-      _savingReport = true;
+      _correctingReport = true;
       _error = null;
     });
     try {
-      final updated = await _api.updateArgumentTrackerReport(
+      final updated = await _api.correctArgumentTrackerReport(
         reportId: report.id,
-        result: result,
+        correction: correction,
       );
       if (!mounted) return;
       setState(() {
@@ -230,15 +261,13 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
           updated,
           ..._reports.where((item) => item.id != updated.id),
         ];
-        _reportEditorController.text = updated.result;
-        _editingReport = false;
-        _savingReport = false;
+        _correctingReport = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _savingReport = false;
-        _error = _parseError(e, fallback: 'Could not save report corrections.');
+        _correctingReport = false;
+        _error = _parseError(e, fallback: 'Could not correct this report.');
       });
     }
   }
@@ -411,6 +440,36 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
     return _dateFormat.format(parsed.toLocal());
   }
 
+  Widget _reportSwipeBackground() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: JournalColors.accent.withValues(alpha: 0.14),
+      ),
+      padding: const EdgeInsets.only(right: 20),
+      alignment: Alignment.centerRight,
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            'Correct with Sage',
+            style: TextStyle(
+              color: JournalColors.accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SizedBox(width: 8),
+          Icon(
+            CupertinoIcons.sparkles,
+            color: JournalColors.accent,
+            size: 18,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeReport = _activeReport;
@@ -513,16 +572,24 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
                   ),
                   if (activeReport != null) ...[
                     const SizedBox(height: 18),
-                    _ReportCard(
-                      report: activeReport,
-                      exportingPdf: _exportingPdf,
-                      editing: _editingReport,
-                      saving: _savingReport,
-                      editorController: _reportEditorController,
-                      onExportPdf: _exportActiveReportPdf,
-                      onEdit: _startEditingReport,
-                      onCancelEdit: _cancelEditingReport,
-                      onSaveEdit: _saveReportCorrections,
+                    Dismissible(
+                      key: ValueKey(
+                        'argument-report-${activeReport.id}-${activeReport.updatedAt}',
+                      ),
+                      direction: _correctingReport
+                          ? DismissDirection.none
+                          : DismissDirection.endToStart,
+                      confirmDismiss: (_) async {
+                        _promptForReportCorrection();
+                        return false;
+                      },
+                      background: _reportSwipeBackground(),
+                      child: _ReportCard(
+                        report: activeReport,
+                        exportingPdf: _exportingPdf,
+                        correcting: _correctingReport,
+                        onExportPdf: _exportActiveReportPdf,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 22),
@@ -886,24 +953,14 @@ class _ReportCard extends StatelessWidget {
   const _ReportCard({
     required this.report,
     required this.exportingPdf,
-    required this.editing,
-    required this.saving,
-    required this.editorController,
+    required this.correcting,
     required this.onExportPdf,
-    required this.onEdit,
-    required this.onCancelEdit,
-    required this.onSaveEdit,
   });
 
   final ArgumentTrackerReport report;
   final bool exportingPdf;
-  final bool editing;
-  final bool saving;
-  final TextEditingController editorController;
+  final bool correcting;
   final VoidCallback onExportPdf;
-  final VoidCallback onEdit;
-  final VoidCallback onCancelEdit;
-  final VoidCallback onSaveEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -929,43 +986,37 @@ class _ReportCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: saving ? null : (editing ? onCancelEdit : onEdit),
-            child: Container(
+          if (correcting) ...[
+            Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
               decoration: BoxDecoration(
                 color: JournalColors.accent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JournalColors.borderBright),
               ),
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+              child: const Row(
                 children: [
-                  Icon(
-                    editing ? CupertinoIcons.xmark : CupertinoIcons.pencil,
-                    color: JournalColors.accent,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    editing ? 'Cancel Editing' : 'Correct Report Details',
-                    style: const TextStyle(
-                      color: JournalColors.accent,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                  CupertinoActivityIndicator(color: JournalColors.accent),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Sage is correcting the relevant case details…',
+                      style: TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
+          ],
           CupertinoButton(
             padding: EdgeInsets.zero,
-            onPressed: exportingPdf ? null : onExportPdf,
+            onPressed: exportingPdf || correcting ? null : onExportPdf,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1001,100 +1052,53 @@ class _ReportCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (editing) ...[
-            CupertinoTextField(
-              controller: editorController,
-              minLines: 14,
-              maxLines: null,
-              padding: const EdgeInsets.all(14),
-              cursorColor: JournalColors.accent,
-              style: const TextStyle(
+          MarkdownBody(
+            data: report.result.trim().isEmpty
+                ? 'No generated report text returned.'
+                : report.result,
+            styleSheet: MarkdownStyleSheet(
+              p: const TextStyle(
                 color: JournalColors.textPrimary,
-                fontSize: 14,
-                height: 1.5,
+                fontSize: 15,
+                height: 1.62,
               ),
-              decoration: BoxDecoration(
+              h1: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+              h2: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              h3: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+              strong: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+              blockquote: const TextStyle(
+                color: JournalColors.textPrimary,
+                fontSize: 15,
+                height: 1.62,
+                fontStyle: FontStyle.italic,
+              ),
+              blockquotePadding: const EdgeInsets.all(14),
+              blockquoteDecoration: BoxDecoration(
                 color: JournalColors.bgSurface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: JournalColors.borderBright),
               ),
-            ),
-            const SizedBox(height: 12),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: saving ? null : onSaveEdit,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  color:
-                      saving ? JournalColors.bgCardAlt : JournalColors.accent,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: JournalColors.borderBright),
-                ),
-                alignment: Alignment.center,
-                child: saving
-                    ? const CupertinoActivityIndicator(
-                        color: JournalColors.accent,
-                      )
-                    : const Text(
-                        'Save Corrections',
-                        style: TextStyle(
-                          color: JournalColors.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+              listBullet: const TextStyle(
+                color: JournalColors.textSecondary,
+                fontSize: 15,
               ),
             ),
-          ] else
-            MarkdownBody(
-              data: report.result.trim().isEmpty
-                  ? 'No generated report text returned.'
-                  : report.result,
-              styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 15,
-                  height: 1.62,
-                ),
-                h1: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-                h2: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-                h3: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-                strong: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
-                blockquote: const TextStyle(
-                  color: JournalColors.textPrimary,
-                  fontSize: 15,
-                  height: 1.62,
-                  fontStyle: FontStyle.italic,
-                ),
-                blockquotePadding: const EdgeInsets.all(14),
-                blockquoteDecoration: BoxDecoration(
-                  color: JournalColors.bgSurface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: JournalColors.borderBright),
-                ),
-                listBullet: const TextStyle(
-                  color: JournalColors.textSecondary,
-                  fontSize: 15,
-                ),
-              ),
-            ),
+          ),
         ],
       ),
     );

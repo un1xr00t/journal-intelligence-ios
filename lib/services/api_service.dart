@@ -1857,6 +1857,23 @@ class ApiService {
     );
   }
 
+  Future<ArgumentTrackerReport> correctArgumentTrackerReport({
+    required String reportId,
+    required String correction,
+  }) async {
+    final res = await _authedPost(
+      '/api/argument-tracker/reports/$reportId/correct',
+      data: {'correction': correction},
+      options: Options(
+        receiveTimeout: const Duration(minutes: 3),
+        sendTimeout: const Duration(seconds: 30),
+      ),
+    );
+    return ArgumentTrackerReport.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
   Future<void> deleteArgumentTrackerReport(String reportId) async {
     await _authedDelete('/api/argument-tracker/reports/$reportId');
   }
