@@ -47,6 +47,89 @@ The latest release cycle turned Sage from a chat screen into an ambient presence
 - Support real-life decision making with dedicated tools for early warning, mental health tracking, fairness analysis, evidence collection, budgeting, exit planning, and narrative drafting.
 - Keep sensitive workflows grounded in iOS-native behavior with Face ID, passkeys, 2FA, PIN lock, session controls, local notifications, and native speech support.
 
+## The LifeOS Desktop Web App
+
+This iOS client is one of two surfaces for the same self-hosted system. The other is **LifeOS** — the desktop web frontend served from the same VPS at `https://journal.williamthomas.name`. Both clients share one FastAPI backend, one SQLite database, and one auth system, so an entry written on the phone is instantly part of the same intelligence layer on desktop, and vice versa.
+
+LifeOS is not a dashboard with a sidebar — it is a full personal operating system that runs in the browser. It boots into a desktop: wallpaper, a top menu bar, a dock along the bottom, and app-style modules that open as **draggable, layered windows** with traffic-light controls, exactly like a native OS. Apps group into dock folders (Insights, Case Building, and so on), multiple windows can be open and stacked at once, and every module — Journal, Sage, Reflection, Exit Plan, Detective — behaves like its own application inside the environment.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/8c814ba3-4503-4be7-af6f-6ea622737066" alt="LifeOS desktop shell with dock and Insights folder" width="800">
+</p>
+
+### How it works
+
+- **Stack:** React 18 + Vite 5 single-page app with React Router v6, Tailwind CSS 3, and CSS custom properties, served as static files by nginx from the VPS. All API calls route through a single Axios service layer, talking to the same FastAPI backend on the same host. SSL termination and an IP allowlist happen at the nginx layer before any request touches the API.
+- **Same account, same data:** login, 2FA, passkeys, sessions, and refresh tokens are identical across web and iOS. There is no separate "web account" — the web app is just another window into the same journal.
+- **Reference implementation:** the web app is the canonical, feature-complete client. New features land on web first, and the iOS app achieves parity against it. When the two ever disagree, the web app's API usage is the source of truth.
+- **Deployment:** built locally and shipped with a one-command deploy script that snapshots the live build before rsyncing, validates nginx config, and supports instant rollback — so the desktop app can iterate fast without risking downtime.
+
+### Why a desktop environment matters
+
+Because every module is a window, LifeOS can do what a phone physically can't: run your whole system side by side. Browse the journal in one window, read an AI reflection in a second, and talk to Sage in a third — simultaneously, without losing state in any of them.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/e166f789-77b5-44f4-aee5-a63b6278b186" alt="LifeOS multitasking — Journal, Reflection, and Sage windows open at once" width="800">
+</p>
+
+### Feature highlights
+
+**Sage — the personal assistant, one dock click away.** Sage opens as its own app window with a time-aware greeting, journal context attached by default, and one-tap capability chips: spot patterns, think it through, make a plan, reality check, plus direct pulls from journal entries and mood trends, narrative summaries, active alerts, the evidence vault, detective cases, exit plan progress, the fairness ledger, budget and spending, people intelligence, and the user memory profile.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7f50892f-3e9e-4286-9508-83662aebbbaf" alt="Sage assistant home with capability chips" width="800">
+</p>
+
+In conversation, Sage answers with real data from the journal — referencing dated entries, severity scores, and known people and routines — and supports spoken replies.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/efaf3390-16cc-458d-ae1d-af951c672e4b" alt="Sage conversation grounded in journal history" width="800">
+</p>
+
+**Reflection — the timeline summary in its own room.** Pick a voice, generate a summary over a date range, then read or listen. Six distinct voices are available — Therapist, Best Friend, Coach, Mentor, Inner Critic, and Chaos Agent (unfiltered, 18+) — each producing a genuinely different read on the same entries, from warm and clinically aware to profane and accidentally insightful.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/08579a94-4aeb-4288-a689-69094ffa6121" alt="Reflection — Best Friend voice" width="49%">
+  <img src="https://github.com/user-attachments/assets/91432e37-39b2-409c-b51c-4a7a76e645a5" alt="Reflection — Chaos Agent voice" width="49%">
+</p>
+
+**Exit Plan Workspace — a full planning application.** Opens as its own window with overall progress tracking, critical-task counters, active signal chips, and phased plans that unlock as earlier phases hit 50%. Includes Today / Phases / Kanban / Notes / Support Network / Attachments / Share / Export tabs, per-task detail panels with priority, status, due dates, "why this matters" context, and AI-picked resources for each step.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/86b8d74c-c6e8-4c9b-95aa-1c2865bba149" alt="Exit Plan Workspace — phased plan with task detail panel" width="800">
+</p>
+
+**My Story — an AI narrative builder.** A guided three-step flow: choose data sources (journal entries, fairness ledger, case data when Detective Mode is active), add context the AI doesn't have yet, then pick the audience — General, Therapist (clinical context, patterns and impact), or Lawyer (evidence-grounded, factual brief) — and LifeOS drafts a reusable account of what you've been going through, written in your corner.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/fd38782c-cc83-48ca-b1fe-0aa80806bb47" alt="My Story builder — data sources, context, and audience selection" width="800">
+</p>
+
+**Resources — support, personalized.** Instead of a static link list, LifeOS reads recent journal patterns and writes a personalized framing for each category — emotional support and therapy, mental health and wellbeing, grounding and calming, burnout and work stress, relationship and family support — with curated resources behind each one and a refresh that re-personalizes on demand.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/0992cd9e-7cbc-45ef-8934-a0148d7baf73" alt="Resources — personalized support categories" width="800">
+</p>
+
+**And the rest of the surface:** Quiet Journal (focused entries, calendar and media views, attachments), Today's daily brief, Ask My Journal RAG search, Detective, Evidence, Proof Vault, War Room, insight modules (Patterns, Nervous System, Early Warning, People Map, People), and full Settings covering account, AI, voice, desktop appearance, security, and app preferences.
+
+### Why two clients instead of one
+
+- **Capture happens on the phone; synthesis happens on the desktop.** iOS owns the fast, ambient paths — Siri, widgets, CarPlay, voice, notifications, lock-screen audio. The web app owns deep work — case building, planning workspaces, analysis, and admin.
+- **Zero duplication of intelligence.** All AI features (Sage, reflections, timeline insight, detective briefs, early warning) run on the shared backend, so both clients get identical answers from identical context.
+- **Self-hosted end to end.** The web app is not a SaaS front end — it's your own React app, on your own server, behind your own nginx, reading your own database. Nothing about the desktop experience introduces a third party.
+
+### Advantages at a glance
+
+| | LifeOS Web (Desktop) | This iOS App |
+|---|---|---|
+| Best for | Deep work, case building, planning, analysis | Capture, ambient check-ins, on-the-go |
+| Layout | OS-style desktop shell — dock, draggable windows, multitasking | Five-tab shell, focused single screens |
+| Input | Full keyboard, drag-and-drop, bulk workflows | Voice, Siri, widgets, SMS, CarPlay |
+| Feature status | Reference implementation — feature complete | Parity in progress (see Current Gaps) |
+| Theming | Default dark + Writer (warm amber) theme | Default dark (Writer theme planned) |
+| Deployment | Snapshot + rollback deploy script on the VPS | App build via Xcode |
+
 ## Product Tour
 
 <p align="center">
@@ -128,12 +211,12 @@ The latest release cycle turned Sage from a chat screen into an ambient presence
 This is one of the most distinctive parts of the app and it deserves more than a one-line mention.
 
 - Notification nudges are local iPhone notifications, not a generic push campaign.
-- The app supports scheduled morning, evening, and weekly Wyatt reminders.
+- The app supports scheduled morning, evening, and weekly recurring reminders.
 - It also supports saved-place geofence nudges for arrival and exit transitions like `home`, `work`, and other custom places.
 - **Follow-Up reminders** add pressure where it counts: overdue items, due-soon items, and stale waiting threads generate their own notifications, with higher-priority tasks earning earlier and extra reminders.
 - **Sage Inbox check-ins** arrive as instant notifications after journaling, timed adaptively rather than on a fixed clock.
 - Nudges can deep-link straight into `Write` with a prefilled prompt, into `Follow-Ups`, or into `Sage` with an auto-send handoff — with stale-prefill protection so old notification content never re-injects into a fresh Write screen.
-- When explainable journal-pattern prompts are enabled, the app analyzes recent timeline entries locally, looks for signals like home stress, work-to-home transitions, family language, later-day Wyatt mentions, and heavier stress windows, then rewrites notification copy to fit that pattern.
+- When explainable journal-pattern prompts are enabled, the app analyzes recent timeline entries locally, looks for signals like home stress, work-to-home transitions, family language, recurring people mentions later in the day, and heavier stress windows, then rewrites notification copy to fit that pattern.
 - The UI explains why a nudge became smarter instead of hiding the reasoning behind a black box.
 - Location history and learned movement patterns stay on-device — now in **encrypted secure storage** — and the reminders work without APNs.
 
