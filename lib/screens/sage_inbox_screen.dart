@@ -1226,79 +1226,99 @@ class _ReplyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassCard(
-      accentBorder: replies.isNotEmpty,
+      accentBorder: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Reply to Sage',
-                  style: TextStyle(
-                    color: JournalColors.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (sending)
-                const CupertinoActivityIndicator(color: JournalColors.accent),
-            ],
-          ),
           if (replies.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            ...replies.map(
-              (reply) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ReplyBubble(reply: reply),
-              ),
-            ),
+            for (var i = 0; i < replies.length; i++) ...[
+              if (i > 0) const _ThreadDivider(),
+              _ReplyEntry(reply: replies[i]),
+            ],
+            const _ThreadDivider(),
           ],
-          const SizedBox(height: 10),
-          CupertinoTextField(
-            controller: controller,
-            minLines: 2,
-            maxLines: 5,
-            enabled: !sending,
-            placeholder: 'Ask a question, mark progress, or push back...',
-            placeholderStyle: const TextStyle(color: JournalColors.textMuted),
-            style: const TextStyle(
-              color: JournalColors.textPrimary,
-              fontSize: 15,
-              height: 1.35,
-            ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               color: JournalColors.bgSurface,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: JournalColors.border),
             ),
-            padding: const EdgeInsets.all(14),
-          ),
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              error!,
-              style: const TextStyle(
-                color: JournalColors.danger,
-                fontSize: 12,
-                height: 1.35,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-              color: JournalColors.accent,
-              onPressed: sending ? null : onSend,
-              child: Text(
-                sending ? 'Sage is reading...' : 'Send to Sage',
-                style: const TextStyle(
-                  color: CupertinoColors.white,
-                  fontWeight: FontWeight.w700,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.arrowshape_turn_up_left,
+                      size: 14,
+                      color: JournalColors.textMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'Reply to Sage',
+                        style: TextStyle(
+                          color: JournalColors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (sending)
+                      const CupertinoActivityIndicator(
+                          color: JournalColors.accent),
+                  ],
                 ),
-              ),
+                CupertinoTextField(
+                  controller: controller,
+                  minLines: 3,
+                  maxLines: 8,
+                  enabled: !sending,
+                  placeholder: 'Write your reply...',
+                  placeholderStyle:
+                      const TextStyle(color: JournalColors.textMuted),
+                  style: const TextStyle(
+                    color: JournalColors.textPrimary,
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                  decoration: const BoxDecoration(),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    error!,
+                    style: const TextStyle(
+                      color: JournalColors.danger,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    CupertinoButton(
+                      color: JournalColors.accent,
+                      borderRadius: BorderRadius.circular(20),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 8),
+                      onPressed: sending ? null : onSend,
+                      child: Text(
+                        sending ? 'Sending...' : 'Send',
+                        style: const TextStyle(
+                          color: CupertinoColors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -1307,51 +1327,101 @@ class _ReplyPanel extends StatelessWidget {
   }
 }
 
-class _ReplyBubble extends StatelessWidget {
-  const _ReplyBubble({required this.reply});
+class _ThreadDivider extends StatelessWidget {
+  const _ThreadDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(vertical: 14),
+      color: JournalColors.border,
+    );
+  }
+}
+
+class _ReplyEntry extends StatelessWidget {
+  const _ReplyEntry({required this.reply});
 
   final SageInboxReply reply;
 
   @override
   Widget build(BuildContext context) {
     final isUser = reply.role == SageInboxReplyRole.user;
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: isUser
-              ? JournalColors.accent.withValues(alpha: 0.2)
-              : JournalColors.bgSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isUser ? JournalColors.borderBright : JournalColors.border,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final name = isUser ? 'William' : 'Sage';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Text(
-              isUser ? 'You' : 'Sage',
-              style: TextStyle(
-                color: isUser ? JournalColors.accent : JournalColors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isUser
+                    ? JournalColors.bgSurface
+                    : JournalColors.accent.withValues(alpha: 0.22),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isUser
+                      ? JournalColors.border
+                      : JournalColors.borderBright,
+                ),
+              ),
+              child: Text(
+                isUser ? 'W' : 'S',
+                style: TextStyle(
+                  color: isUser
+                      ? JournalColors.textSecondary
+                      : JournalColors.accent,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    isUser ? 'to Sage' : 'to me',
+                    style: const TextStyle(
+                      color: JournalColors.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Text(
-              reply.text,
+              DateFormat.MMMd().add_jm().format(reply.createdAt),
               style: const TextStyle(
-                color: JournalColors.textPrimary,
-                fontSize: 14,
-                height: 1.45,
+                color: JournalColors.textMuted,
+                fontSize: 12,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        Text(
+          reply.text,
+          style: const TextStyle(
+            color: JournalColors.textPrimary,
+            fontSize: 15,
+            height: 1.5,
+          ),
+        ),
+      ],
     );
   }
 }
