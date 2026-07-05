@@ -219,7 +219,10 @@ class _WriteScreenState extends State<WriteScreen> {
     if (routePath != '/write' && routePath != '/compose') return;
 
     _lastLaunchIntentVersion = version;
-    final prefill = launchIntent.writePrefillText?.trim();
+    // One-shot consume: a recreated WriteScreen state (tab switch, shell
+    // rebuild) gets null here once the prefill has been applied, instead of
+    // re-reading the stale route and re-injecting the same prompt.
+    final prefill = launchIntent.takeWritePrefill();
     if (prefill == null || prefill.isEmpty) return;
 
     final existing = _ctrl.text.trim();
