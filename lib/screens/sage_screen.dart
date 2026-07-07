@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -790,6 +791,9 @@ class SageScreen extends StatefulWidget {
 }
 
 class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
+  static const _activeSessionStorage = FlutterSecureStorage();
+  static const _activeSessionStorageKey = 'sage_active_session_v1';
+
   final _api = ApiService();
   final _profile = SageProfileService();
   final _followUpTasks = FollowUpTaskService();
@@ -831,6 +835,7 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   bool _useTrackForSession = true;
   String? _actionPrefillLabel;
   double _lastKeyboardInset = 0;
+  Timer? _sessionPersistDebounce;
   late SageHandoff _handoff;
 
   bool get _canSend =>
@@ -854,14 +859,14 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
       }
     });
     _loadSageProfile();
-    _loadContextAndStart(
-      autoStartGreeting: _handoff.shouldAutoStartGreeting,
-    );
+    unawaited(_restoreActiveSessionAndLoadContext());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sessionPersistDebounce?.cancel();
+    _persistActiveSessionSafely();
     _composerCtrl.removeListener(_handleComposerChanged);
     _composerCtrl.dispose();
     _scroll.dispose();
@@ -886,6 +891,100 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
 
   void _handleComposerChanged() {
     if (mounted) setState(() {});
+    _scheduleActiveSessionPersist();
+  }
+
+  Future<void> _restoreActiveSessionAndLoadContext() async {
+    final restored = await _restoreActiveSession();
+    if (!mounted) return;
+    await _loadContextAndStart(
+      autoStartGreeting: _handoff.shouldAutoStartGreeting && !restored,
+      preserveActiveSession: restored,
+    );
+  }
+
+  Future<bool> _restoreActiveSession() async {
+    try {
+      final raw = await _activeSessionStorage.read(
+        key: _activeSessionStorageKey,
+      );
+      if (raw == null || raw.trim().isEmpty) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return false;
+
+      final messages = (decoded['messages'] as List?)
+              ?.whereType<Map>()
+              .map((item) => _SageMessage.fromSessionPayload(
+                  Map<String, dynamic>.from(item)))
+              .where((message) => message.text.trim().isNotEmpty)
+              .toList() ??
+          const <_SageMessage>[];
+      final composerText = decoded['composer_text']?.toString() ?? '';
+      if (messages.isEmpty && composerText.trim().isEmpty) return false;
+
+      if (!mounted) return false;
+      setState(() {
+        _messages = messages;
+        _savedConversationId = decoded['saved_conversation_id']?.toString();
+        _messageCounter = (decoded['message_counter'] as num?)?.toInt() ?? 0;
+        _seededInitialAssistantMessage = messages.isNotEmpty;
+        _appliedInitialPrefill = true;
+        _sentInitialPrefill = true;
+        _replyError = null;
+      });
+      if (composerText.isNotEmpty) {
+        _composerCtrl.value = TextEditingValue(
+          text: composerText,
+          selection: TextSelection.collapsed(offset: composerText.length),
+        );
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollDown();
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _scheduleActiveSessionPersist() {
+    _sessionPersistDebounce?.cancel();
+    _sessionPersistDebounce = Timer(
+      const Duration(milliseconds: 400),
+      _persistActiveSessionSafely,
+    );
+  }
+
+  void _persistActiveSessionSafely() {
+    unawaited(_persistActiveSession().catchError((_) {}));
+  }
+
+  Future<void> _persistActiveSession() async {
+    final composerText = _composerCtrl.text;
+    if (_messages.isEmpty && composerText.trim().isEmpty) {
+      await _activeSessionStorage.delete(key: _activeSessionStorageKey);
+      return;
+    }
+    final payload = <String, dynamic>{
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'saved_conversation_id': _savedConversationId,
+      'message_counter': _messageCounter,
+      'composer_text': composerText,
+      'messages': _messages
+          .map((message) => message.toSessionPayload())
+          .where((message) =>
+              (message['content']?.toString().trim().isNotEmpty ?? false))
+          .toList(),
+    };
+    await _activeSessionStorage.write(
+      key: _activeSessionStorageKey,
+      value: jsonEncode(payload),
+    );
+  }
+
+  Future<void> _clearActiveSessionStorage() async {
+    _sessionPersistDebounce?.cancel();
+    await _activeSessionStorage.delete(key: _activeSessionStorageKey);
   }
 
   String _parseError(dynamic e) {
@@ -1213,14 +1312,17 @@ $sessionToneInstruction
   Future<void> _loadContextAndStart({
     bool forceRefresh = false,
     bool autoStartGreeting = true,
+    bool preserveActiveSession = true,
   }) async {
     setState(() {
       _contextLoading = true;
       _contextError = null;
       _replyError = null;
-      _messages = const [];
-      _pendingAttachments = const [];
-      _savedConversationId = null;
+      if (!preserveActiveSession) {
+        _messages = const [];
+        _pendingAttachments = const [];
+        _savedConversationId = null;
+      }
       _speakingMessageId = null;
       _ttsLoadingMessageId = null;
       _ttsErrorMessageId = null;
@@ -1289,6 +1391,7 @@ $sessionToneInstruction
         ),
       ];
     });
+    _scheduleActiveSessionPersist();
     _scrollDown();
   }
 
@@ -1762,6 +1865,7 @@ answer to continue.''';
       _replyError = null;
       _pendingAttachments = const [];
     });
+    _scheduleActiveSessionPersist();
     _scrollDown();
 
     final requestMessages = _buildApiRequestMessages(priorMessages, outgoing);
@@ -1801,6 +1905,7 @@ answer to continue.''';
         _messages = [...visibleMessages, assistantMessage];
         _replyLoading = false;
       });
+      _scheduleActiveSessionPersist();
 
       if (!hiddenUserMessage &&
           _settings.autoRemember &&
@@ -1816,6 +1921,7 @@ answer to continue.''';
         _replyLoading = false;
         _replyError = _parseError(e);
       });
+      _scheduleActiveSessionPersist();
       _scrollDown();
       return null;
     }
@@ -1903,6 +2009,7 @@ Return JSON only.
   Future<void> _clearChat() async {
     if (_replyLoading || _contextLoading) return;
     await _audioPlayer.stop();
+    await _clearActiveSessionStorage();
     if (mounted) {
       setState(() {
         _handoff = _handoff.forNewChat();
@@ -1917,7 +2024,9 @@ Return JSON only.
       });
     }
     await _loadContextAndStart(
-        autoStartGreeting: _handoff.shouldAutoStartGreeting);
+      autoStartGreeting: _handoff.shouldAutoStartGreeting,
+      preserveActiveSession: false,
+    );
   }
 
   List<Map<String, dynamic>> _messagesForSave() {
@@ -2047,6 +2156,7 @@ Return JSON only.
       _ttsErrorMessageId = null;
       _ttsErrorText = null;
     });
+    _scheduleActiveSessionPersist();
     _scrollDown();
   }
 
@@ -3055,6 +3165,29 @@ class _SageMessage {
     );
   }
 
+  factory _SageMessage.fromSessionPayload(Map<String, dynamic> json) {
+    final role = json['role']?.toString() == 'assistant' ? 'assistant' : 'user';
+    final id = json['id']?.toString();
+    return _SageMessage(
+      id: id?.trim().isNotEmpty == true ? id : null,
+      role: role,
+      text: json['content']?.toString() ?? '',
+      transcriptTextOverride: json['transcript_text']?.toString(),
+      actions: (json['actions'] as List?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          const <Map<String, dynamic>>[],
+      attachments: (json['attachments'] as List?)
+              ?.whereType<Map>()
+              .map((item) => _SageMessageAttachment.fromSessionPayload(
+                    Map<String, dynamic>.from(item),
+                  ))
+              .toList() ??
+          const <_SageMessageAttachment>[],
+    );
+  }
+
   Map<String, dynamic> toApiMessage() {
     final fileBlocks = attachments
         .map((attachment) => attachment.toPromptBlock())
@@ -3082,6 +3215,19 @@ class _SageMessage {
         if (attachments.isNotEmpty)
           'attachments': attachments
               .map((attachment) => attachment.toSavedPayload())
+              .toList(),
+      };
+
+  Map<String, dynamic> toSessionPayload() => {
+        if (id?.trim().isNotEmpty == true) 'id': id,
+        'role': role,
+        'content': text,
+        if (transcriptTextOverride?.trim().isNotEmpty == true)
+          'transcript_text': transcriptTextOverride,
+        if (actions.isNotEmpty) 'actions': actions,
+        if (attachments.isNotEmpty)
+          'attachments': attachments
+              .map((attachment) => attachment.toSessionPayload())
               .toList(),
       };
 }
@@ -3278,6 +3424,22 @@ class _SageMessageAttachment {
     );
   }
 
+  factory _SageMessageAttachment.fromSessionPayload(
+    Map<String, dynamic> json,
+  ) {
+    final name = json['name']?.toString().trim();
+    final path = json['path']?.toString().trim();
+    return _SageMessageAttachment(
+      name: (name != null && name.isNotEmpty) ? name : 'file',
+      path: path ?? '',
+      extension: json['extension']?.toString() ?? '',
+      extractedText: json['extracted_text']?.toString() ?? '',
+      imageBase64: json['image_base64']?.toString(),
+      imageMediaType: json['media_type']?.toString(),
+      imageByteSize: (json['byte_size'] as num?)?.toInt(),
+    );
+  }
+
   final String name;
   final String path;
   final String extension;
@@ -3344,6 +3506,16 @@ class _SageMessageAttachment {
         if (!isImage) 'extracted_text': extractedText,
         if (isImage) 'media_type': imageMediaType,
         if (isImage && imageByteSize != null) 'byte_size': imageByteSize,
+      };
+
+  Map<String, dynamic> toSessionPayload() => {
+        'name': name,
+        'path': path,
+        'extension': extension,
+        if (extractedText.trim().isNotEmpty) 'extracted_text': extractedText,
+        if (imageBase64?.trim().isNotEmpty == true) 'image_base64': imageBase64,
+        if (imageMediaType != null) 'media_type': imageMediaType,
+        if (imageByteSize != null) 'byte_size': imageByteSize,
       };
 }
 
