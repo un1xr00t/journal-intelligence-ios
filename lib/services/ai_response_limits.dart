@@ -11,8 +11,8 @@ class AiResponseLimits {
   /// reach the first spoken word sooner.
   static const int sageVoiceReplyMaxTokens = 320;
 
-  static const int speechChunkMaxChars = 2800;
-  static const int speechChunkMaxBytes = 3500;
+  static const int speechChunkMaxChars = 900;
+  static const int speechChunkMaxBytes = 1200;
   static const int speechFirstChunkMaxChars = 900;
   static const int speechFirstChunkMaxBytes = 1200;
 

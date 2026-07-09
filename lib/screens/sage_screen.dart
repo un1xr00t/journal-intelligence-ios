@@ -2442,6 +2442,11 @@ Return JSON only.
 
   String _parseTtsError(dynamic e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return 'Couldn’t generate audio. The voice service took too long, so Sage split the reply into smaller parts for the next try.';
+      }
       final data = e.response?.data;
       final decoded = _decodeTtsErrorData(data);
       if (decoded != null && decoded.isNotEmpty) {
