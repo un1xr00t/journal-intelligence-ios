@@ -744,6 +744,12 @@ class SageHandoff {
   bool get shouldAutoSendPrefill =>
       autoSendPrefill && (hasPrefill || hasInitialAttachments);
 
+  bool get shouldStartFreshSession =>
+      hasSeededAssistantMessage ||
+      hasPrefill ||
+      hasInitialAttachments ||
+      contextHints.isNotEmpty;
+
   SageHandoff forNewChat() => SageHandoff(
         autoStartGreeting: false,
         showDefaultWelcome: true,
@@ -895,6 +901,16 @@ class _SageScreenState extends State<SageScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreActiveSessionAndLoadContext() async {
+    if (_handoff.shouldStartFreshSession) {
+      await _clearActiveSessionStorage();
+      if (!mounted) return;
+      await _loadContextAndStart(
+        autoStartGreeting: _handoff.shouldAutoStartGreeting,
+        preserveActiveSession: false,
+      );
+      return;
+    }
+
     final restored = await _restoreActiveSession();
     if (!mounted) return;
     await _loadContextAndStart(
