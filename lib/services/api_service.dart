@@ -3198,8 +3198,8 @@ Question: $question
 
   /// POST /api/my-story/generate
   /// Body: { case_ids, include_journal, journal_entry_count, manual_context,
-  ///         include_fairness, include_proof_vault, output_purpose,
-  ///         output_style }
+  ///         include_fairness, include_proof_vault, include_argument_tracker,
+  ///         output_purpose, output_style }
   /// Returns { narrative: str }
   Future<Map<String, dynamic>> myStoryGenerate(
       Map<String, dynamic> body) async {
