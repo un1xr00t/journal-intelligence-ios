@@ -10,6 +10,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors, Divider;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -1895,6 +1896,9 @@ class _EntryCard extends StatefulWidget {
 }
 
 class _EntryCardState extends State<_EntryCard> {
+  final _api = ApiService();
+  bool _generatingJournalEntry = false;
+
   static const List<String> _monthLabels = <String>[
     'JAN',
     'FEB',
@@ -1961,6 +1965,168 @@ class _EntryCardState extends State<_EntryCard> {
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $suffix';
+  }
+
+  String _buildGeneralJournalEntryRequest(
+    Map<String, dynamic> entry,
+    List<dynamic> photos,
+    String? analysis,
+  ) {
+    final createdAt = entry['created_at'] as String?;
+    final content = (entry['content'] as String? ?? '').trim();
+    final date = _dateHeadline(createdAt);
+    final time = _timeLabel(createdAt);
+    final type = (entry['entry_type'] as String? ?? 'note').trim();
+    final severity = (entry['severity'] ?? 'medium').toString().trim();
+    final buffer = StringBuffer()
+      ..writeln(
+          'Convert this Detective Mode log entry into a finished first-person journal entry.')
+      ..writeln(
+          'This is a closed-source rewrite task. Use only the source material in this message.')
+      ..writeln(
+          'Do not use case memory, prior chat context, journal background, detective intel, other entries, other photos, gallery analysis, attachment analysis, or anything else you may know about this case.')
+      ..writeln(
+          'Use the entry text and the entry-scoped photo analysis below as source material. Treat AI-observed photo details as visual evidence, not as certainty about motives, relationships, or events that are not visible or stated.')
+      ..writeln(
+          'If the source material is sparse, write a sparse journal entry. Do not invent people, places, events, motives, quotes, emotions, timeline details, or backstory.')
+      ..writeln(
+          'The final answer must sound like a normal person writing in their private journal, not a report or evidence note.')
+      ..writeln(
+          'Do not mention Detective Mode, AI analysis, photo filenames, attachment names, prompts, or instructions.')
+      ..writeln(
+          'Do not include bullets, headings, labels, markdown, or explanation.')
+      ..writeln('Return only the finished journal entry prose.')
+      ..writeln()
+      ..writeln('Log entry date: $date${time.isEmpty ? '' : ' at $time'}')
+      ..writeln('Log entry type: $type')
+      ..writeln('Intensity/context label: $severity')
+      ..writeln()
+      ..writeln('Entry text:')
+      ..writeln(content.isEmpty ? '[No entry text supplied]' : content);
+
+    if (photos.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('Entry-scoped attached photo analysis:');
+      for (var i = 0; i < photos.length; i += 1) {
+        final rawPhoto = photos[i];
+        if (rawPhoto is! Map) continue;
+        final photo = Map<String, dynamic>.from(rawPhoto);
+        final photoAnalysis = _stringField(photo, const [
+          'ai_analysis',
+          'analysis',
+          'summary',
+          'description',
+        ]);
+        if (photoAnalysis.isEmpty) continue;
+        buffer
+          ..writeln()
+          ..writeln('Photo ${i + 1}:')
+          ..writeln(photoAnalysis);
+      }
+    }
+
+    final combinedAnalysis = analysis?.trim() ?? '';
+    if (combinedAnalysis.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('Entry-scoped combined AI analysis:')
+        ..writeln(combinedAnalysis);
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('Write the final journal entry now.');
+    return buffer.toString().trim();
+  }
+
+  String _stringField(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  String _readAiText(Map<String, dynamic> response) {
+    for (final key in const [
+      'response',
+      'text',
+      'journal_entry',
+      'entry',
+      'answer',
+      'content',
+    ]) {
+      final value = response[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  String _stripAccidentalWrapper(String text) {
+    var cleaned = text.trim();
+    cleaned = cleaned.replaceAll(RegExp(r'^```(?:text|markdown)?\s*'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*```$'), '');
+    final titleMatch =
+        RegExp(r'^title:\s*.*$', caseSensitive: false).firstMatch(cleaned);
+    if (titleMatch != null) {
+      cleaned = cleaned.substring(titleMatch.end).trim();
+    }
+    return cleaned.trim();
+  }
+
+  Future<void> _generateAndCopyGeneralJournalEntry(
+    Map<String, dynamic> entry,
+    List<dynamic> photos,
+    String? analysis,
+  ) async {
+    if (_generatingJournalEntry) return;
+    setState(() => _generatingJournalEntry = true);
+    try {
+      final request = _buildGeneralJournalEntryRequest(
+        entry,
+        photos,
+        analysis,
+      );
+      final response = await _api.detectiveChatSend(
+        widget.caseId,
+        message: request,
+        history: const [],
+      );
+      final generated = _stripAccidentalWrapper(_readAiText(response));
+      if (generated.isEmpty) {
+        throw Exception('No journal entry returned.');
+      }
+
+      await Clipboard.setData(ClipboardData(text: generated));
+      if (!mounted) return;
+      showCupertinoDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const CupertinoAlertDialog(
+          title: Text('Copied'),
+          content: Text('Generated journal entry copied and ready.'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showCupertinoDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const CupertinoAlertDialog(
+          title: Text('Could not generate'),
+          content: Text('Try again after the photo analysis finishes.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _generatingJournalEntry = false);
+      }
+    }
   }
 
   Widget _swipeBackground({
@@ -2244,6 +2410,60 @@ class _EntryCardState extends State<_EntryCard> {
                                           : 'Attach photo',
                                       style: const TextStyle(
                                         color: JournalColors.accent,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _generatingJournalEntry
+                                  ? null
+                                  : () => _generateAndCopyGeneralJournalEntry(
+                                        entry,
+                                        photos,
+                                        analysis,
+                                      ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _withAlpha(
+                                    JournalColors.success,
+                                    0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: _withAlpha(
+                                      JournalColors.success,
+                                      0.30,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _generatingJournalEntry
+                                        ? const CupertinoActivityIndicator(
+                                            radius: 7,
+                                            color: JournalColors.success,
+                                          )
+                                        : const Icon(
+                                            CupertinoIcons.doc_on_clipboard,
+                                            size: 14,
+                                            color: JournalColors.success,
+                                          ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      _generatingJournalEntry
+                                          ? 'Generating...'
+                                          : 'General journal entry',
+                                      style: const TextStyle(
+                                        color: JournalColors.success,
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
                                       ),
