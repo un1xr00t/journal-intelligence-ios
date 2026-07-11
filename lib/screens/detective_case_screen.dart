@@ -23,6 +23,45 @@ import '../widgets/glass_card.dart';
 
 Color _withAlpha(Color color, double alpha) => color.withValues(alpha: alpha);
 
+DateTime? _parseDetectiveTimestamp(String? raw) {
+  final value = raw?.trim();
+  if (value == null || value.isEmpty) return null;
+
+  final dateOnly = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  if (dateOnly.hasMatch(value)) {
+    final parts = value.split('-').map(int.parse).toList();
+    return DateTime(parts[0], parts[1], parts[2]);
+  }
+
+  final hasTime = value.contains('T') || value.contains(' ');
+  final hasTimezone = RegExp(r'(Z|[+-]\d{2}:?\d{2})$').hasMatch(value);
+  final normalized =
+      hasTime && !hasTimezone ? '${value.replaceFirst(' ', 'T')}Z' : value;
+
+  return DateTime.tryParse(normalized)?.toLocal();
+}
+
+String _formatDetectiveDateTime(String? raw, {bool includeTime = true}) {
+  final date = _parseDetectiveTimestamp(raw);
+  if (date == null) {
+    final fallback = raw?.trim() ?? '';
+    if (fallback.isEmpty) return '';
+    if (!includeTime && fallback.length >= 10) return fallback.substring(0, 10);
+    return fallback.length >= 16
+        ? fallback.substring(0, 16).replaceAll('T', ' ')
+        : fallback;
+  }
+
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  final dateLabel = '${date.year}-$month-$day';
+  if (!includeTime) return dateLabel;
+
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$dateLabel $hour:$minute';
+}
+
 const _kScreenPadding = EdgeInsets.fromLTRB(20, 8, 20, 28);
 
 const _kEntryTypes = [
@@ -1927,12 +1966,7 @@ class _EntryCardState extends State<_EntryCard> {
       _kSeverityColors[widget.entry['severity']] ?? JournalColors.border;
 
   DateTime? _parseDate(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    try {
-      return DateTime.parse(raw).toLocal();
-    } catch (_) {
-      return null;
-    }
+    return _parseDetectiveTimestamp(raw);
   }
 
   String _monthLabel(String? raw) {
@@ -4197,10 +4231,7 @@ class _IntelligenceTabState extends State<_IntelligenceTab> {
 
     final entryCount = _intel?['entry_count'] ?? 0;
     final wireCount = _intel?['wire_count'] ?? 0;
-    final rawDate = _intel?['last_updated'] as String? ?? '';
-    final lastUp = rawDate.length >= 16
-        ? rawDate.substring(0, 16).replaceAll('T', ' ')
-        : rawDate;
+    final lastUp = _formatDetectiveDateTime(_intel?['last_updated'] as String?);
     final tokensSaved = (summary.length / 4).ceil();
 
     return CustomScrollView(slivers: [
@@ -4539,10 +4570,8 @@ class _WiresTabState extends State<_WiresTab> {
                 final w = _wires[i];
                 final isOpen = _expanded == i;
                 final briefing = w['briefing'] as String? ?? '';
-                final raw = w['created_at'] as String? ?? '';
-                final dateStr = raw.length >= 16
-                    ? raw.substring(0, 16).replaceAll('T', ' ')
-                    : raw;
+                final dateStr =
+                    _formatDetectiveDateTime(w['created_at'] as String?);
 
                 return GestureDetector(
                   onTap: () => setState(() => _expanded = isOpen ? null : i),
@@ -5038,8 +5067,10 @@ class _ResearchTabState extends State<_ResearchTab> {
                 final subjectMatch =
                     RegExp(r'Subject:\s*(.+?)\n').firstMatch(content);
                 final subject = subjectMatch?.group(1) ?? 'Research Report';
-                final raw = r['created_at'] as String? ?? '';
-                final dateStr = raw.length >= 10 ? raw.substring(0, 10) : raw;
+                final dateStr = _formatDetectiveDateTime(
+                  r['created_at'] as String?,
+                  includeTime: false,
+                );
 
                 return GestureDetector(
                   onTap: () => setState(() => _expanded = isOpen ? null : i),
