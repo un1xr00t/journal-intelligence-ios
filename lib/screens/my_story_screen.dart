@@ -79,6 +79,7 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
   bool _includeJournal = true;
   int _journalCount = 20;
   bool _includeFairness = false;
+  bool _includeProofVault = true;
   String _purpose = 'general';
   String _style = 'advocate';
   final _manualCtrl = TextEditingController();
@@ -140,12 +141,14 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
 
   bool get _canGenerate =>
       _includeJournal ||
+      _includeProofVault ||
       _selectedCases.isNotEmpty ||
       _manualCtrl.text.trim().isNotEmpty;
 
   int get _sourceCount {
     var count = 0;
     if (_includeJournal) count++;
+    if (_includeProofVault) count++;
     if (_selectedCases.isNotEmpty) count++;
     if (_includeFairness) count++;
     if (_manualCtrl.text.trim().isNotEmpty) count++;
@@ -155,6 +158,7 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
   String get _sourceSummary {
     final parts = <String>[];
     if (_includeJournal) parts.add('$_journalCount journal entries');
+    if (_includeProofVault) parts.add('Proof Vault');
     if (_selectedCases.isNotEmpty) {
       parts.add(
         _selectedCases.length == 1
@@ -184,6 +188,7 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
         'journal_entry_count': _journalCount,
         'manual_context': _manualCtrl.text.trim(),
         'include_fairness': _includeFairness,
+        'include_proof_vault': _includeProofVault,
         'output_purpose': _purpose,
         'output_style': _style,
       };
@@ -197,6 +202,7 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
       try {
         final parts = <String>[];
         if (_includeJournal) parts.add('$_journalCount journal entries');
+        if (_includeProofVault) parts.add('Proof Vault');
         if (_selectedCases.isNotEmpty) {
           parts.add('${_selectedCases.length} case(s)');
         }
@@ -338,6 +344,14 @@ class _MyStoryScreenState extends State<MyStoryScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 18),
+              _ToggleTile(
+                title: 'Proof Vault',
+                subtitle:
+                    'Use stored evidence, dated proof items, and cached vault summaries.',
+                value: _includeProofVault,
+                onChanged: (v) => setState(() => _includeProofVault = v),
+              ),
               if (_hasDetective && _cases.isNotEmpty) ...[
                 const SizedBox(height: 18),
                 const _InlineSectionLabel(
