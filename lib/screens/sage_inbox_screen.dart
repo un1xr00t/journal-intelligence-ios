@@ -111,6 +111,30 @@ class _SageInboxScreenState extends State<SageInboxScreen> {
     if (mounted) setState(() => _messages = snapshot.messages);
   }
 
+  Future<void> _deleteMessage(SageInboxMessage message) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('Delete Message'),
+        content: const Text('This message and its replies will be deleted.'),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final snapshot = await _service.deleteMessage(message.id);
+    if (mounted) setState(() => _messages = snapshot.messages);
+  }
+
   List<SageInboxMessage> get _visibleMessages {
     return switch (_filterIndex) {
       1 => _messages
@@ -219,9 +243,18 @@ class _SageInboxScreenState extends State<SageInboxScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final message = _visibleMessages[index];
-                    return _InboxMessageCard(
-                      message: message,
-                      onTap: () => _openMessage(message),
+                    return Dismissible(
+                      key: ValueKey('sage-inbox-message-${message.id}'),
+                      direction: DismissDirection.startToEnd,
+                      confirmDismiss: (_) async {
+                        await _deleteMessage(message);
+                        return false;
+                      },
+                      background: const _InboxSwipeBackground(),
+                      child: _InboxMessageCard(
+                        message: message,
+                        onTap: () => _openMessage(message),
+                      ),
                     );
                   },
                 ),
@@ -1118,6 +1151,37 @@ class _InboxMessageCard extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InboxSwipeBackground extends StatelessWidget {
+  const _InboxSwipeBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: JournalColors.danger.withValues(alpha: 0.14),
+      ),
+      padding: const EdgeInsets.only(left: 20),
+      alignment: Alignment.centerLeft,
+      child: const Row(
+        children: [
+          Icon(CupertinoIcons.trash, color: JournalColors.danger, size: 18),
+          SizedBox(width: 8),
+          Text(
+            'Delete',
+            style: TextStyle(
+              color: JournalColors.danger,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
           ),
         ],

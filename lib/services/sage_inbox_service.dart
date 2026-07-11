@@ -333,7 +333,7 @@ class SageInboxService {
   static const _orbitPressureId = 'sage_inbox.orbit.pressure.v1';
   static const _contextMapId = 'sage_inbox.context.map.v1';
   static const _conversationFollowUpId = 'sage_inbox.conversation_followup.v1';
-  static const _dailyDispatchPrefix = 'sage_inbox.daily_dispatch.v2';
+  static const _dailyDispatchPrefix = 'sage_inbox.daily_dispatch.v3';
   static const _journalSupportPrefix = 'sage_inbox.journal_support';
   static const _journalSupportLastCreatedKey =
       'sage_inbox.journal_support.last_created_at.v1';
@@ -353,7 +353,7 @@ class SageInboxService {
   Future<SageInboxSnapshot> loadInbox() async {
     final prefs = await SharedPreferences.getInstance();
     final messages = _decodeMessages(prefs.getString(_storageKey));
-    if (messages.isEmpty) {
+    if (messages.isEmpty && !prefs.containsKey(_storageKey)) {
       final seeded = [_welcomeMessage(DateTime.now())];
       await _saveMessages(seeded);
       return SageInboxSnapshot(messages: seeded, generatedAt: DateTime.now());
@@ -369,12 +369,6 @@ class SageInboxService {
   Future<SageInboxSnapshot> refreshAdaptiveMessages() async {
     final current = (await loadInbox()).messages;
     final now = DateTime.now();
-    final existingFollowUp = current
-        .where((message) =>
-            message.id == _conversationFollowUpId &&
-            !message.isArchived &&
-            now.difference(message.createdAt) < const Duration(hours: 12))
-        .firstOrNull;
     final retained = current
         .where((message) =>
             message.id != _followUpPressureId &&
@@ -382,10 +376,9 @@ class SageInboxService {
             message.id != _orbitPressureId &&
             message.id != _contextMapId &&
             message.id != _conversationFollowUpId &&
-            !_isLegacyDailyDispatch(message.id) &&
+            !_isOutdatedDailyDispatch(message.id) &&
             (message.expiresAt == null || message.expiresAt!.isAfter(now)))
         .toList();
-    if (existingFollowUp != null) retained.add(existingFollowUp);
 
     final dailyDispatchId =
         '$_dailyDispatchPrefix.${DateFormat('yyyyMMdd').format(now)}';
@@ -398,40 +391,24 @@ class SageInboxService {
       final sageMemories = await _sageProfile.loadMemoryItems();
       final sageSettings = await _sageProfile.loadSettings();
       final recentJournalSignal = await _loadRecentJournalSignal();
-      adaptive.add(
-        await _composeMessageWithSage(
-          _dailyDispatchMessage(
-            now: now,
-            recentJournalSignal: recentJournalSignal,
-          ),
-          sageSettings: sageSettings,
-          signals: _composerSignals(
-            sageMemories: sageMemories,
-            recentJournalSignal: recentJournalSignal,
-          ),
+      final dailyMessage = await _composeMessageWithSage(
+        _dailyDispatchMessage(now: now),
+        sageSettings: sageSettings,
+        signals: _composerSignals(
+          sageMemories: sageMemories,
+          recentJournalSignal: recentJournalSignal,
         ),
       );
+      if (dailyMessage != null) adaptive.add(dailyMessage);
     }
-    if (existingFollowUp == null) {
-      // Follow-up nudges use the local template only: they already quote the
-      // original thread, so an AI rewrite adds cost without adding signal.
-      final followUpMessage = await _conversationFollowUpMessage(current, now);
-      if (followUpMessage != null) adaptive.add(followUpMessage);
-    }
-
     final merged = _mergeById([...retained, ...adaptive]);
     await _saveMessages(merged);
     return SageInboxSnapshot(messages: _sorted(merged), generatedAt: now);
   }
 
-  /// Old-format daily dispatches ("Lead signal: N overdue...") have ids like
-  /// `sage_inbox.daily_dispatch.20260705`. Drop them so the personal-note
-  /// format replaces them immediately instead of after expiry.
-  bool _isLegacyDailyDispatch(String id) {
-    const legacyPrefix = 'sage_inbox.daily_dispatch.';
-    if (!id.startsWith(legacyPrefix)) return false;
-    final suffix = id.substring(legacyPrefix.length);
-    return int.tryParse(suffix) != null;
+  bool _isOutdatedDailyDispatch(String id) {
+    return id.startsWith('sage_inbox.daily_dispatch') &&
+        !id.startsWith(_dailyDispatchPrefix);
   }
 
   Future<SageInboxSnapshot> markRead(String id) async {
@@ -444,6 +421,31 @@ class SageInboxService {
 
   Future<SageInboxSnapshot> archive(String id) async {
     return _updateStatus(id, SageInboxStatus.archived);
+  }
+
+  Future<SageInboxSnapshot> deleteMessage(String id) async {
+    final snapshot = await loadInbox();
+    final messages =
+        snapshot.messages.where((message) => message.id != id).toList();
+    await _saveMessages(messages);
+
+    final prefs = await SharedPreferences.getInstance();
+    final rawReplies = prefs.getString(_repliesStorageKey);
+    if (rawReplies != null && rawReplies.trim().isNotEmpty) {
+      try {
+        final replies =
+            Map<String, dynamic>.from(jsonDecode(rawReplies) as Map);
+        replies.remove(id);
+        await prefs.setString(_repliesStorageKey, jsonEncode(replies));
+      } catch (_) {}
+    }
+
+    final tasks = await _loadAllTasks();
+    await _saveTasks(tasks.where((task) => task.messageId != id).toList());
+    return SageInboxSnapshot(
+      messages: _sorted(messages),
+      generatedAt: DateTime.now(),
+    );
   }
 
   Future<SageInboxSnapshot> markAllRead() async {
@@ -479,12 +481,13 @@ class SageInboxService {
     }
 
     final snapshot = await loadInbox();
-    final message = _journalSupportMessage(
+    final message = await _composeJournalSupportMessage(
       now: now,
       signal: signal,
       entryText: text,
       entryId: entryId,
     );
+    if (message == null) return null;
     final merged = _mergeById([...snapshot.messages, message]);
     await _saveMessages(merged);
     await prefs.setString(
@@ -852,17 +855,13 @@ class SageInboxService {
     );
   }
 
-  SageInboxMessage _dailyDispatchMessage({
-    required DateTime now,
-    required String? recentJournalSignal,
-  }) {
+  SageInboxMessage _dailyDispatchMessage({required DateTime now}) {
     final dateId = DateFormat('yyyyMMdd').format(now);
     return SageInboxMessage(
       id: '$_dailyDispatchPrefix.$dateId',
       subject: 'A note from Sage',
-      preview: 'Not a task list. Just me, writing to you about today.',
-      body:
-          'Hey William,\n\nNo numbers, no list. Just a note.\n\n${recentJournalSignal == null ? 'You have been quiet in the journal lately, so I will just ask directly: what is today actually about for you?' : 'What stayed with me from your last entry: $recentJournalSignal\n\nThat is the thread I care about today — not whatever the app thinks you owe it.'}\n\nWrite back like you would to a friend. I read everything that lands here.',
+      preview: 'A personal message from Sage.',
+      body: 'Pending Sage response.',
       createdAt: now,
       priority: SageInboxPriority.normal,
       status: SageInboxStatus.unread,
@@ -877,18 +876,11 @@ class SageInboxService {
           route: '/inbox',
         ),
       ],
-      dataPoints: [
-        if (recentJournalSignal != null)
-          SageInboxDataPoint(
-            label: 'Recent journal',
-            value: 'Included',
-            detail: recentJournalSignal,
-          ),
-      ],
+      dataPoints: const [],
     );
   }
 
-  Future<SageInboxMessage> _composeMessageWithSage(
+  Future<SageInboxMessage?> _composeMessageWithSage(
     SageInboxMessage message, {
     required SageSettings sageSettings,
     String signals = '',
@@ -901,9 +893,10 @@ class SageInboxService {
             'role': 'system',
             'content': [
               "You are Sage writing a short personal note into William's inbox, like a letter from someone who knows him.",
-              'This is about his life, not his productivity. Never mention task counts, overdue items, follow-ups, or anything that sounds like a dashboard — even if that data appears in the context. He has asked for this explicitly.',
+              'Write directly about his life and the specific human thread that matters today.',
               'Pick the single strongest human thread from the signals — a person, a feeling, a journal line — name it specifically, and give your actual read on it. Ignore everything else.',
-              'Plain conversational first person. No report language, no headers, no bullet points, no metrics.',
+              'Plain conversational first person. Make the message substantive and natural, with no headers or bullets.',
+              'Do not mention writing style, formatting, productivity, dashboards, metrics, tasks, lists, what you are avoiding, or what kind of message this is. Do not announce your approach. Just write the message.',
               'Return strict JSON only with keys subject, preview, body. Subject under 62 chars. Preview under 170 chars. Body 70-160 words. End with one natural question or invitation to reply.',
               sageSettings.toPromptInstruction(),
             ].join('\n'),
@@ -917,14 +910,14 @@ class SageInboxService {
         maxTokens: 350,
       );
       final composed = _decodeComposedMessage(response['reply']?.toString());
-      if (composed == null) return message;
+      if (composed == null) return null;
       return message.copyWith(
         subject: composed.$1,
         preview: composed.$2,
         body: composed.$3,
       );
     } catch (_) {
-      return message;
+      return null;
     }
   }
 
@@ -935,8 +928,8 @@ class SageInboxService {
       if (signals.trim().isNotEmpty)
         "Today's signals:\n$signals"
       else
-        'No strong signals today. Keep it short and light — a quick check-in, not filler.',
-      "Write today's note. Anchor it in one specific detail from the signals, vary the opener and rhythm day to day, and never open with a variation of \"Hey William, I checked in on your day\".",
+        'No recent journal signal is available. Use the durable context to ask or say something genuinely relevant to William today.',
+      "Write today's message. Anchor it in one specific detail when available, vary the opener and rhythm day to day, and spend the full body talking to William rather than explaining the message.",
     ].join('\n\n');
   }
 
@@ -987,69 +980,6 @@ class SageInboxService {
     final collapsed = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (collapsed.length <= maxChars) return collapsed;
     return '${collapsed.substring(0, maxChars - 3)}...';
-  }
-
-  Future<SageInboxMessage?> _conversationFollowUpMessage(
-    List<SageInboxMessage> messages,
-    DateTime now,
-  ) async {
-    final candidates = messages
-        .where((message) =>
-            !message.isArchived &&
-            message.id != _welcomeId &&
-            message.id != _contextMapId &&
-            message.id != _conversationFollowUpId)
-        .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    if (candidates.isEmpty) return null;
-
-    for (final message in candidates.take(8)) {
-      final replies = await _loadReplies(message.id);
-      final lastTouch =
-          replies.isEmpty ? message.createdAt : replies.last.createdAt;
-      final quietHours = now.difference(lastTouch).inHours;
-      final lastWasSage =
-          replies.isEmpty || replies.last.role == SageInboxReplyRole.assistant;
-      if (quietHours < 12 || !lastWasSage) continue;
-
-      return SageInboxMessage(
-        id: _conversationFollowUpId,
-        subject: 'Hey William, checking back on this',
-        preview:
-            'I haven’t heard back since my last note. No pressure — I just don’t want to leave you on read.',
-        body:
-            'Hey William,\n\nI wrote you a while back ("${message.subject}") and it went quiet, so I wanted to check back in.\n\nNo agenda here. If things moved on, tell me and I’ll drop it. If it’s still sitting with you, write me back — even a couple of messy sentences is enough to pick the thread up.\n\nEither way, I’d rather hear from you than guess.',
-        createdAt: now,
-        priority: SageInboxPriority.normal,
-        status: SageInboxStatus.unread,
-        source: 'Sage follow-up',
-        reason:
-            'Sage sent a follow-up because a prior inbox thread went quiet.',
-        relatedRoute: '/inbox',
-        expiresAt: now.add(const Duration(days: 2)),
-        actionItems: const [
-          SageInboxActionItem(
-            label: 'Reply to Sage',
-            detail: 'A couple of honest sentences is plenty.',
-            route: '/inbox',
-          ),
-        ],
-        dataPoints: [
-          SageInboxDataPoint(
-            label: 'Quiet time',
-            value: '$quietHours hours',
-            detail: 'Time since the last reply or message touch.',
-          ),
-          SageInboxDataPoint(
-            label: 'Original message',
-            value: message.subject,
-            detail: message.preview,
-          ),
-        ],
-      );
-    }
-
-    return null;
   }
 
   Future<String?> _loadRecentJournalSignal() async {
@@ -1121,63 +1051,64 @@ class SageInboxService {
     return null;
   }
 
-  SageInboxMessage _journalSupportMessage({
+  Future<SageInboxMessage?> _composeJournalSupportMessage({
     required DateTime now,
     required ({String label, String reason, SageInboxPriority priority}) signal,
     required String entryText,
     required int? entryId,
-  }) {
-    final previewText = _collapseWhitespace(entryText, maxChars: 140);
-    return SageInboxMessage(
-      id: '$_journalSupportPrefix.${entryId ?? now.microsecondsSinceEpoch}.${DateFormat('yyyyMMddHH').format(now)}',
-      subject: signal.priority == SageInboxPriority.urgent
-          ? 'William, I want you to check in'
-          : 'Hey William, I noticed that entry',
-      preview:
-          'That journal post sounded heavier than normal. I left you a place to answer me.',
-      body: signal.priority == SageInboxPriority.urgent
-          ? 'Hey William,\n\nI noticed language in that journal entry that could mean you are closer to the edge than usual.\n\nI am not going to turn that into a dashboard item. I want you to reply to me, call someone safe, or get near another human if this is active right now.\n\nIf this was venting and not danger, tell me that too. I can still sit with you and help sort what is actually happening.'
-          : 'Hey William,\n\nI read the shape of that journal entry and it sounded like this might be one of those moments where you do not need another task. You need someone to answer back.\n\nSo I am here. Reply to this if you want to talk through what happened, name the thing that is sitting on your chest, or just say, "stay with me for a minute."\n\nNo performance. No perfect summary. Just start with the part that feels loudest.',
-      createdAt: now,
-      priority: signal.priority,
-      status: SageInboxStatus.unread,
-      source: 'Sage journal check-in',
-      reason: signal.reason,
-      relatedRoute: '/inbox',
-      expiresAt: now.add(const Duration(days: 3)),
-      actionItems: [
-        const SageInboxActionItem(
-          label: 'Reply to Sage',
-          detail:
-              'Use the inbox reply box. You do not need to explain it well.',
-          route: '/inbox',
-        ),
-        const SageInboxActionItem(
-          label: 'Open Sage now',
-          detail:
-              'Talk it through in the full Sage chat if you need more room.',
-          route: '/sage',
-          sagePrompt:
-              'I just wrote a journal entry that sounded like I need someone to talk to. Stay with me and help me sort what is happening without turning it into a generic checklist.',
-        ),
-      ],
-      dataPoints: [
-        SageInboxDataPoint(
-          label: 'Trigger',
-          value: signal.label,
-          detail: 'Detected locally from the saved journal text.',
-        ),
-        const SageInboxDataPoint(
-          label: 'Token cost',
-          value: '0 AI calls',
-          detail: 'This adaptive check-in used local text rules only.',
-        ),
-        SageInboxDataPoint(
-          label: 'Entry signal',
-          value: 'Included',
-          detail: previewText,
-        ),
-      ],
-    );
+  }) async {
+    try {
+      final settings = await _sageProfile.loadSettings();
+      final contextString = await _api.getFloatchatContext();
+      final isUrgent = signal.priority == SageInboxPriority.urgent;
+      final response = await _api.sendFloatchatMessage(
+        messages: [
+          {
+            'role': 'system',
+            'content': [
+              "You are Sage sending William a private inbox message in direct response to the journal entry he just saved.",
+              'Actually respond to what he said. Refer naturally to the specific person, event, fear, or sentence that matters. Give your honest read instead of announcing that you detected emotions.',
+              'Sound like one person writing to another person who knows him well. Use natural uneven conversational rhythm. Do not use headings, bullets, numbered advice, a three-part structure, therapy-script language, motivational filler, or repeated reassurance.',
+              'Do not say "I noticed your entry," "the shape of that entry," "it sounds like," "what I am hearing," "no performance," or "the part that feels loudest." Do not explain that you are an AI or describe the inbox feature.',
+              'The body should be a genuine reply, not a summary of his writing. Ask a question only when it is the question you would naturally ask next.',
+              if (isUrgent)
+                'The entry contains possible self-harm or suicide language. Be warm and direct, ask whether he is in immediate danger, and urge immediate contact with emergency services or a trusted nearby person when appropriate. Do not bury safety guidance in polished prose.',
+              'Return strict JSON only with keys subject, preview, body. The subject must feel like a real email subject, the preview must be one natural sentence, and the body must be 60-180 words of plain prose.',
+              settings.toPromptInstruction(),
+            ].join('\n'),
+          },
+          {
+            'role': 'user',
+            'content': 'Journal entry:\n\n$entryText',
+          },
+        ],
+        contextString: contextString,
+        maxTokens: 500,
+      );
+      final composed = _decodeComposedMessage(response['reply']?.toString());
+      if (composed == null) return null;
+      return SageInboxMessage(
+        id: '$_journalSupportPrefix.${entryId ?? now.microsecondsSinceEpoch}.${DateFormat('yyyyMMddHH').format(now)}',
+        subject: composed.$1,
+        preview: composed.$2,
+        body: composed.$3,
+        createdAt: now,
+        priority: signal.priority,
+        status: SageInboxStatus.unread,
+        source: 'Sage',
+        reason: signal.reason,
+        relatedRoute: '/inbox',
+        expiresAt: now.add(const Duration(days: 3)),
+        actionItems: const [
+          SageInboxActionItem(
+            label: 'Reply',
+            route: '/inbox',
+          ),
+        ],
+        dataPoints: const [],
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }

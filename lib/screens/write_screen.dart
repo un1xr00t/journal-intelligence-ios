@@ -357,15 +357,10 @@ class _WriteScreenState extends State<WriteScreen> {
         contextUrls: _hasReferenceUrl ? [_urlCtrl.text.trim()] : const [],
       );
       final entryId = result['entry_id'] as int?;
-      final inboxSnapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+      unawaited(_createAdaptiveInboxCheckIn(
         entryText: _ctrl.text.trim(),
         entryId: entryId,
-      );
-      if (inboxSnapshot != null) {
-        unawaited(
-          _notifications.notifyNewSageInboxMessages(inboxSnapshot.messages),
-        );
-      }
+      ));
       final photoCount = _pendingImages.length;
 
       // Upload any pending images
@@ -412,6 +407,21 @@ class _WriteScreenState extends State<WriteScreen> {
         });
       }
     }
+  }
+
+  Future<void> _createAdaptiveInboxCheckIn({
+    required String entryText,
+    required int? entryId,
+  }) async {
+    try {
+      final snapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+        entryText: entryText,
+        entryId: entryId,
+      );
+      if (snapshot != null) {
+        await _notifications.notifyNewSageInboxMessages(snapshot.messages);
+      }
+    } catch (_) {}
   }
 
   Future<void> _watchEntryAttachmentProcessing(int entryId) async {

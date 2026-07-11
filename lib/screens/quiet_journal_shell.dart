@@ -2490,15 +2490,10 @@ class _QuietJournalComposeScreenState
       final entryText = _controller.text.trim();
       final result = await _api.createEntry(text: entryText);
       final entryId = result['entry_id'] as int?;
-      final inboxSnapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+      unawaited(_createAdaptiveInboxCheckIn(
         entryText: entryText,
         entryId: entryId,
-      );
-      if (inboxSnapshot != null) {
-        unawaited(
-          _notifications.notifyNewSageInboxMessages(inboxSnapshot.messages),
-        );
-      }
+      ));
 
       if (entryId != null && _pendingImages.isNotEmpty) {
         for (final image in _pendingImages) {
@@ -2525,6 +2520,21 @@ class _QuietJournalComposeScreenState
         _saving = false;
       });
     }
+  }
+
+  Future<void> _createAdaptiveInboxCheckIn({
+    required String entryText,
+    required int? entryId,
+  }) async {
+    try {
+      final snapshot = await _sageInbox.createAdaptiveJournalCheckIn(
+        entryText: entryText,
+        entryId: entryId,
+      );
+      if (snapshot != null) {
+        await _notifications.notifyNewSageInboxMessages(snapshot.messages);
+      }
+    } catch (_) {}
   }
 
   @override
