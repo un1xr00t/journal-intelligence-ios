@@ -16,6 +16,7 @@ import 'exit_plan_screen.dart';
 import 'exports_screen.dart';
 import 'fairness_ledger_screen.dart';
 import 'follow_ups_screen.dart';
+import 'journal_stats_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
 import 'orbit_ledger_screen.dart';
@@ -62,6 +63,14 @@ class MoreScreen extends StatelessWidget {
   List<_Section> _sections() => [
         _Section('Featured', 'Frequently used tools and analysis views.',
             JournalColors.accent, [
+          _Item(
+            label: 'Journal Stats',
+            subtitle: 'Live totals, streaks, writing trends, and every record',
+            icon: CupertinoIcons.chart_bar_alt_fill,
+            iconColor: JournalColors.accent,
+            badge: 'Live',
+            builder: (_) => const JournalStatsScreen(),
+          ),
           _Item(
             label: 'Inbox',
             subtitle: 'Full Sage messages, action items, and reminders',

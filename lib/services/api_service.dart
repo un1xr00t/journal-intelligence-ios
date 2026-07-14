@@ -831,6 +831,7 @@ class ApiService {
   late final Future<void> _ready;
   final _storage = const FlutterSecureStorage();
   final _identityMemory = IdentityMemoryService();
+  final ValueNotifier<int> journalDataRevision = ValueNotifier<int>(0);
 
   String? _accessToken;
   String? _inviteAccessToken;
@@ -932,6 +933,10 @@ class ApiService {
 
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _accessToken != null;
+
+  void _markJournalDataChanged() {
+    journalDataRevision.value++;
+  }
 
   List<String> _extractSetCookieHeaders(Response response) {
     final headers = response.headers.map['set-cookie'];
@@ -1736,6 +1741,7 @@ class ApiService {
       res = await _authedPost('/api/floatchat/saved', data: payload);
     }
 
+    _markJournalDataChanged();
     return SavedFloatchatConversation.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
@@ -1858,6 +1864,7 @@ class ApiService {
         sendTimeout: const Duration(minutes: 10),
       ),
     );
+    _markJournalDataChanged();
     return ArgumentTrackerReport.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
@@ -1895,6 +1902,7 @@ class ApiService {
 
   Future<void> deleteArgumentTrackerReport(String reportId) async {
     await _authedDelete('/api/argument-tracker/reports/$reportId');
+    _markJournalDataChanged();
   }
 
   Future<List<int>> voiceSpeak({
@@ -2118,6 +2126,7 @@ $transcript
         ),
       );
     }
+    _markJournalDataChanged();
     return data;
   }
 
@@ -2125,12 +2134,14 @@ $transcript
     final res = await _authedPut('/api/entries/$entryId',
         data: {'normalized_text': text});
     final body = res.data as Map<String, dynamic>;
+    _markJournalDataChanged();
     // Server returns { entry: { ...full entry... } } on success
     return body['entry'] as Map<String, dynamic>? ?? body;
   }
 
   Future<void> deleteEntry(int entryId) async {
     await _authedDelete('/api/entries/$entryId');
+    _markJournalDataChanged();
   }
 
   // ── Entry attachments ─────────────────────────────────────────
@@ -2282,6 +2293,7 @@ Question: $question
 
   Future<void> saveFollowUpTasks(List<Map<String, dynamic>> tasks) async {
     await _authedPut('/api/follow-ups', data: {'tasks': tasks});
+    _markJournalDataChanged();
   }
 
   Future<Map<String, dynamic>> uploadFollowUpAttachment({
@@ -2331,6 +2343,7 @@ Question: $question
   Future<void> saveOrbitLedgerEntries(
       List<Map<String, dynamic>> entries) async {
     await _authedPut('/api/orbit-ledger', data: {'entries': entries});
+    _markJournalDataChanged();
   }
 
   // ── Mental Health ─────────────────────────────────────────────
@@ -2408,6 +2421,16 @@ Question: $question
     return (res.data as Map<String, dynamic>)['contributions']
             as List<dynamic>? ??
         [];
+  }
+
+  Future<List<dynamic>> getEvidenceRecords() async {
+    final res = await _authedGet('/api/evidence');
+    final data = res.data;
+    if (data is List) return List<dynamic>.from(data);
+    if (data is Map) {
+      return List<dynamic>.from(data['evidence'] as List? ?? const []);
+    }
+    return const [];
   }
 
   Future<void> deleteFairnessContribution(int contributionId) async {
@@ -2726,17 +2749,20 @@ Question: $question
       String folderId, Map<String, dynamic> data) async {
     final r =
         await _authedPost('/api/vault/folders/$folderId/items', data: data);
+    _markJournalDataChanged();
     return Map<String, dynamic>.from(r.data);
   }
 
   Future<Map<String, dynamic>> vaultUpdateItem(
       String itemId, Map<String, dynamic> data) async {
     final r = await _authedPut('/api/vault/items/$itemId', data: data);
+    _markJournalDataChanged();
     return Map<String, dynamic>.from(r.data);
   }
 
   Future<void> vaultDeleteItem(String itemId) async {
     await _authedDelete('/api/vault/items/$itemId');
+    _markJournalDataChanged();
   }
 
   Future<Map<String, dynamic>> vaultUploadItemPhoto(
@@ -2816,6 +2842,7 @@ Question: $question
       String caseId, Map<String, dynamic> data) async {
     final r =
         await _authedPost('/api/detective/cases/$caseId/entries', data: data);
+    _markJournalDataChanged();
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -2823,10 +2850,12 @@ Question: $question
       String caseId, String entryId, Map<String, dynamic> data) async {
     await _authedPut('/api/detective/cases/$caseId/entries/$entryId',
         data: data);
+    _markJournalDataChanged();
   }
 
   Future<void> detectiveDeleteEntry(String caseId, String entryId) async {
     await _authedDelete('/api/detective/cases/$caseId/entries/$entryId');
+    _markJournalDataChanged();
   }
 
   Future<Map<String, dynamic>> detectiveUploadEntryPhoto(
@@ -3162,6 +3191,7 @@ Question: $question
   Future<Map<String, dynamic>> exitPlanAddTask(
       Map<String, dynamic> data) async {
     final r = await _authedPost('/api/exit-plan/tasks', data: data);
+    _markJournalDataChanged();
     return Map<String, dynamic>.from(r.data);
   }
 
@@ -3171,6 +3201,7 @@ Question: $question
 
   Future<void> exitPlanDeleteTask(String taskId) async {
     await _authedDelete('/api/exit-plan/tasks/$taskId');
+    _markJournalDataChanged();
   }
 
   Future<Map<String, dynamic>> exitPlanGetNotes({String? taskId}) async {
@@ -3185,6 +3216,7 @@ Question: $question
     final body = <String, dynamic>{'note_text': noteText};
     if (taskId != null) body['task_id'] = taskId;
     await _authedPost('/api/exit-plan/notes', data: body);
+    _markJournalDataChanged();
   }
 
   // ── My Story ──────────────────────────────────────────────────────────────
@@ -3224,12 +3256,14 @@ Question: $question
   Future<Map<String, dynamic>> myStorySaveDraft(
       Map<String, dynamic> body) async {
     final r = await _authedPost('/api/my-story/drafts', data: body);
+    _markJournalDataChanged();
     return Map<String, dynamic>.from(r.data);
   }
 
   /// DELETE /api/my-story/drafts/{id}
   Future<void> myStoryDeleteDraft(int id) async {
     await _authedDelete('/api/my-story/drafts/$id');
+    _markJournalDataChanged();
   }
 }
 
