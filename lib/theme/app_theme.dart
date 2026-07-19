@@ -32,6 +32,14 @@ class JournalColors {
   // ── Glass overlay (Liquid Glass substrate) ──────────────────
   static const glassBg = Color(0x2210101E);
   static const glassBorder = Color(0x336366F1);
+
+  // ── Notebook Mode (paper skeuomorphism) ─────────────────────
+  static const paper = Color(0xFFF6EFDF); // aged cream paper
+  static const paperShade = Color(0xFFEAE0C9); // spine shading / page back
+  static const paperLine = Color(0x3D8094B8); // faint blue rule
+  static const paperMargin = Color(0x66C0564B); // red margin line
+  static const ink = Color(0xFF2C2A35); // pen ink
+  static const inkSoft = Color(0xFF847E70); // faded ink / metadata
 }
 
 class AppTheme {

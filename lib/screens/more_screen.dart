@@ -19,6 +19,7 @@ import 'follow_ups_screen.dart';
 import 'journal_stats_screen.dart';
 import 'mental_health_screen.dart';
 import 'my_story_screen.dart';
+import 'notebook_screen.dart';
 import 'orbit_ledger_screen.dart';
 import 'proof_vault_screen.dart';
 import 'resources_screen.dart';
@@ -70,6 +71,14 @@ class MoreScreen extends StatelessWidget {
             iconColor: JournalColors.accent,
             badge: 'Live',
             builder: (_) => const JournalStatsScreen(),
+          ),
+          _Item(
+            label: 'Notebook',
+            subtitle: 'Flip through your journal like a real paper notebook',
+            icon: CupertinoIcons.book_fill,
+            iconColor: JournalColors.severity,
+            badge: 'New',
+            builder: (_) => const NotebookScreen(),
           ),
           _Item(
             label: 'Inbox',

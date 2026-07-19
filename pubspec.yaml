@@ -60,6 +60,9 @@ dependencies:
   # Keep screen awake during hands-free Sage voice conversations
   wakelock_plus: ^1.2.8
 
+  # Fragment-shader page curl for Notebook Mode
+  flutter_shaders: ^0.1.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -69,6 +72,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+  shaders:
+    - assets/shaders/page_curl.frag
 
 flutter_launcher_icons:
   ios: true
