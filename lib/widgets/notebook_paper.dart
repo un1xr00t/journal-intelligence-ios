@@ -333,7 +333,7 @@ class NotebookPhotoFan extends StatefulWidget {
   });
 
   final List<String> attachmentIds;
-  final void Function(String attachmentId) onOpen;
+  final void Function(int index) onOpen;
 
   @override
   State<NotebookPhotoFan> createState() => _NotebookPhotoFanState();
@@ -383,7 +383,7 @@ class _NotebookPhotoFanState extends State<NotebookPhotoFan> {
                         if (!_expanded) {
                           setState(() => _expanded = true);
                         } else {
-                          widget.onOpen(ids[i]);
+                          widget.onOpen(i);
                         }
                       },
                       onLongPress: () => setState(() => _expanded = !_expanded),
@@ -439,7 +439,12 @@ class _Polaroid extends StatelessWidget {
 // animation — which balloons memory until iOS jetsams the app.
 
 class NotebookAuthImage extends StatefulWidget {
-  const NotebookAuthImage({super.key, required this.path, this.decodeWidth});
+  const NotebookAuthImage({
+    super.key,
+    required this.path,
+    this.decodeWidth,
+    this.fit = BoxFit.cover,
+  });
 
   final String path;
 
@@ -447,6 +452,7 @@ class NotebookAuthImage extends StatefulWidget {
   /// A camera photo decodes to ~48 MB at full size; a 76px polaroid
   /// needs a tiny fraction of that.
   final int? decodeWidth;
+  final BoxFit fit;
 
   @override
   State<NotebookAuthImage> createState() => _NotebookAuthImageState();
@@ -498,7 +504,7 @@ class _NotebookAuthImageState extends State<NotebookAuthImage> {
     }
     return Image.memory(
       _bytes!,
-      fit: BoxFit.cover,
+      fit: widget.fit,
       gaplessPlayback: true,
       cacheWidth: widget.decodeWidth,
     );

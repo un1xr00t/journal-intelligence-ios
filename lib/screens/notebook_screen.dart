@@ -7,7 +7,6 @@
 // line sits on a rule.
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../services/api_service.dart';
@@ -216,13 +215,14 @@ class _NotebookScreenState extends State<NotebookScreen> {
     }
   }
 
-  void _openLightbox(String attachmentId) {
+  void _openLightbox(List<String> attachmentIds, int initialIndex) {
     Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (_) => DefaultTextStyle.merge(
           style: const TextStyle(decoration: TextDecoration.none),
           child: _NotebookLightbox(
-            path: '/api/entry-attachments/$attachmentId/file',
+            attachmentIds: attachmentIds,
+            initialIndex: initialIndex,
           ),
         ),
       ),
@@ -244,7 +244,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
       photoFan: (page.isFirstPage && photoIds != null && photoIds.isNotEmpty)
           ? NotebookPhotoFan(
               attachmentIds: photoIds,
-              onOpen: _openLightbox,
+              onOpen: (index) => _openLightbox(photoIds, index),
             )
           : null,
     );
@@ -339,46 +339,129 @@ class _NotebookScreenState extends State<NotebookScreen> {
 
 // ── Lightbox ───────────────────────────────────────────────────────────────
 
-class _NotebookLightbox extends StatelessWidget {
-  const _NotebookLightbox({required this.path});
+class _NotebookLightbox extends StatefulWidget {
+  const _NotebookLightbox({
+    required this.attachmentIds,
+    required this.initialIndex,
+  });
 
-  final String path;
+  final List<String> attachmentIds;
+  final int initialIndex;
+
+  @override
+  State<_NotebookLightbox> createState() => _NotebookLightboxState();
+}
+
+class _NotebookLightboxState extends State<_NotebookLightbox> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _showPrevious() {
+    if (_currentIndex == 0) return;
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _showNext() {
+    if (_currentIndex == widget.attachmentIds.length - 1) return;
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  String _pathFor(int index) {
+    return '/api/entry-attachments/${widget.attachmentIds[index]}/file';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final total = widget.attachmentIds.length;
+
     return CupertinoPageScaffold(
-      backgroundColor: Colors.black.withValues(alpha: 0.92),
+      backgroundColor: JournalColors.bgBase,
       child: SafeArea(
         child: Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 64, 20, 20),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: NotebookAuthImage(path: path, decodeWidth: 1600),
-                    ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.center,
+                    radius: 1.15,
+                    colors: [JournalColors.bgSurface, JournalColors.bgBase],
                   ),
+                ),
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: total,
+                  onPageChanged: (index) {
+                    setState(() => _currentIndex = index);
+                  },
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 76, 16, 84),
+                      child: Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 720),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+                          decoration: BoxDecoration(
+                            color: JournalColors.paper,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: JournalColors.paperShade),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: JournalColors.accentGlow,
+                                blurRadius: 32,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: SizedBox.expand(
+                              child: NotebookAuthImage(
+                                path: _pathFor(index),
+                                decodeWidth: 2000,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
             Positioned(
               top: 12,
-              right: 20,
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+              left: 16,
+              child: CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.of(context).pop(),
                 child: Container(
-                  width: 36,
-                  height: 36,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
+                    color: JournalColors.bgCard,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.14),
-                    ),
+                    border: Border.all(color: JournalColors.borderBright),
                   ),
                   child: const Icon(
                     CupertinoIcons.xmark,
@@ -388,7 +471,121 @@ class _NotebookLightbox extends StatelessWidget {
                 ),
               ),
             ),
+            Positioned(
+              top: 12,
+              left: 72,
+              right: 72,
+              child: Column(
+                children: [
+                  const Text(
+                    'ENTRY PHOTOS',
+                    style: TextStyle(
+                      color: JournalColors.inkSoft,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${_currentIndex + 1} of $total',
+                    style: const TextStyle(
+                      color: JournalColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (total > 1) ...[
+              Positioned(
+                left: 14,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _NotebookPhotoNavButton(
+                    icon: CupertinoIcons.chevron_left,
+                    enabled: _currentIndex > 0,
+                    onPressed: _showPrevious,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 14,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _NotebookPhotoNavButton(
+                    icon: CupertinoIcons.chevron_right,
+                    enabled: _currentIndex < total - 1,
+                    onPressed: _showNext,
+                  ),
+                ),
+              ),
+              if (total <= 12)
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: 24,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(total, (index) {
+                      final selected = index == _currentIndex;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: selected ? 18 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? JournalColors.paper
+                              : JournalColors.textMuted,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookPhotoNavButton extends StatelessWidget {
+  const _NotebookPhotoNavButton({
+    required this.icon,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !enabled,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: enabled ? 1 : 0,
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: onPressed,
+          child: Container(
+            width: 38,
+            height: 54,
+            decoration: BoxDecoration(
+              color: JournalColors.bgCard.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: JournalColors.borderBright),
+            ),
+            child: Icon(icon, color: JournalColors.textPrimary, size: 20),
+          ),
         ),
       ),
     );
