@@ -23,6 +23,58 @@ Journal Intelligence is not just a journaling app. It is a private, self-hosted 
 
 This Flutter iOS client connects to `https://journal.williamthomas.name` and combines Liquid Glass UI, native iOS integrations, local-first notification logic, and a broad set of specialized AI workflows for daily reflection, high-stakes documentation, and long-horizon planning.
 
+## The iPhone Experience
+
+<p align="center">
+  <strong>Your journal becomes a private intelligence layer that travels with you.</strong><br>
+  Capture the moment, understand the pattern, and turn insight into action — without leaving your phone.
+</p>
+
+<p align="center">
+  <code>NATIVE iOS</code>&nbsp;&nbsp;•&nbsp;&nbsp;<code>LIQUID GLASS</code>&nbsp;&nbsp;•&nbsp;&nbsp;<code>LOCAL-FIRST</code>&nbsp;&nbsp;•&nbsp;&nbsp;<code>SELF-HOSTED</code>
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <strong>Know what today means</strong><br>
+      <sub>A daily brief turns recent writing into emotional climate, signals, and priorities.</sub>
+    </td>
+    <td align="center" width="33%">
+      <strong>One app, a full LifeOS</strong><br>
+      <sub>Journaling, planning, case building, support, and long-term intelligence in one place.</sub>
+    </td>
+    <td align="center" width="33%">
+      <strong>Talk to Sage naturally</strong><br>
+      <sub>Bring text, voice, images, and files into a personal assistant grounded in your journal.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/IMG_2722.PNG" alt="Today screen with a daily journal intelligence brief" width="100%"></td>
+    <td valign="top"><img src="screenshots/IMG_2727.PNG" alt="More screen showing the Journal Intelligence tool collection" width="100%"></td>
+    <td valign="top"><img src="screenshots/IMG_2737.PNG" alt="Sage assistant analyzing an attached image in conversation" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <strong>Capture without friction</strong><br>
+      <sub>Write, dictate, add photos, or attach a link as context without changing your words.</sub>
+    </td>
+    <td align="center" width="33%">
+      <strong>Make Sage yours</strong><br>
+      <sub>Tune voice, warmth, directness, memory, and behavior to fit how you want support.</sub>
+    </td>
+    <td align="center" width="33%">
+      <strong>Private by design</strong><br>
+      <sub>Face ID, Journal PIN, 2FA, session controls, and a self-hosted backend protect the system.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="screenshots/IMG_2725.PNG" alt="Write screen for composing a new journal entry" width="100%"></td>
+    <td valign="top"><img src="screenshots/IMG_2735.PNG" alt="Sage personality and behavior settings" width="100%"></td>
+    <td valign="top"><img src="screenshots/IMG_2732.PNG" alt="Security and authentication settings" width="100%"></td>
+  </tr>
+</table>
+
 ## What's New
 
 The latest release cycle turned Sage from a chat screen into an ambient presence, and turned one-off tools into synced, local-first systems.
