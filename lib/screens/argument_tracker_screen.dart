@@ -335,7 +335,8 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
         sharePositionOrigin:
             box == null ? null : box.localToGlobal(Offset.zero) & box.size,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('Argument Tracker PDF export failed: $e\n$stackTrace');
       if (!mounted) return;
       setState(() {
         _error = _parseError(e, fallback: 'Could not export PDF.');
@@ -346,74 +347,12 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   }
 
   List<int> _buildArgumentReportPdf(ArgumentTrackerReport report) {
-    final document = PdfDocument();
-    document.pageSettings.margins.all = 42;
-    final page = document.pages.add();
-    final bounds = Rect.fromLTWH(
-      0,
-      0,
-      page.getClientSize().width,
-      page.getClientSize().height,
+    return buildArgumentTrackerPdfDocument(
+      title: report.title,
+      savedAt: _formatDate(report.updatedAt),
+      attachmentCount: report.attachmentCount,
+      markdown: report.result,
     );
-    final titleFont = PdfStandardFont(
-      PdfFontFamily.helvetica,
-      18,
-      style: PdfFontStyle.bold,
-    );
-    final metaFont = PdfStandardFont(PdfFontFamily.helvetica, 10);
-    final bodyFont = PdfStandardFont(PdfFontFamily.helvetica, 11);
-
-    final title = report.title.trim().isEmpty
-        ? 'Argument Tracker Report'
-        : report.title.trim();
-    final savedAt = _formatDate(report.updatedAt);
-    final text = [
-      'Saved: $savedAt',
-      if (report.attachmentCount > 0)
-        'Evidence: ${report.attachmentCount} attachment${report.attachmentCount == 1 ? '' : 's'}',
-      '',
-      report.result.trim().isEmpty
-          ? 'No report text available.'
-          : report.result,
-    ].join('\n');
-
-    PdfTextElement(
-      text: title,
-      font: titleFont,
-      brush: PdfSolidBrush(PdfColor(20, 20, 30)),
-    ).draw(page: page, bounds: bounds);
-
-    PdfTextElement(
-      text: text,
-      font: bodyFont,
-      brush: PdfSolidBrush(PdfColor(35, 35, 45)),
-      format: PdfStringFormat(lineSpacing: 4),
-    ).draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, 34, bounds.width, bounds.height - 34),
-      format: PdfLayoutFormat(layoutType: PdfLayoutType.paginate),
-    );
-
-    final pages = document.pages;
-    for (var i = 0; i < pages.count; i += 1) {
-      final current = pages[i];
-      current.graphics.drawString(
-        'Journal Intelligence Argument Tracker',
-        metaFont,
-        brush: PdfSolidBrush(PdfColor(120, 120, 135)),
-        bounds: Rect.fromLTWH(
-          0,
-          current.getClientSize().height - 18,
-          current.getClientSize().width,
-          16,
-        ),
-        format: PdfStringFormat(alignment: PdfTextAlignment.right),
-      );
-    }
-
-    final bytes = document.saveSync();
-    document.dispose();
-    return bytes;
   }
 
   String _pdfFilename(String title) {
@@ -620,6 +559,458 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
       ),
     );
   }
+}
+
+List<int> buildArgumentTrackerPdfDocument({
+  required String title,
+  required String savedAt,
+  required int attachmentCount,
+  required String markdown,
+}) {
+  final document = PdfDocument();
+  document.pageSettings.margins.all = 42;
+  final rawTitle =
+      title.trim().isEmpty ? 'Argument Tracker Report' : title.trim();
+  final writer = _ArgumentReportPdfWriter(
+    document: document,
+    safeText: _argumentPdfSafeText,
+  );
+  writer.writeTitle(rawTitle);
+  writer.writeMetadata('Saved: $savedAt');
+  if (attachmentCount > 0) {
+    writer.writeMetadata(
+      'Evidence: $attachmentCount attachment${attachmentCount == 1 ? '' : 's'}',
+    );
+  }
+  writer.addSpacing(12);
+  writer.writeMarkdown(
+    markdown.trim().isEmpty ? 'No report text available.' : markdown,
+  );
+
+  final pages = document.pages;
+  final metaFont = PdfStandardFont(PdfFontFamily.helvetica, 9);
+  for (var i = 0; i < pages.count; i += 1) {
+    final current = pages[i];
+    current.graphics.drawString(
+      'Journal Intelligence Argument Tracker  |  ${i + 1} of ${pages.count}',
+      metaFont,
+      brush: PdfSolidBrush(PdfColor(120, 120, 135)),
+      bounds: Rect.fromLTWH(
+        0,
+        current.getClientSize().height - 18,
+        current.getClientSize().width,
+        16,
+      ),
+      format: PdfStringFormat(alignment: PdfTextAlignment.right),
+    );
+  }
+
+  final bytes = document.saveSync();
+  document.dispose();
+  return bytes;
+}
+
+String _argumentPdfSafeText(String value, PdfFont font) {
+  final safe = StringBuffer();
+  var wroteEmojiLabel = false;
+
+  for (final rune in value.runes) {
+    final asciiReplacement = switch (rune) {
+      0x00A0 => ' ',
+      0x2010 || 0x2011 || 0x2012 || 0x2013 || 0x2014 || 0x2212 => '-',
+      0x2018 || 0x2019 || 0x201A || 0x201B => "'",
+      0x201C || 0x201D || 0x201E || 0x201F => '"',
+      0x2022 => '-',
+      0x2026 => '...',
+      _ => null,
+    };
+    if (asciiReplacement != null) {
+      safe.write(asciiReplacement);
+      wroteEmojiLabel = false;
+      continue;
+    }
+
+    if (rune == 0x0A || rune == 0x0D || rune == 0x09) {
+      safe.writeCharCode(rune);
+      wroteEmojiLabel = false;
+      continue;
+    }
+
+    final character = String.fromCharCode(rune);
+    try {
+      font.measureString(character);
+      safe.write(character);
+      wroteEmojiLabel = false;
+    } on ArgumentError {
+      if (rune == 0xFE0F ||
+          rune == 0x200D ||
+          (rune >= 0x1F3FB && rune <= 0x1F3FF)) {
+        continue;
+      }
+      if (rune == 0x2764) {
+        safe.write('[heart]');
+        wroteEmojiLabel = false;
+      } else if (rune == 0x26A0) {
+        safe.write('[warning]');
+        wroteEmojiLabel = false;
+      } else if (rune == 0x2705 || rune == 0x2713 || rune == 0x2714) {
+        safe.write('[check]');
+        wroteEmojiLabel = false;
+      } else if (rune > 0xFFFF) {
+        if (!wroteEmojiLabel) safe.write('[emoji]');
+        wroteEmojiLabel = true;
+      } else {
+        safe.write('?');
+        wroteEmojiLabel = false;
+      }
+    }
+  }
+
+  return safe.toString();
+}
+
+class _ArgumentReportPdfWriter {
+  _ArgumentReportPdfWriter({
+    required this.document,
+    required this.safeText,
+  }) {
+    _page = document.pages.add();
+  }
+
+  final PdfDocument document;
+  final String Function(String value, PdfFont font) safeText;
+
+  late PdfPage _page;
+  double _y = 0;
+
+  final PdfFont _titleFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    20,
+    style: PdfFontStyle.bold,
+  );
+  final PdfFont _headingOneFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    17,
+    style: PdfFontStyle.bold,
+  );
+  final PdfFont _headingTwoFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    14,
+    style: PdfFontStyle.bold,
+  );
+  final PdfFont _headingThreeFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    12,
+    style: PdfFontStyle.bold,
+  );
+  final PdfFont _bodyFont = PdfStandardFont(PdfFontFamily.helvetica, 10.5);
+  final PdfFont _boldFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    10.5,
+    style: PdfFontStyle.bold,
+  );
+  final PdfFont _italicFont = PdfStandardFont(
+    PdfFontFamily.helvetica,
+    10.5,
+    style: PdfFontStyle.italic,
+  );
+  final PdfFont _codeFont = PdfStandardFont(PdfFontFamily.courier, 9.5);
+  final PdfFont _metaFont = PdfStandardFont(PdfFontFamily.helvetica, 9);
+
+  PdfColor get _primary => PdfColor(28, 28, 38);
+  PdfColor get _secondary => PdfColor(80, 80, 96);
+  PdfColor get _accent => PdfColor(79, 70, 229);
+  double get _pageWidth => _page.getClientSize().width;
+  double get _contentHeight => _page.getClientSize().height - 44;
+
+  void writeTitle(String title) {
+    _drawInlineBlock(
+      [_PdfInlineSpan(title, _titleFont)],
+      color: _primary,
+      gap: 6,
+      minimumSpace: 34,
+    );
+  }
+
+  void writeMetadata(String text) {
+    _drawInlineBlock(
+      [_PdfInlineSpan(text, _metaFont)],
+      color: _secondary,
+      gap: 2,
+      minimumSpace: 18,
+    );
+  }
+
+  void addSpacing(double amount) {
+    _y += amount;
+  }
+
+  void writeMarkdown(String markdown) {
+    final lines = markdown.replaceAll('\r\n', '\n').split('\n');
+    var index = 0;
+
+    while (index < lines.length) {
+      final line = lines[index].trimRight();
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        addSpacing(4);
+        index += 1;
+        continue;
+      }
+
+      if (trimmed.startsWith('```')) {
+        final codeLines = <String>[];
+        index += 1;
+        while (index < lines.length && !lines[index].trim().startsWith('```')) {
+          codeLines.add(lines[index]);
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        _drawInlineBlock(
+          [_PdfInlineSpan(codeLines.join('\n'), _codeFont)],
+          indent: 12,
+          color: _secondary,
+          gap: 10,
+          preserveLineBreaks: true,
+        );
+        continue;
+      }
+
+      final heading = RegExp(r'^(#{1,3})\s+(.+)$').firstMatch(trimmed);
+      if (heading != null) {
+        final level = heading.group(1)!.length;
+        final font = switch (level) {
+          1 => _headingOneFont,
+          2 => _headingTwoFont,
+          _ => _headingThreeFont,
+        };
+        addSpacing(level == 1 ? 9 : 6);
+        _drawInlineBlock(
+          [_PdfInlineSpan(_plainInlineText(heading.group(2)!), font)],
+          color: level == 1 ? _primary : _accent,
+          gap: level == 1 ? 9 : 6,
+          minimumSpace: font.height * 2.2,
+        );
+        index += 1;
+        continue;
+      }
+
+      if (RegExp(r'^([-*_])\1\1+$').hasMatch(trimmed)) {
+        _ensureSpace(18);
+        _page.graphics.drawLine(
+          PdfPen(PdfColor(205, 205, 216), width: 0.6),
+          Offset(0, _y + 6),
+          Offset(_pageWidth, _y + 6),
+        );
+        _y += 16;
+        index += 1;
+        continue;
+      }
+
+      final listItem = RegExp(r'^\s*([-+*]|\d+[.)])\s+(.+)$').firstMatch(line);
+      if (listItem != null) {
+        final marker = listItem.group(1)!;
+        _drawInlineBlock(
+          _inlineSpans(listItem.group(2)!),
+          prefix: RegExp(r'^\d').hasMatch(marker) ? '$marker ' : '- ',
+          indent: 16,
+          gap: 4,
+        );
+        index += 1;
+        continue;
+      }
+
+      if (trimmed.startsWith('>')) {
+        final quoteLines = <String>[];
+        while (
+            index < lines.length && lines[index].trimLeft().startsWith('>')) {
+          quoteLines.add(lines[index].trimLeft().substring(1).trimLeft());
+          index += 1;
+        }
+        _drawInlineBlock(
+          _inlineSpans(quoteLines.join(' '), baseFont: _italicFont),
+          prefix: '| ',
+          indent: 14,
+          color: _secondary,
+          gap: 9,
+        );
+        continue;
+      }
+
+      final paragraph = <String>[trimmed];
+      index += 1;
+      while (index < lines.length && !_startsMarkdownBlock(lines[index])) {
+        final next = lines[index].trim();
+        if (next.isEmpty) break;
+        paragraph.add(next);
+        index += 1;
+      }
+      _drawInlineBlock(
+        _inlineSpans(paragraph.join(' ')),
+        gap: 9,
+      );
+    }
+  }
+
+  bool _startsMarkdownBlock(String line) {
+    final trimmed = line.trim();
+    return trimmed.isEmpty ||
+        trimmed.startsWith('#') ||
+        trimmed.startsWith('>') ||
+        trimmed.startsWith('```') ||
+        RegExp(r'^\s*([-+*]|\d+[.)])\s+').hasMatch(line) ||
+        RegExp(r'^([-*_])\1\1+$').hasMatch(trimmed);
+  }
+
+  List<_PdfInlineSpan> _inlineSpans(
+    String source, {
+    PdfFont? baseFont,
+  }) {
+    final text = source.replaceAllMapped(
+      RegExp(r'!?\[([^\]]+)\]\(([^)]+)\)'),
+      (match) => '${match.group(1)} (${match.group(2)})',
+    );
+    final pattern = RegExp(
+      r'(\*\*(.+?)\*\*|__(.+?)__|`([^`]+)`|\*([^*]+)\*|_([^_]+)_)',
+    );
+    final spans = <_PdfInlineSpan>[];
+    var cursor = 0;
+    for (final match in pattern.allMatches(text)) {
+      if (match.start > cursor) {
+        spans.add(_PdfInlineSpan(
+            text.substring(cursor, match.start), baseFont ?? _bodyFont));
+      }
+      if (match.group(2) != null || match.group(3) != null) {
+        spans.add(_PdfInlineSpan(match.group(2) ?? match.group(3)!, _boldFont));
+      } else if (match.group(4) != null) {
+        spans.add(_PdfInlineSpan(match.group(4)!, _codeFont));
+      } else {
+        spans.add(
+            _PdfInlineSpan(match.group(5) ?? match.group(6)!, _italicFont));
+      }
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(_PdfInlineSpan(text.substring(cursor), baseFont ?? _bodyFont));
+    }
+    return spans.isEmpty
+        ? [_PdfInlineSpan(text, baseFont ?? _bodyFont)]
+        : spans;
+  }
+
+  String _plainInlineText(String text) {
+    return text
+        .replaceAll(RegExp(r'\*\*|__|`'), '')
+        .replaceAll(RegExp(r'(?<!\*)\*(?!\*)|(?<!_)_(?!_)'), '')
+        .replaceAllMapped(
+          RegExp(r'!?\[([^\]]+)\]\(([^)]+)\)'),
+          (match) => match.group(1)!,
+        );
+  }
+
+  void _drawInlineBlock(
+    List<_PdfInlineSpan> spans, {
+    String? prefix,
+    double indent = 0,
+    PdfColor? color,
+    double gap = 8,
+    double minimumSpace = 34,
+    bool preserveLineBreaks = false,
+  }) {
+    _ensureSpace(minimumSpace);
+    final brush = PdfSolidBrush(color ?? _primary);
+    final lineHeight = spans.fold<double>(
+          _bodyFont.height,
+          (height, span) =>
+              span.font.height > height ? span.font.height : height,
+        ) +
+        3;
+    var x = indent;
+
+    if (prefix != null) {
+      final safePrefix = safeText(prefix, _boldFont);
+      _page.graphics.drawString(
+        safePrefix,
+        _boldFont,
+        brush: brush,
+        bounds: Rect.fromLTWH(0, _y, indent, lineHeight),
+      );
+    }
+
+    void nextLine() {
+      _y += lineHeight;
+      _ensureSpace(lineHeight);
+      x = indent;
+    }
+
+    for (final span in spans) {
+      final source =
+          preserveLineBreaks ? span.text : span.text.replaceAll('\n', ' ');
+      final chunks = RegExp(r'\n|[^\S\n]+|[^\s]+')
+          .allMatches(source)
+          .map((match) => match.group(0)!)
+          .toList();
+      for (final rawChunk in chunks) {
+        if (rawChunk == '\n') {
+          nextLine();
+          continue;
+        }
+        if (rawChunk.trim().isEmpty) {
+          final measuredSpace = span.font.measureString('A A').width -
+              span.font.measureString('AA').width;
+          final spaceWidth =
+              measuredSpace > 0 ? measuredSpace : span.font.size * 0.28;
+          final width = spaceWidth * rawChunk.length;
+          if (x > indent && x + width > _pageWidth) {
+            nextLine();
+          } else {
+            x += width;
+          }
+          continue;
+        }
+        final chunk = safeText(rawChunk, span.font);
+        if (chunk.isEmpty) continue;
+        final width = span.font.measureString(chunk).width;
+        if (x > indent && x + width > _pageWidth) nextLine();
+        if (width > _pageWidth - indent) {
+          for (final rune in chunk.runes) {
+            final character = String.fromCharCode(rune);
+            final characterWidth = span.font.measureString(character).width;
+            if (x > indent && x + characterWidth > _pageWidth) nextLine();
+            _page.graphics.drawString(
+              character,
+              span.font,
+              brush: brush,
+              bounds: Rect.fromLTWH(x, _y, characterWidth + 1, lineHeight),
+            );
+            x += characterWidth;
+          }
+        } else {
+          _page.graphics.drawString(
+            chunk,
+            span.font,
+            brush: brush,
+            bounds: Rect.fromLTWH(x, _y, width + 1, lineHeight),
+          );
+          x += width;
+        }
+      }
+    }
+    _y += lineHeight + gap;
+  }
+
+  void _ensureSpace(double needed) {
+    if (_y + needed <= _contentHeight) return;
+    _page = document.pages.add();
+    _y = 0;
+  }
+}
+
+class _PdfInlineSpan {
+  const _PdfInlineSpan(this.text, this.font);
+
+  final String text;
+  final PdfFont font;
 }
 
 class _PickedArgumentFile {
