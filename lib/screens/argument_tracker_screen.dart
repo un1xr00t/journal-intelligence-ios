@@ -34,7 +34,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
   bool _loadingReports = true;
   bool _generating = false;
   bool _exportingPdf = false;
-  bool _correctingReport = false;
+  String? _revisingId;
   String? _error;
   String? _openingId;
   String? _deletingId;
@@ -185,20 +185,21 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
     }
   }
 
-  Future<void> _promptForReportCorrection() async {
-    final report = _activeReport;
-    if (report == null || _correctingReport) return;
+  Future<void> _promptForReportRevision(
+      [ArgumentTrackerReport? selectedReport]) async {
+    final report = selectedReport ?? _activeReport;
+    if (report == null || _revisingId != null) return;
 
     final controller = TextEditingController();
     final correction = await showCupertinoDialog<String>(
       context: context,
       builder: (dialogContext) => CupertinoAlertDialog(
-        title: const Text('What part would you like to correct?'),
+        title: const Text('Add or correct details'),
         content: Column(
           children: [
             const SizedBox(height: 8),
             const Text(
-              'Describe the incorrect detail and the correct fact. Sage will update only the relevant parts of this case.',
+              'Add a detail you forgot, or describe an incorrect detail and the correct fact. Sage will reuse this report and update only the affected parts.',
             ),
             const SizedBox(height: 12),
             CupertinoTextField(
@@ -209,7 +210,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
               padding: const EdgeInsets.all(12),
               cursorColor: JournalColors.accent,
               placeholder:
-                  'Example: Both visible messages were sent by me. The second was not her reply.',
+                  'Example: I forgot that this happened after I showed her the receipt.',
               placeholderStyle: const TextStyle(
                 color: JournalColors.textMuted,
                 fontSize: 13,
@@ -237,7 +238,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
               final value = controller.text.trim();
               if (value.isNotEmpty) Navigator.pop(dialogContext, value);
             },
-            child: const Text('Correct with Sage'),
+            child: const Text('Update with Sage'),
           ),
         ],
       ),
@@ -246,7 +247,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
     if (correction == null || correction.isEmpty || !mounted) return;
 
     setState(() {
-      _correctingReport = true;
+      _revisingId = report.id;
       _error = null;
     });
     try {
@@ -261,13 +262,13 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
           updated,
           ..._reports.where((item) => item.id != updated.id),
         ];
-        _correctingReport = false;
+        _revisingId = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _correctingReport = false;
-        _error = _parseError(e, fallback: 'Could not correct this report.');
+        _revisingId = null;
+        _error = _parseError(e, fallback: 'Could not update this report.');
       });
     }
   }
@@ -429,6 +430,9 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
     if (e is DioException && e.response?.statusCode == 413) {
       return 'Upload is too large for one request. Remove a few files or try smaller screenshots.';
     }
+    if (e is DioException && e.type == DioExceptionType.receiveTimeout) {
+      return 'Sage is taking longer than expected. The update may still finish and appear when you refresh saved arguments.';
+    }
     final str = e.toString();
     final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(str);
     return match?.group(1) ?? fallback;
@@ -452,7 +456,7 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           Text(
-            'Correct with Sage',
+            'Update with Sage',
             style: TextStyle(
               color: JournalColors.accent,
               fontSize: 13,
@@ -576,19 +580,22 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
                       key: ValueKey(
                         'argument-report-${activeReport.id}-${activeReport.updatedAt}',
                       ),
-                      direction: _correctingReport
+                      direction: _revisingId != null
                           ? DismissDirection.none
                           : DismissDirection.endToStart,
                       confirmDismiss: (_) async {
-                        _promptForReportCorrection();
+                        _promptForReportRevision();
                         return false;
                       },
                       background: _reportSwipeBackground(),
-                      child: _ReportCard(
-                        report: activeReport,
-                        exportingPdf: _exportingPdf,
-                        correcting: _correctingReport,
-                        onExportPdf: _exportActiveReportPdf,
+                      child: GestureDetector(
+                        onLongPress: _promptForReportRevision,
+                        child: _ReportCard(
+                          report: activeReport,
+                          exportingPdf: _exportingPdf,
+                          correcting: _revisingId == activeReport.id,
+                          onExportPdf: _exportActiveReportPdf,
+                        ),
                       ),
                     ),
                   ],
@@ -598,9 +605,11 @@ class _ArgumentTrackerScreenState extends State<ArgumentTrackerScreen> {
                     loading: _loadingReports,
                     openingId: _openingId,
                     deletingId: _deletingId,
+                    revisingId: _revisingId,
                     formatDate: _formatDate,
                     onRefresh: _loadReports,
                     onOpen: _openReport,
+                    onRevise: _promptForReportRevision,
                     onDelete: _deleteReport,
                   ),
                 ]),
@@ -1001,7 +1010,7 @@ class _ReportCard extends StatelessWidget {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Sage is correcting the relevant case details…',
+                      'Sage is updating the relevant case details…',
                       style: TextStyle(
                         color: JournalColors.textPrimary,
                         fontSize: 13,
@@ -1111,9 +1120,11 @@ class _SavedReportsSection extends StatelessWidget {
     required this.loading,
     required this.openingId,
     required this.deletingId,
+    required this.revisingId,
     required this.formatDate,
     required this.onRefresh,
     required this.onOpen,
+    required this.onRevise,
     required this.onDelete,
   });
 
@@ -1121,9 +1132,11 @@ class _SavedReportsSection extends StatelessWidget {
   final bool loading;
   final String? openingId;
   final String? deletingId;
+  final String? revisingId;
   final String Function(String value) formatDate;
   final VoidCallback onRefresh;
   final void Function(ArgumentTrackerReport report) onOpen;
+  final void Function(ArgumentTrackerReport report) onRevise;
   final void Function(ArgumentTrackerReport report) onDelete;
 
   @override
@@ -1157,6 +1170,17 @@ class _SavedReportsSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (!loading && reports.isNotEmpty) ...[
+            const Text(
+              'Long-press a saved argument to add a forgotten detail or correct a fact without rebuilding the entire report.',
+              style: TextStyle(
+                color: JournalColors.textMuted,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
@@ -1177,8 +1201,10 @@ class _SavedReportsSection extends StatelessWidget {
                         report: report,
                         isOpening: openingId == report.id,
                         isDeleting: deletingId == report.id,
+                        isRevising: revisingId == report.id,
                         savedAt: formatDate(report.updatedAt),
                         onOpen: () => onOpen(report),
+                        onLongPress: () => onRevise(report),
                         onDelete: () => onDelete(report),
                       ))
                   .toList(),
@@ -1194,86 +1220,94 @@ class _SavedReportRow extends StatelessWidget {
     required this.report,
     required this.isOpening,
     required this.isDeleting,
+    required this.isRevising,
     required this.savedAt,
     required this.onOpen,
+    required this.onLongPress,
     required this.onDelete,
   });
 
   final ArgumentTrackerReport report;
   final bool isOpening;
   final bool isDeleting;
+  final bool isRevising;
   final String savedAt;
   final VoidCallback onOpen;
+  final VoidCallback onLongPress;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: JournalColors.bgSurface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: JournalColors.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onOpen,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    report.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: JournalColors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: isOpening || isDeleting || isRevising ? null : onLongPress,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: JournalColors.bgSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: JournalColors.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onOpen,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      report.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: JournalColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    report.preview.isEmpty ? savedAt : report.preview,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: JournalColors.textSecondary,
-                      fontSize: 12,
-                      height: 1.35,
+                    const SizedBox(height: 4),
+                    Text(
+                      report.preview.isEmpty ? savedAt : report.preview,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: JournalColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    savedAt,
-                    style: const TextStyle(
-                      color: JournalColors.textMuted,
-                      fontSize: 11,
+                    const SizedBox(height: 5),
+                    Text(
+                      savedAt,
+                      style: const TextStyle(
+                        color: JournalColors.textMuted,
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          if (isOpening || isDeleting)
-            const CupertinoActivityIndicator(color: JournalColors.accent)
-          else
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(30, 30),
-              onPressed: onDelete,
-              child: const Icon(
-                CupertinoIcons.delete,
-                color: JournalColors.danger,
-                size: 18,
+            const SizedBox(width: 10),
+            if (isOpening || isDeleting || isRevising)
+              const CupertinoActivityIndicator(color: JournalColors.accent)
+            else
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(30, 30),
+                onPressed: onDelete,
+                child: const Icon(
+                  CupertinoIcons.delete,
+                  color: JournalColors.danger,
+                  size: 18,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

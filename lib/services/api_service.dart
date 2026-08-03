@@ -1878,6 +1878,7 @@ class ApiService {
       '/api/argument-tracker/reports/$reportId',
       data: {'result': result},
     );
+    _markJournalDataChanged();
     return ArgumentTrackerReport.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
@@ -1891,10 +1892,11 @@ class ApiService {
       '/api/argument-tracker/reports/$reportId/correct',
       data: {'correction': correction},
       options: Options(
-        receiveTimeout: const Duration(minutes: 3),
+        receiveTimeout: const Duration(minutes: 20),
         sendTimeout: const Duration(seconds: 30),
       ),
     );
+    _markJournalDataChanged();
     return ArgumentTrackerReport.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
