@@ -95,7 +95,7 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
 
   Future<void> _handleDigit(String digit) async {
     if (_submitting || _digits.length >= JournalPinService.pinLength) return;
-    await _triggerPinEntryFeedback();
+    unawaited(_triggerPinEntryFeedback());
     setState(() {
       _digits += digit;
       _error = null;
@@ -110,7 +110,7 @@ class _PinUnlockScreenState extends State<PinUnlockScreen> {
 
   Future<void> _handleDelete() async {
     if (_submitting || _digits.isEmpty) return;
-    await _triggerPinEntryFeedback();
+    unawaited(_triggerPinEntryFeedback());
     setState(() {
       _digits = _digits.substring(0, _digits.length - 1);
       _error = null;
@@ -534,7 +534,7 @@ class _PinKeypad extends StatelessWidget {
   }
 }
 
-class _PinKeypadButton extends StatelessWidget {
+class _PinKeypadButton extends StatefulWidget {
   const _PinKeypadButton({
     required this.label,
     required this.enabled,
@@ -556,57 +556,106 @@ class _PinKeypadButton extends StatelessWidget {
   final bool isIcon;
 
   @override
+  State<_PinKeypadButton> createState() => _PinKeypadButtonState();
+}
+
+class _PinKeypadButtonState extends State<_PinKeypadButton> {
+  int? _activePointer;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (!widget.enabled || _activePointer != null) return;
+    setState(() => _activePointer = event.pointer);
+    unawaited(widget.onPressed());
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    if (_activePointer != event.pointer) return;
+    setState(() => _activePointer = null);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PinKeypadButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) _activePointer = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(76, 76),
-        pressedOpacity: 0.9,
-        onPressed: enabled ? () => unawaited(onPressed()) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          width: 76,
+    final enabled = widget.enabled;
+    final isPressed = _activePointer != null;
+    final semanticLabel = widget.isIcon ? 'Delete' : widget.label!;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel,
+      onTap: enabled ? () => unawaited(widget.onPressed()) : null,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: enabled ? _handlePointerDown : null,
+        onPointerUp: _handlePointerEnd,
+        onPointerCancel: _handlePointerEnd,
+        child: SizedBox(
+          width: 96,
           height: 76,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: enabled
-                ? _withAlpha(JournalColors.bgCardAlt, 0.96)
-                : _withAlpha(JournalColors.bgCardAlt, 0.42),
-            border: Border.all(
-              color: enabled
-                  ? _withAlpha(JournalColors.borderBright, 0.92)
-                  : _withAlpha(JournalColors.border, 0.56),
-            ),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: _withAlpha(JournalColors.accentGlow, 0.55),
-                      blurRadius: 18,
-                      offset: const Offset(0, 12),
-                    ),
-                  ]
-                : null,
-          ),
           child: Center(
-            child: isIcon
-                ? Icon(
-                    icon,
+            child: ExcludeSemantics(
+              child: AnimatedScale(
+                scale: isPressed ? 0.96 : 1,
+                duration: const Duration(milliseconds: 70),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: enabled
-                        ? JournalColors.textPrimary
-                        : JournalColors.textMuted,
-                    size: 24,
-                  )
-                : Text(
-                    label!,
-                    style: TextStyle(
+                        ? _withAlpha(
+                            JournalColors.bgCardAlt,
+                            isPressed ? 0.82 : 0.96,
+                          )
+                        : _withAlpha(JournalColors.bgCardAlt, 0.42),
+                    border: Border.all(
                       color: enabled
-                          ? JournalColors.textPrimary
-                          : JournalColors.textMuted,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
+                          ? _withAlpha(JournalColors.borderBright, 0.92)
+                          : _withAlpha(JournalColors.border, 0.56),
                     ),
+                    boxShadow: enabled
+                        ? [
+                            BoxShadow(
+                              color: _withAlpha(
+                                JournalColors.accentGlow,
+                                isPressed ? 0.3 : 0.55,
+                              ),
+                              blurRadius: isPressed ? 10 : 18,
+                              offset: const Offset(0, 12),
+                            ),
+                          ]
+                        : null,
                   ),
+                  child: Center(
+                    child: widget.isIcon
+                        ? Icon(
+                            widget.icon,
+                            color: enabled
+                                ? JournalColors.textPrimary
+                                : JournalColors.textMuted,
+                            size: 24,
+                          )
+                        : Text(
+                            widget.label!,
+                            style: TextStyle(
+                              color: enabled
+                                  ? JournalColors.textPrimary
+                                  : JournalColors.textMuted,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
